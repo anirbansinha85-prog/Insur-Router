@@ -629,22 +629,29 @@ export default function ApplicationDetail() {
                             </div>
                             <p className="text-xs text-slate-600 leading-relaxed">{log.message}</p>
                             {screenshot && (
-                              <a
-                                href={`data:image/jpeg;base64,${screenshot}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="block mt-2"
+                              <div
+                                className="block mt-2 cursor-zoom-in"
+                                onClick={() => {
+                                  const bin = atob(screenshot)
+                                  const bytes = new Uint8Array(bin.length)
+                                  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+                                  const blob = new Blob([bytes], { type: "image/jpeg" })
+                                  const url = URL.createObjectURL(blob)
+                                  const win = window.open(url, "_blank")
+                                  // revoke after the new tab has had time to load
+                                  win?.addEventListener("load", () => URL.revokeObjectURL(url), { once: true })
+                                }}
                               >
                                 <img
                                   src={`data:image/jpeg;base64,${screenshot}`}
                                   alt={`Browser screenshot — ${log.step}`}
-                                  className="rounded-lg border border-slate-200 shadow-sm w-full object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
+                                  className="rounded-lg border border-slate-200 shadow-sm w-full object-cover hover:opacity-90 transition-opacity"
                                   style={{ maxHeight: 140 }}
                                 />
                                 <span className="text-[10px] text-slate-400 mt-0.5 block">
                                   Click to view full size
                                 </span>
-                              </a>
+                              </div>
                             )}
                           </div>
                         </div>
