@@ -3,6 +3,7 @@ import {
   useGetApplication,
   useValidateApplication,
   useExecuteApplication,
+  useUpdateApplication,
   useGetApplicationLogs,
   useListProviders,
   getGetApplicationQueryKey,
@@ -22,6 +23,7 @@ import {
 } from "@/components/ui/dialog"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
+import { NativeSelect } from "@/components/ui/select"
 import { useParams, Link } from "wouter"
 import {
   ArrowLeft, Play, ShieldAlert, ShieldCheck, CheckCircle2, FileDown,
@@ -205,6 +207,8 @@ export default function ApplicationDetail() {
   const queryClient = useQueryClient()
 
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [pendingProviderId, setPendingProviderId] = useState<string>("")
+  const [pendingMode, setPendingMode] = useState<ExecutionMode>("AUTO")
 
   // Live-poll logs while submitting
   const [polling, setPolling] = useState(false)
@@ -226,6 +230,7 @@ export default function ApplicationDetail() {
 
   const validateMutation = useValidateApplication()
   const executeMutation = useExecuteApplication()
+  const updateMutation = useUpdateApplication()
 
   // Stop polling once no longer submitting
   useEffect(() => {
@@ -243,6 +248,19 @@ export default function ApplicationDetail() {
         queryClient.invalidateQueries({ queryKey: getGetApplicationLogsQueryKey(id) })
       },
     })
+  }
+
+  const handleAssignProvider = () => {
+    if (!pendingProviderId) return
+    updateMutation.mutate(
+      { id, data: { providerId: Number(pendingProviderId), executionMode: pendingMode } },
+      {
+        onSuccess: () => {
+          refetch()
+          queryClient.invalidateQueries({ queryKey: getGetApplicationLogsQueryKey(id) })
+        },
+      },
+    )
   }
 
   const handleExecute = (mode: ExecutionMode) => {
@@ -387,6 +405,56 @@ export default function ApplicationDetail() {
             )}
           </div>
         </div>
+
+        {/* ── No provider assigned — show inline picker ── */}
+        {(isDraft || isPendingConf) && !app.providerId && (
+          <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-5">
+            <div className="flex items-start gap-3 mb-4">
+              <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="font-bold text-amber-900">Provider not assigned</h4>
+                <p className="text-sm text-amber-700 mt-0.5">
+                  Select a provider and execution mode to continue with validation and routing.
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Insurance Provider</Label>
+                <NativeSelect
+                  value={pendingProviderId}
+                  onChange={e => setPendingProviderId(e.target.value)}
+                  className="h-10"
+                >
+                  <option value="">-- Select a Provider --</option>
+                  {providers?.map(p => (
+                    <option key={p.id} value={p.id}>{p.name} ({p.code})</option>
+                  ))}
+                </NativeSelect>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">Execution Mode</Label>
+                <NativeSelect
+                  value={pendingMode}
+                  onChange={e => setPendingMode(e.target.value as ExecutionMode)}
+                  className="h-10"
+                >
+                  <option value="AUTO">AUTO — let router decide</option>
+                  <option value="API">API — direct REST call</option>
+                  <option value="BROWSER">BROWSER — Playwright automation</option>
+                </NativeSelect>
+              </div>
+            </div>
+            <Button
+              className="mt-4 gap-2"
+              disabled={!pendingProviderId || updateMutation.isPending}
+              onClick={handleAssignProvider}
+            >
+              {updateMutation.isPending ? <Activity className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+              Assign Provider & Save
+            </Button>
+          </div>
+        )}
 
         {/* ── Validation errors ── */}
         {hasValidationErrors && (

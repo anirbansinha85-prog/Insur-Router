@@ -56,7 +56,14 @@ export default function ApplicationNew() {
     }))
   }
 
+  const [stepError, setStepError] = useState<string | null>(null)
+
   const handleNext = () => {
+    setStepError(null)
+    if (currentStep === 3 && !formData.providerId) {
+      setStepError("Please select a provider before submitting.")
+      return
+    }
     if (currentStep < STEPS.length - 1) {
       setCurrentStep(s => s + 1)
     } else {
@@ -199,18 +206,26 @@ export default function ApplicationNew() {
               <div className="text-lg font-semibold border-b pb-2 mb-2">Routing Strategy</div>
               
               <div className="space-y-3">
-                <Label className="text-base">Target Provider (Optional)</Label>
-                <p className="text-sm text-slate-500 pb-2">Select a specific provider to bypass auto-selection logic.</p>
+                <div className="flex items-center gap-2">
+                  <Label className="text-base">Target Provider</Label>
+                  <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-semibold">REQUIRED</span>
+                </div>
+                <p className="text-sm text-slate-500 pb-2">Select the insurer to route this application to.</p>
                 <NativeSelect 
                   value={formData.providerId} 
-                  onChange={e => setFormData(p => ({...p, providerId: e.target.value}))}
-                  className="h-12 text-base"
+                  onChange={e => { setStepError(null); setFormData(p => ({...p, providerId: e.target.value})) }}
+                  className={`h-12 text-base ${stepError ? 'border-red-400 ring-1 ring-red-400' : ''}`}
                 >
-                  <option value="">-- Let Router Decide (Best Rate) --</option>
+                  <option value="">-- Select a Provider --</option>
                   {providers?.map(p => (
                     <option key={p.id} value={p.id}>{p.name} ({p.code})</option>
                   ))}
                 </NativeSelect>
+                {stepError && (
+                  <p className="text-sm text-red-600 font-medium flex items-center gap-1">
+                    <span>⚠</span> {stepError}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-4">
