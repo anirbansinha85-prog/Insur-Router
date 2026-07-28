@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { UploadCloud, Loader2, FileImage, X } from "lucide-react"
 
 export function OcrUpload({ onResult }: { onResult: (res: IngestResult & { previewUrl?: string }) => void }) {
-  const [model, setModel] = useState<OcrInputModel>("qwen-vl")
+  const [model, setModel] = useState<OcrInputModel>("gpt-vision")
   const [file, setFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -100,9 +100,9 @@ export function OcrUpload({ onResult }: { onResult: (res: IngestResult & { previ
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="qwen-vl">Qwen-VL (High Accuracy)</SelectItem>
-                <SelectItem value="paddleocr">PaddleOCR (Fast)</SelectItem>
-                <SelectItem value="olmocr">OlmOCR (Experimental)</SelectItem>
+                <SelectItem value="gpt-vision">GPT-4 Vision (requires OPENAI_API_KEY)</SelectItem>
+                <SelectItem value="qwen-vl">Qwen-VL (requires DASHSCOPE_API_KEY)</SelectItem>
+                <SelectItem value="paddleocr">PaddleOCR (requires PADDLEOCR_API_URL)</SelectItem>
                 <SelectItem value="stub">Stub (Demo Data)</SelectItem>
               </SelectContent>
             </Select>

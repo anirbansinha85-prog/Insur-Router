@@ -458,66 +458,265 @@ router.post("/ingest/browser-scrape", async (req, res): Promise<void> => {
 
 // ─── OCR ──────────────────────────────────────────────────────────────────────
 
+// ─── OCR field parser ─────────────────────────────────────────────────────────
+
+const ID_PROOF_TYPES = ["AADHAR", "PAN", "PASSPORT", "DRIVING_LICENSE", "VOTER_ID"] as const;
+
+/**
+ * Parses the JSON blob returned by a vision-language model into MsaFields.
+ * The model is prompted to return:
+ *   { <MsaFields>, confidence: { <fieldName>: 0.0–1.0 } }
+ *
+ * Falls back to empty strings/zeros for any missing field and assigns
+ * low confidence (0.20) when a field is absent.
+ */
+function parseVisionLLMResponseToMsaFields(rawText: string): IngestResult {
+  let parsed: Record<string, unknown> = {};
+  let confidence: Record<string, number> = {};
+
+  // Strip markdown fences if the model wrapped the JSON in ```json ... ```
+  const stripped = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+  try {
+    const obj = JSON.parse(stripped) as Record<string, unknown>;
+    if (obj.confidence && typeof obj.confidence === "object") {
+      confidence = obj.confidence as Record<string, number>;
+      delete obj.confidence;
+    }
+    parsed = obj;
+  } catch {
+    // JSON parse failed — return empty fields with low confidence
+    logger.warn({ rawText: rawText.slice(0, 300) }, "Vision LLM response was not parseable JSON");
+  }
+
+  const str = (v: unknown) => (v != null && v !== "null" ? String(v) : "");
+  const num = (v: unknown) => (v != null && !isNaN(Number(v)) ? Number(v) : 0);
+  const idType = (v: unknown): MsaFields["ownerIdProofType"] =>
+    ID_PROOF_TYPES.includes(v as MsaFields["ownerIdProofType"])
+      ? (v as MsaFields["ownerIdProofType"])
+      : "AADHAR";
+
+  const fields: MsaFields = {
+    vehicleMake:            str(parsed.vehicleMake),
+    vehicleModel:           str(parsed.vehicleModel),
+    vehicleVariant:         str(parsed.vehicleVariant),
+    vehicleEngineNumber:    str(parsed.vehicleEngineNumber),
+    vehicleChassisNumber:   str(parsed.vehicleChassisNumber),
+    vehicleExShowroomPrice: num(parsed.vehicleExShowroomPrice),
+    vehicleDateOfPurchase:  str(parsed.vehicleDateOfPurchase),
+    ownerFullName:          str(parsed.ownerFullName),
+    ownerBillingAddress:    str(parsed.ownerBillingAddress),
+    ownerPincode:           num(parsed.ownerPincode),
+    ownerPhoneNumber:       str(parsed.ownerPhoneNumber),
+    ownerEmail:             str(parsed.ownerEmail),
+    ownerDateOfBirth:       str(parsed.ownerDateOfBirth),
+    ownerIdProofType:       idType(parsed.ownerIdProofType),
+    ownerIdProofNumber:     str(parsed.ownerIdProofNumber),
+    rtoRegistrationCity:    str(parsed.rtoRegistrationCity),
+    rtoRegistrationState:   str(parsed.rtoRegistrationState),
+    rtoCode:                str(parsed.rtoCode),
+  };
+
+  // Fill in confidence for any field the model didn't score
+  for (const k of Object.keys(fields) as (keyof MsaFields)[]) {
+    if (confidence[k] === undefined) {
+      // Non-empty → medium confidence; empty → low confidence
+      confidence[k] = fields[k] ? 0.65 : 0.20;
+    }
+  }
+
+  return { fields, confidence, rawText };
+}
+
+/** Shared prompt asking the LLM to extract RC-book/invoice fields as JSON. */
+const OCR_EXTRACTION_PROMPT = `You are processing an Indian vehicle Registration Certificate (RC Book) or dealer invoice image.
+Extract all visible text and identify the following fields. Return a single JSON object — no markdown, no extra text.
+
+Required JSON structure:
+{
+  "vehicleMake": "manufacturer e.g. Yamaha, Honda, TVS, Bajaj, Royal Enfield, Hero",
+  "vehicleModel": "model name e.g. FZ-S, CB350",
+  "vehicleVariant": "variant e.g. V3.0 Fi, Standard, or empty string if not visible",
+  "vehicleEngineNumber": "engine number from document",
+  "vehicleChassisNumber": "chassis/VIN number",
+  "vehicleExShowroomPrice": numeric price in INR or 0,
+  "vehicleDateOfPurchase": "YYYY-MM-DD or empty string",
+  "ownerFullName": "owner full name",
+  "ownerBillingAddress": "full address string",
+  "ownerPincode": numeric 6-digit pincode or 0,
+  "ownerPhoneNumber": "10-digit phone number or empty string",
+  "ownerEmail": "email if visible or empty string",
+  "ownerDateOfBirth": "YYYY-MM-DD or empty string",
+  "ownerIdProofType": "AADHAR or PAN or PASSPORT or DRIVING_LICENSE or VOTER_ID",
+  "ownerIdProofNumber": "ID number or empty string",
+  "rtoRegistrationCity": "city where vehicle is registered",
+  "rtoRegistrationState": "state e.g. Delhi, Maharashtra",
+  "rtoCode": "RTO code e.g. DL01, MH02",
+  "confidence": {
+    "vehicleMake": 0.0 to 1.0,
+    "vehicleModel": 0.0 to 1.0,
+    "vehicleVariant": 0.0 to 1.0,
+    "vehicleEngineNumber": 0.0 to 1.0,
+    "vehicleChassisNumber": 0.0 to 1.0,
+    "vehicleExShowroomPrice": 0.0 to 1.0,
+    "vehicleDateOfPurchase": 0.0 to 1.0,
+    "ownerFullName": 0.0 to 1.0,
+    "ownerBillingAddress": 0.0 to 1.0,
+    "ownerPincode": 0.0 to 1.0,
+    "ownerPhoneNumber": 0.0 to 1.0,
+    "ownerEmail": 0.0 to 1.0,
+    "ownerDateOfBirth": 0.0 to 1.0,
+    "ownerIdProofType": 0.0 to 1.0,
+    "ownerIdProofNumber": 0.0 to 1.0,
+    "rtoRegistrationCity": 0.0 to 1.0,
+    "rtoRegistrationState": 0.0 to 1.0,
+    "rtoCode": 0.0 to 1.0
+  }
+}
+
+Confidence rules:
+- 0.90–1.00: text is clear, unambiguous, and directly matches a known format
+- 0.70–0.89: text is readable but could have minor ambiguity
+- 0.40–0.69: partially visible, blurry, or inferred from context
+- 0.20–0.39: guessed or not visible in the document
+
+Return ONLY the JSON object. No markdown fences, no prose.`;
+
+// ─── OCR model switcher ────────────────────────────────────────────────────────
+
 /**
  * OCR model switcher.
  *
- * Only the "stub" branch returns real data. All other branches are clearly
- * marked TODO for connecting to real OCR services.
+ * qwen-vl  → Alibaba DashScope Qwen2.5-VL (requires DASHSCOPE_API_KEY)
+ * gpt-vision → OpenAI-compatible vision API (requires OPENAI_API_KEY, or
+ *              AI_INTEGRATIONS_OPENAI_API_KEY + AI_INTEGRATIONS_OPENAI_BASE_URL)
+ * paddleocr → local PaddleOCR service (requires PADDLEOCR_API_URL)
+ * olmocr    → not yet integrated
+ * stub      → hardcoded demo data
  */
 async function runOcr(
   imageBase64: string,
   mimeType: string,
-  model: "paddleocr" | "qwen-vl" | "olmocr" | "stub",
+  model: "paddleocr" | "qwen-vl" | "olmocr" | "gpt-vision" | "stub",
 ): Promise<IngestResult> {
   switch (model) {
     case "stub":
       return ocrStub(imageBase64, mimeType);
 
-    case "paddleocr":
-      // TODO: Connect PaddleOCR here
-      // PaddleOCR can be run as a local service or via paddle-serving.
-      // Typical integration:
-      //   const resp = await fetch(`${process.env.PADDLEOCR_API_URL}/predict/ocr_system`, {
-      //     method: "POST",
-      //     headers: { "Content-Type": "application/json" },
-      //     body: JSON.stringify({ images: [imageBase64] }),
-      //   });
-      //   const data = await resp.json();
-      //   const rawText = data.results.flatMap((r: any) => r.map((item: any) => item[1][0])).join("\n");
-      //   return parseRawTextToMsaFields(rawText, "paddleocr");
-      throw new Error("PaddleOCR not yet connected — use model=stub for demo");
+    case "qwen-vl": {
+      const apiKey = process.env.DASHSCOPE_API_KEY;
+      if (!apiKey) {
+        throw new Error(
+          "DASHSCOPE_API_KEY is not configured. Add your Alibaba Cloud DashScope API key as a secret to use Qwen-VL OCR.",
+        );
+      }
 
-    case "qwen-vl":
-      // TODO: Connect Qwen2.5-VL here
-      // Qwen2.5-VL can parse RC-book images via its vision-language API.
-      // Typical integration (Alibaba Cloud DashScope):
-      //   const resp = await fetch("https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation", {
-      //     method: "POST",
-      //     headers: {
-      //       Authorization: `Bearer ${process.env.DASHSCOPE_API_KEY}`,
-      //       "Content-Type": "application/json",
-      //     },
-      //     body: JSON.stringify({
-      //       model: "qwen-vl-plus",
-      //       input: { messages: [{ role: "user", content: [
-      //         { image: `data:${mimeType};base64,${imageBase64}` },
-      //         { text: "Extract vehicle registration details as JSON: make, model, chassisNumber, engineNumber, ownerName, address, rtoCode" }
-      //       ]}]},
-      //     }),
-      //   });
-      //   const data = await resp.json();
-      //   return parseQwenResponseToMsaFields(data.output.choices[0].message.content[0].text);
-      throw new Error("Qwen2.5-VL not yet connected — use model=stub for demo");
+      const resp = await fetch(
+        "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "qwen-vl-plus",
+            input: {
+              messages: [
+                {
+                  role: "user",
+                  content: [
+                    { image: `data:${mimeType};base64,${imageBase64}` },
+                    { text: OCR_EXTRACTION_PROMPT },
+                  ],
+                },
+              ],
+            },
+            parameters: { result_format: "message" },
+          }),
+        },
+      );
+
+      if (!resp.ok) {
+        const errBody = await resp.text().catch(() => "");
+        throw new Error(`DashScope API error ${resp.status}: ${errBody.slice(0, 300)}`);
+      }
+
+      const data = await resp.json() as {
+        output?: { choices?: Array<{ message?: { content?: Array<{ text?: string }> | string } }> };
+      };
+      const contentArr = data?.output?.choices?.[0]?.message?.content;
+      const rawText = Array.isArray(contentArr)
+        ? contentArr.map((c) => c.text ?? "").join("")
+        : String(contentArr ?? "");
+
+      logger.info({ model: "qwen-vl", rawLen: rawText.length }, "DashScope OCR response received");
+      return parseVisionLLMResponseToMsaFields(rawText);
+    }
+
+    case "gpt-vision": {
+      // Supports both direct OPENAI_API_KEY and Replit AI Integrations proxy
+      const apiKey =
+        process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? process.env.OPENAI_API_KEY;
+      const baseUrl =
+        process.env.AI_INTEGRATIONS_OPENAI_BASE_URL ?? "https://api.openai.com/v1";
+
+      if (!apiKey) {
+        throw new Error(
+          "OPENAI_API_KEY is not configured. Add your OpenAI API key as a secret to use GPT Vision OCR.",
+        );
+      }
+
+      const resp = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4o",
+          max_tokens: 1500,
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "image_url",
+                  image_url: { url: `data:${mimeType};base64,${imageBase64}`, detail: "high" },
+                },
+                { type: "text", text: OCR_EXTRACTION_PROMPT },
+              ],
+            },
+          ],
+        }),
+      });
+
+      if (!resp.ok) {
+        const errBody = await resp.text().catch(() => "");
+        throw new Error(`OpenAI API error ${resp.status}: ${errBody.slice(0, 300)}`);
+      }
+
+      const data = await resp.json() as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      const rawText = data?.choices?.[0]?.message?.content ?? "";
+
+      logger.info({ model: "gpt-vision", rawLen: rawText.length }, "OpenAI GPT Vision OCR response received");
+      return parseVisionLLMResponseToMsaFields(rawText);
+    }
+
+    case "paddleocr":
+      // PaddleOCR returns raw OCR text lines, not structured JSON, so it cannot
+      // be fed directly into parseVisionLLMResponseToMsaFields().
+      // A dedicated text-to-MsaFields extractor (regex heuristics or a second
+      // LLM call) is needed before this branch can be wired safely.
+      throw new Error(
+        "PaddleOCR is not yet fully integrated. Use qwen-vl (DASHSCOPE_API_KEY) or gpt-vision (OPENAI_API_KEY) for real OCR.",
+      );
 
     case "olmocr":
-      // TODO: Connect olmOCR here
-      // olmOCR (Allen Institute) provides structured document extraction.
-      // Typical integration:
-      //   import { OlmOCR } from "olmocr";
-      //   const client = new OlmOCR({ apiKey: process.env.OLMOCR_API_KEY });
-      //   const result = await client.extract({ image: imageBase64, mimeType, schema: MSA_JSON_SCHEMA });
-      //   return mapOlmOcrToMsaFields(result);
-      throw new Error("olmOCR not yet connected — use model=stub for demo");
+      throw new Error(
+        "olmOCR is not yet integrated. Use qwen-vl (DASHSCOPE_API_KEY) or gpt-vision (OPENAI_API_KEY) for real OCR.",
+      );
 
     default:
       throw new Error(`Unknown OCR model: ${model}`);
@@ -587,7 +786,7 @@ router.post("/ingest/ocr", async (req, res): Promise<void> => {
   logger.info({ model, mimeType }, "OCR requested");
 
   try {
-    const result = await runOcr(imageBase64, mimeType, model as "paddleocr" | "qwen-vl" | "olmocr" | "stub");
+    const result = await runOcr(imageBase64, mimeType, model as "paddleocr" | "qwen-vl" | "olmocr" | "gpt-vision" | "stub");
     res.json(result);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

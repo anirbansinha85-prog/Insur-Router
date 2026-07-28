@@ -1,0 +1,1 @@
+- [OCR vision integration](ocr-vision-integration.md) — qwen-vl wired to DashScope, gpt-vision to OpenAI-compatible; both need API keys as secrets

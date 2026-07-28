@@ -483,7 +483,7 @@ export const IngestBrowserScrapeResponse = zod.object({
 export const IngestOcrBody = zod.object({
   "imageBase64": zod.string().describe('Base64-encoded image (JPEG\/PNG) or PDF content'),
   "mimeType": zod.string().describe('MIME type of the uploaded file, e.g. image\/jpeg or application\/pdf'),
-  "model": zod.enum(['paddleocr', 'qwen-vl', 'olmocr', 'stub']).describe('OCR model to use; stub returns hardcoded demo data')
+  "model": zod.enum(['paddleocr', 'qwen-vl', 'olmocr', 'gpt-vision', 'stub']).describe('OCR model to use; qwen-vl requires DASHSCOPE_API_KEY, gpt-vision requires OPENAI_API_KEY, stub returns hardcoded demo data')
 })
 
 export const IngestOcrResponse = zod.object({

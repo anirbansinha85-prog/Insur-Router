@@ -472,7 +472,7 @@ export interface BrowserScrapeInput {
 }
 
 /**
- * OCR model to use; stub returns hardcoded demo data
+ * OCR model to use; qwen-vl requires DASHSCOPE_API_KEY, gpt-vision requires OPENAI_API_KEY, stub returns hardcoded demo data
  */
 export type OcrInputModel = typeof OcrInputModel[keyof typeof OcrInputModel];
 
@@ -481,6 +481,7 @@ export const OcrInputModel = {
   paddleocr: 'paddleocr',
   'qwen-vl': 'qwen-vl',
   olmocr: 'olmocr',
+  'gpt-vision': 'gpt-vision',
   stub: 'stub',
 } as const;
 
@@ -489,7 +490,7 @@ export interface OcrInput {
   imageBase64: string;
   /** MIME type of the uploaded file, e.g. image/jpeg or application/pdf */
   mimeType: string;
-  /** OCR model to use; stub returns hardcoded demo data */
+  /** OCR model to use; qwen-vl requires DASHSCOPE_API_KEY, gpt-vision requires OPENAI_API_KEY, stub returns hardcoded demo data */
   model: OcrInputModel;
 }
 

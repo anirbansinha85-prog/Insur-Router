@@ -1100,8 +1100,8 @@ components:
           description: MIME type of the uploaded file, e.g. image/jpeg or application/pdf
         model:
           type: string
-          enum: [paddleocr, qwen-vl, olmocr, stub]
-          description: OCR model to use; stub returns hardcoded demo data
+          enum: [paddleocr, qwen-vl, olmocr, gpt-vision, stub]
+          description: "OCR model to use; qwen-vl requires DASHSCOPE_API_KEY, gpt-vision requires OPENAI_API_KEY, stub returns hardcoded demo data"
       required:
         - imageBase64
         - mimeType
