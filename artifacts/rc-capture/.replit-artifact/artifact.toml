@@ -1,0 +1,23 @@
+kind = "mobile"
+previewPath = "/rc-capture/"
+title = "RC Capture"
+version = "1.0.0"
+id = "artifacts/rc-capture"
+router = "expo-domain"
+
+[[services]]
+name = "expo"
+ensurePreviewReachable = "/status"
+paths = [ "/rc-capture/" ]
+localPort = 23754
+
+[services.development]
+run = "pnpm --filter @workspace/rc-capture run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/rc-capture", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/rc-capture", "run", "serve" ]
+
+[services.env]
+PORT = "23754"
+BASE_PATH = "/rc-capture/"

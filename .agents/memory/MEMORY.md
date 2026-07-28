@@ -1,1 +1,2 @@
 - [OCR vision integration](ocr-vision-integration.md) — qwen-vl wired to DashScope, gpt-vision to OpenAI-compatible; both need API keys as secrets
+- [api-client-react dist rebuild](api-client-rebuild.md) — generated hooks won't typecheck in Expo until the composite package is rebuilt with tsc after codegen runs
