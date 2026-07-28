@@ -555,6 +555,7 @@ router.post("/applications/:id/execute", async (req, res): Promise<void> => {
         step: log.step as typeof submissionLogsTable.$inferInsert["step"],
         status: log.status,
         message: log.message,
+        metadata: (log as any).screenshot ? { screenshot: (log as any).screenshot } : null,
       });
     }
   }

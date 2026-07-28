@@ -608,27 +608,48 @@ export default function ApplicationDetail() {
                     {/* Timeline spine */}
                     <div className="absolute left-5 top-0 bottom-0 w-0.5 bg-gradient-to-b from-transparent via-slate-200 to-transparent" />
 
-                    {displayLogs.map((log) => (
-                      <div key={log.id} className="relative flex items-start gap-4">
-                        <div
-                          className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 z-10 border-2 border-white shadow-sm ${getStatusColor(log.status)}`}
-                        >
-                          {getStatusIcon(log.status)}
-                        </div>
-                        <div className="pt-1 flex-1 min-w-0">
-                          <div className="flex items-baseline justify-between mb-0.5 gap-2">
-                            <span className="font-semibold text-sm text-slate-900 capitalize truncate">
-                              {log.step.replace(/_/g, " ")}
-                            </span>
-                            <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1 shrink-0">
-                              <Clock className="w-3 h-3" />
-                              {new Date(log.createdAt).toLocaleTimeString()}
-                            </span>
+                    {displayLogs.map((log) => {
+                      const screenshot = (log.metadata as any)?.screenshot as string | undefined
+                      return (
+                        <div key={log.id} className="relative flex items-start gap-4">
+                          <div
+                            className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 z-10 border-2 border-white shadow-sm ${getStatusColor(log.status)}`}
+                          >
+                            {getStatusIcon(log.status)}
                           </div>
-                          <p className="text-xs text-slate-600 leading-relaxed">{log.message}</p>
+                          <div className="pt-1 flex-1 min-w-0">
+                            <div className="flex items-baseline justify-between mb-0.5 gap-2">
+                              <span className="font-semibold text-sm text-slate-900 capitalize truncate">
+                                {log.step.replace(/_/g, " ")}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1 shrink-0">
+                                <Clock className="w-3 h-3" />
+                                {new Date(log.createdAt).toLocaleTimeString()}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-600 leading-relaxed">{log.message}</p>
+                            {screenshot && (
+                              <a
+                                href={`data:image/jpeg;base64,${screenshot}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="block mt-2"
+                              >
+                                <img
+                                  src={`data:image/jpeg;base64,${screenshot}`}
+                                  alt={`Browser screenshot — ${log.step}`}
+                                  className="rounded-lg border border-slate-200 shadow-sm w-full object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
+                                  style={{ maxHeight: 140 }}
+                                />
+                                <span className="text-[10px] text-slate-400 mt-0.5 block">
+                                  Click to view full size
+                                </span>
+                              </a>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
 
                     {/* Animated pending dot while submitting */}
                     {isSubmitting && (

@@ -791,7 +791,7 @@ components:
           type: number
         step:
           type: string
-          enum: [data_ingestion, validation, routing, execution_api, execution_browser, finalization, error]
+          enum: [data_ingestion, validation, routing, execution_api, execution_browser, finalization, error, browser_launch, page_loaded, form_vehicle, form_kyc, form_rto, form_submit, policy_issued, browser_error]
         status:
           type: string
           enum: [info, success, warning, error]

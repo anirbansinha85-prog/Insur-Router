@@ -226,6 +226,14 @@ export const SubmissionLogStep = {
   execution_browser: 'execution_browser',
   finalization: 'finalization',
   error: 'error',
+  browser_launch: 'browser_launch',
+  page_loaded: 'page_loaded',
+  form_vehicle: 'form_vehicle',
+  form_kyc: 'form_kyc',
+  form_rto: 'form_rto',
+  form_submit: 'form_submit',
+  policy_issued: 'policy_issued',
+  browser_error: 'browser_error',
 } as const;
 
 export type SubmissionLogStatus = typeof SubmissionLogStatus[keyof typeof SubmissionLogStatus];

@@ -245,7 +245,7 @@ export const GetApplicationResponse = zod.object({
   "logs": zod.array(zod.object({
   "id": zod.number(),
   "applicationId": zod.number(),
-  "step": zod.enum(['data_ingestion', 'validation', 'routing', 'execution_api', 'execution_browser', 'finalization', 'error']),
+  "step": zod.enum(['data_ingestion', 'validation', 'routing', 'execution_api', 'execution_browser', 'finalization', 'error', 'browser_launch', 'page_loaded', 'form_vehicle', 'form_kyc', 'form_rto', 'form_submit', 'policy_issued', 'browser_error']),
   "status": zod.enum(['info', 'success', 'warning', 'error']),
   "message": zod.string(),
   "metadata": zod.record(zod.string(), zod.unknown()).nullable(),
@@ -377,7 +377,7 @@ export const GetApplicationLogsParams = zod.object({
 export const GetApplicationLogsResponseItem = zod.object({
   "id": zod.number(),
   "applicationId": zod.number(),
-  "step": zod.enum(['data_ingestion', 'validation', 'routing', 'execution_api', 'execution_browser', 'finalization', 'error']),
+  "step": zod.enum(['data_ingestion', 'validation', 'routing', 'execution_api', 'execution_browser', 'finalization', 'error', 'browser_launch', 'page_loaded', 'form_vehicle', 'form_kyc', 'form_rto', 'form_submit', 'policy_issued', 'browser_error']),
   "status": zod.enum(['info', 'success', 'warning', 'error']),
   "message": zod.string(),
   "metadata": zod.record(zod.string(), zod.unknown()).nullable(),
