@@ -29,6 +29,7 @@ function Router() {
         <Route path="/applications/new" component={ApplicationNew} />
         <Route path="/applications/:id" component={ApplicationDetail} />
         <Route path="/providers" component={ProvidersList} />
+        <Route path="/providers/new" component={ProviderEdit} />
         <Route path="/providers/:id/edit" component={ProviderEdit} />
         <Route component={NotFound} />
       </Switch>
