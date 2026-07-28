@@ -12,7 +12,8 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useColors } from '@/hooks/useColors';
-import { getApplicationId, clearStore } from '@/store/ingest';
+import { getApplicationId, getPushedFields, clearStore } from '@/store/ingest';
+import { makeHistoryEntry, appendHistoryEntry } from '@/store/history';
 
 export default function SuccessScreen() {
   const colors = useColors();
@@ -38,6 +39,16 @@ export default function SuccessScreen() {
     scale.value = withSpring(1, { damping: 12, stiffness: 200 });
     opacity.value = withTiming(1, { duration: 300 });
     cardOpacity.value = withDelay(300, withTiming(1, { duration: 400 }));
+
+    // Persist this capture to history using the post-edit fields actually pushed
+    const pushedFields = getPushedFields();
+    if (pushedFields) {
+      const entry = makeHistoryEntry(pushedFields, applicationId);
+      appendHistoryEntry(entry).catch(() => {
+        // Non-fatal: history write failure should not affect UX
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleCaptureAnother = () => {

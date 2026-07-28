@@ -32,6 +32,8 @@ export interface IngestResult {
 
 let _ingestResult: IngestResult | null = null;
 let _applicationId: number | null = null;
+/** The exact MsaFields payload that was sent to InsurRouter (post-review edits). */
+let _pushedFields: MsaFields | null = null;
 
 export function setIngestResult(r: IngestResult): void {
   _ingestResult = r;
@@ -49,7 +51,16 @@ export function getApplicationId(): number | null {
   return _applicationId;
 }
 
+export function setPushedFields(f: MsaFields): void {
+  _pushedFields = f;
+}
+
+export function getPushedFields(): MsaFields | null {
+  return _pushedFields;
+}
+
 export function clearStore(): void {
   _ingestResult = null;
   _applicationId = null;
+  _pushedFields = null;
 }

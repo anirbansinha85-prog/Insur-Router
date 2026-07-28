@@ -14,7 +14,7 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
-import { getIngestResult, setApplicationId, MsaFields } from '@/store/ingest';
+import { getIngestResult, setApplicationId, setPushedFields, MsaFields } from '@/store/ingest';
 import { useIngestPush } from '@workspace/api-client-react';
 
 const ID_PROOF_OPTIONS = ['AADHAR', 'PAN', 'PASSPORT', 'DRIVING_LICENSE', 'VOTER_ID'] as const;
@@ -260,6 +260,8 @@ export default function ReviewScreen() {
       {
         onSuccess: (data) => {
           setApplicationId(data.applicationId);
+          // Persist the exact payload sent so history shows post-edit values
+          setPushedFields(fields);
           router.push('/success');
         },
         onError: (err) => {

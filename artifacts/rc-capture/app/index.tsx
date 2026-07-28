@@ -20,6 +20,7 @@ import Animated, {
 import { useColors } from '@/hooks/useColors';
 import { setIngestResult } from '@/store/ingest';
 import { useIngestOcr } from '@workspace/api-client-react';
+import { BottomTabBar } from '@/components/BottomTabBar';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -185,6 +186,8 @@ export default function CaptureScreen() {
           <Text style={s.webNote}>On web: pick an image from your library</Text>
         )}
       </View>
+
+      <BottomTabBar active="capture" />
     </View>
   );
 }
@@ -195,7 +198,6 @@ const styles = (colors: ReturnType<typeof useColors>, insets: ReturnType<typeof 
       flex: 1,
       backgroundColor: colors.background,
       paddingTop: Platform.OS === 'web' ? 67 : insets.top,
-      paddingBottom: Platform.OS === 'web' ? 34 : insets.bottom + 16,
     },
     header: {
       paddingHorizontal: 24,

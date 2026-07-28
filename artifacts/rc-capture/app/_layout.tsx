@@ -32,6 +32,8 @@ function RootLayoutNav() {
       <Stack.Screen name="index" />
       <Stack.Screen name="review" />
       <Stack.Screen name="success" />
+      <Stack.Screen name="history" />
+      <Stack.Screen name="history-detail" />
     </Stack>
   );
 }
