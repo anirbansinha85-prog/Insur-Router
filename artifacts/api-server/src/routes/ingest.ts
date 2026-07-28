@@ -802,6 +802,68 @@ function toDateStr(val: Date | string): string {
   return String(val).slice(0, 10);
 }
 
+interface MsaValidationResult {
+  errors: string[];
+  invalidFields: string[];
+}
+
+/**
+ * Validates required MSA fields before inserting a draft application.
+ * Mirrors the rules used by /applications/:id/validate (excluding providerId
+ * which is not required at ingest time).
+ */
+function validateMsaFields(fields: MsaFields): MsaValidationResult {
+  const errors: string[] = [];
+  const invalidFields: string[] = [];
+
+  const requireStr = (field: keyof MsaFields, msg: string) => {
+    if (!fields[field]) {
+      errors.push(msg);
+      invalidFields.push(field);
+    }
+  };
+
+  // Vehicle
+  requireStr("vehicleMake", "Vehicle make is required");
+  requireStr("vehicleModel", "Vehicle model is required");
+  requireStr("vehicleVariant", "Vehicle variant is required");
+  requireStr("vehicleEngineNumber", "Engine number is required");
+  requireStr("vehicleChassisNumber", "Chassis number / VIN is required");
+  if ((fields.vehicleExShowroomPrice as number) <= 0) {
+    errors.push("Ex-showroom price must be greater than zero");
+    invalidFields.push("vehicleExShowroomPrice");
+  }
+  if (!fields.vehicleDateOfPurchase) {
+    errors.push("Date of purchase is required");
+    invalidFields.push("vehicleDateOfPurchase");
+  }
+
+  // Owner KYC
+  requireStr("ownerFullName", "Owner full name is required");
+  requireStr("ownerBillingAddress", "Billing address is required");
+  if (!fields.ownerPincode || String(fields.ownerPincode).length !== 6) {
+    errors.push("Pincode must be a 6-digit number");
+    invalidFields.push("ownerPincode");
+  }
+  if (!fields.ownerPhoneNumber || !/^\d{10}$/.test(String(fields.ownerPhoneNumber))) {
+    errors.push("Phone number must be exactly 10 digits");
+    invalidFields.push("ownerPhoneNumber");
+  }
+  if (!fields.ownerEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fields.ownerEmail)) {
+    errors.push("Email address is invalid");
+    invalidFields.push("ownerEmail");
+  }
+  requireStr("ownerDateOfBirth", "Date of birth is required");
+  requireStr("ownerIdProofType", "ID proof type is required");
+  requireStr("ownerIdProofNumber", "ID proof number is required");
+
+  // RTO
+  requireStr("rtoRegistrationCity", "Registration city is required");
+  requireStr("rtoRegistrationState", "Registration state is required");
+
+  return { errors, invalidFields };
+}
+
 router.post("/ingest/push", async (req, res): Promise<void> => {
   const parsed = IngestPushBody.safeParse(req.body);
   if (!parsed.success) {
@@ -811,6 +873,14 @@ router.post("/ingest/push", async (req, res): Promise<void> => {
 
   const { fields } = parsed.data;
   logger.info({ vehicleMake: fields.vehicleMake, ownerFullName: fields.ownerFullName }, "Ingest push to InsurRouter");
+
+  // Validate required MSA fields before creating the draft
+  const validation = validateMsaFields(fields as unknown as MsaFields);
+  if (validation.errors.length > 0) {
+    logger.info({ errors: validation.errors }, "Ingest push rejected — validation failed");
+    res.status(400).json({ errors: validation.errors, invalidFields: validation.invalidFields });
+    return;
+  }
 
   // Zod coerces date-formatted strings to Date objects; Drizzle date columns use mode:"string"
   const dateOfPurchase = toDateStr(fields.vehicleDateOfPurchase as unknown as Date | string);

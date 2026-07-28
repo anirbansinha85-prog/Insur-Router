@@ -5,16 +5,22 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { CheckCircle2, ArrowRight, Download, Send, AlertTriangle } from "lucide-react"
+import { CheckCircle2, Download, Send, AlertTriangle, XCircle } from "lucide-react"
 
 interface ReviewCorrectProps {
   result: IngestResult & { previewUrl?: string; sourceName?: string }
   onReset: () => void
 }
 
+interface ServerValidationError {
+  errors: string[]
+  invalidFields: string[]
+}
+
 export function ReviewCorrect({ result, onReset }: ReviewCorrectProps) {
   const [formData, setFormData] = useState<MsaFields>(result.fields)
   const [successAppId, setSuccessAppId] = useState<number | null>(null)
+  const [serverErrors, setServerErrors] = useState<ServerValidationError | null>(null)
   
   const { mutate: pushToRouter, isPending: isPushing } = useIngestPush()
 
@@ -29,11 +35,24 @@ export function ReviewCorrect({ result, onReset }: ReviewCorrectProps) {
   }
 
   const handlePush = () => {
+    setServerErrors(null)
     pushToRouter(
       { data: { fields: formData } },
       {
         onSuccess: (res) => {
           setSuccessAppId(res.applicationId)
+        },
+        onError: (err) => {
+          // ApiError carries the parsed JSON body in .data
+          const data = (err as { data?: unknown }).data
+          if (
+            data &&
+            typeof data === 'object' &&
+            'errors' in data &&
+            Array.isArray((data as ServerValidationError).errors)
+          ) {
+            setServerErrors(data as ServerValidationError)
+          }
         }
       }
     )
@@ -41,32 +60,80 @@ export function ReviewCorrect({ result, onReset }: ReviewCorrectProps) {
 
   const handleChange = (field: keyof MsaFields, value: string | number) => {
     setFormData(prev => ({ ...prev, [field]: value }))
+    // Clear server error for this field once the user edits it
+    const fieldStr = field as string
+    if (serverErrors?.invalidFields.includes(fieldStr)) {
+      setServerErrors((prev: ServerValidationError | null) =>
+        prev
+          ? {
+              errors: prev.errors,
+              invalidFields: prev.invalidFields.filter(f => f !== fieldStr),
+            }
+          : null
+      )
+    }
   }
+
+  const serverInvalidFields = new Set(serverErrors?.invalidFields ?? [])
 
   // Helper to render an MSA field input
   const renderField = (key: keyof MsaFields, label: string, type: string = "text") => {
     const isLowConfidence = result.confidence[key] !== undefined && result.confidence[key] < 0.7
+    const isServerInvalid = serverInvalidFields.has(key as string)
+    const isHighlighted = isLowConfidence || isServerInvalid
     
     return (
-      <div key={key} className={`p-3 rounded-md border transition-colors ${isLowConfidence ? 'bg-amber/5 border-amber/40 shadow-sm' : 'border-transparent hover:bg-muted/30'}`}>
+      <div
+        key={key as string}
+        className={`p-3 rounded-md border transition-colors ${
+          isServerInvalid
+            ? 'bg-destructive/5 border-destructive/50 shadow-sm'
+            : isLowConfidence
+            ? 'bg-amber/5 border-amber/40 shadow-sm'
+            : 'border-transparent hover:bg-muted/30'
+        }`}
+      >
         <div className="flex justify-between items-center mb-1.5">
-          <Label htmlFor={key} className={`text-xs font-medium ${isLowConfidence ? 'text-amber-foreground font-semibold flex items-center gap-1.5' : 'text-muted-foreground'}`}>
-            {isLowConfidence && <AlertTriangle className="h-3 w-3 text-amber" />}
+          <Label
+            htmlFor={key as string}
+            className={`text-xs font-medium flex items-center gap-1.5 ${
+              isServerInvalid
+                ? 'text-destructive font-semibold'
+                : isLowConfidence
+                ? 'text-amber-foreground font-semibold'
+                : 'text-muted-foreground'
+            }`}
+          >
+            {isServerInvalid && <XCircle className="h-3 w-3 text-destructive" />}
+            {!isServerInvalid && isLowConfidence && <AlertTriangle className="h-3 w-3 text-amber" />}
             {label}
           </Label>
           {result.confidence[key] !== undefined && (
-            <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${isLowConfidence ? 'bg-amber/10 text-amber-foreground' : 'bg-muted text-muted-foreground'}`}>
+            <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
+              isServerInvalid
+                ? 'bg-destructive/10 text-destructive'
+                : isLowConfidence
+                ? 'bg-amber/10 text-amber-foreground'
+                : 'bg-muted text-muted-foreground'
+            }`}>
               {(result.confidence[key] * 100).toFixed(0)}%
             </span>
           )}
         </div>
         <Input 
-          id={key}
+          id={key as string}
           type={type}
           value={formData[key] || ""} 
           onChange={(e) => handleChange(key, type === 'number' ? Number(e.target.value) : e.target.value)}
-          className={`h-8 text-sm ${isLowConfidence ? 'border-amber/50 focus-visible:ring-amber' : ''}`}
+          className={`h-8 text-sm ${
+            isServerInvalid
+              ? 'border-destructive/70 focus-visible:ring-destructive'
+              : isLowConfidence
+              ? 'border-amber/50 focus-visible:ring-amber'
+              : ''
+          }`}
         />
+        {isServerInvalid && !isHighlighted && null}
       </div>
     )
   }
@@ -102,6 +169,27 @@ export function ReviewCorrect({ result, onReset }: ReviewCorrectProps) {
           <h2 className="text-xl font-display font-semibold">Review & Correct</h2>
           <Button variant="outline" size="sm" onClick={onReset}>Cancel</Button>
         </div>
+
+        {serverErrors && serverErrors.errors.length > 0 && (
+          <div className="rounded-md border border-destructive/50 bg-destructive/5 p-4">
+            <div className="flex items-start gap-3">
+              <XCircle className="h-5 w-5 text-destructive mt-0.5 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-destructive mb-2">
+                  Push rejected — {serverErrors.errors.length} field{serverErrors.errors.length !== 1 ? 's' : ''} must be corrected before sending to InsurRouter
+                </p>
+                <ul className="space-y-1">
+                  {serverErrors.errors.map((err, i) => (
+                    <li key={i} className="text-xs text-destructive/90 flex items-center gap-1.5">
+                      <span className="inline-block h-1 w-1 rounded-full bg-destructive/60 shrink-0" />
+                      {err}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
         
         <Card>
           <CardHeader className="pb-4">
