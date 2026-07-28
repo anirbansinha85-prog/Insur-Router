@@ -404,6 +404,146 @@ export const GetPolicyResponse = zod.object({
 
 
 /**
+ * @summary Pull vehicle data from Dealer DMS by registration number
+ */
+
+
+
+export const IngestDmsPullBody = zod.object({
+  "regNo": zod.string().min(1).describe('Vehicle registration number, e.g. DL01AB1234')
+})
+
+export const IngestDmsPullResponse = zod.object({
+  "fields": zod.object({
+  "vehicleMake": zod.string(),
+  "vehicleModel": zod.string(),
+  "vehicleVariant": zod.string(),
+  "vehicleEngineNumber": zod.string(),
+  "vehicleChassisNumber": zod.string(),
+  "vehicleExShowroomPrice": zod.number(),
+  "vehicleDateOfPurchase": zod.coerce.date(),
+  "ownerFullName": zod.string(),
+  "ownerBillingAddress": zod.string(),
+  "ownerPincode": zod.number(),
+  "ownerPhoneNumber": zod.string(),
+  "ownerEmail": zod.string(),
+  "ownerDateOfBirth": zod.coerce.date(),
+  "ownerIdProofType": zod.enum(['AADHAR', 'PAN', 'PASSPORT', 'DRIVING_LICENSE', 'VOTER_ID']),
+  "ownerIdProofNumber": zod.string(),
+  "rtoRegistrationCity": zod.string(),
+  "rtoRegistrationState": zod.string(),
+  "rtoCode": zod.string()
+}).describe('Normalised vehicle + owner + RTO fields for an MSA payload'),
+  "confidence": zod.record(zod.string(), zod.number()).describe('Per-field confidence score 0-1'),
+  "rawText": zod.string().nullish().describe('Raw extracted text (OCR\/scrape) for display in the review panel')
+}).describe('Extracted MSA fields from any ingest source')
+
+
+/**
+ * @summary Scrape vehicle data from a dealer portal URL using Playwright
+ */
+
+
+
+export const IngestBrowserScrapeBody = zod.object({
+  "url": zod.string().min(1).describe('Dealer portal URL to scrape'),
+  "username": zod.string().nullish().describe('Optional login username for the portal'),
+  "password": zod.string().nullish().describe('Optional login password for the portal')
+})
+
+export const IngestBrowserScrapeResponse = zod.object({
+  "fields": zod.object({
+  "vehicleMake": zod.string(),
+  "vehicleModel": zod.string(),
+  "vehicleVariant": zod.string(),
+  "vehicleEngineNumber": zod.string(),
+  "vehicleChassisNumber": zod.string(),
+  "vehicleExShowroomPrice": zod.number(),
+  "vehicleDateOfPurchase": zod.coerce.date(),
+  "ownerFullName": zod.string(),
+  "ownerBillingAddress": zod.string(),
+  "ownerPincode": zod.number(),
+  "ownerPhoneNumber": zod.string(),
+  "ownerEmail": zod.string(),
+  "ownerDateOfBirth": zod.coerce.date(),
+  "ownerIdProofType": zod.enum(['AADHAR', 'PAN', 'PASSPORT', 'DRIVING_LICENSE', 'VOTER_ID']),
+  "ownerIdProofNumber": zod.string(),
+  "rtoRegistrationCity": zod.string(),
+  "rtoRegistrationState": zod.string(),
+  "rtoCode": zod.string()
+}).describe('Normalised vehicle + owner + RTO fields for an MSA payload'),
+  "confidence": zod.record(zod.string(), zod.number()).describe('Per-field confidence score 0-1'),
+  "rawText": zod.string().nullish().describe('Raw extracted text (OCR\/scrape) for display in the review panel')
+}).describe('Extracted MSA fields from any ingest source')
+
+
+/**
+ * @summary Extract vehicle data from an RC book image or dealer invoice PDF via OCR
+ */
+export const IngestOcrBody = zod.object({
+  "imageBase64": zod.string().describe('Base64-encoded image (JPEG\/PNG) or PDF content'),
+  "mimeType": zod.string().describe('MIME type of the uploaded file, e.g. image\/jpeg or application\/pdf'),
+  "model": zod.enum(['paddleocr', 'qwen-vl', 'olmocr', 'stub']).describe('OCR model to use; stub returns hardcoded demo data')
+})
+
+export const IngestOcrResponse = zod.object({
+  "fields": zod.object({
+  "vehicleMake": zod.string(),
+  "vehicleModel": zod.string(),
+  "vehicleVariant": zod.string(),
+  "vehicleEngineNumber": zod.string(),
+  "vehicleChassisNumber": zod.string(),
+  "vehicleExShowroomPrice": zod.number(),
+  "vehicleDateOfPurchase": zod.coerce.date(),
+  "ownerFullName": zod.string(),
+  "ownerBillingAddress": zod.string(),
+  "ownerPincode": zod.number(),
+  "ownerPhoneNumber": zod.string(),
+  "ownerEmail": zod.string(),
+  "ownerDateOfBirth": zod.coerce.date(),
+  "ownerIdProofType": zod.enum(['AADHAR', 'PAN', 'PASSPORT', 'DRIVING_LICENSE', 'VOTER_ID']),
+  "ownerIdProofNumber": zod.string(),
+  "rtoRegistrationCity": zod.string(),
+  "rtoRegistrationState": zod.string(),
+  "rtoCode": zod.string()
+}).describe('Normalised vehicle + owner + RTO fields for an MSA payload'),
+  "confidence": zod.record(zod.string(), zod.number()).describe('Per-field confidence score 0-1'),
+  "rawText": zod.string().nullish().describe('Raw extracted text (OCR\/scrape) for display in the review panel')
+}).describe('Extracted MSA fields from any ingest source')
+
+
+/**
+ * @summary Push corrected MSA payload to InsurRouter as a draft application
+ */
+export const IngestPushBody = zod.object({
+  "fields": zod.object({
+  "vehicleMake": zod.string(),
+  "vehicleModel": zod.string(),
+  "vehicleVariant": zod.string(),
+  "vehicleEngineNumber": zod.string(),
+  "vehicleChassisNumber": zod.string(),
+  "vehicleExShowroomPrice": zod.number(),
+  "vehicleDateOfPurchase": zod.coerce.date(),
+  "ownerFullName": zod.string(),
+  "ownerBillingAddress": zod.string(),
+  "ownerPincode": zod.number(),
+  "ownerPhoneNumber": zod.string(),
+  "ownerEmail": zod.string(),
+  "ownerDateOfBirth": zod.coerce.date(),
+  "ownerIdProofType": zod.enum(['AADHAR', 'PAN', 'PASSPORT', 'DRIVING_LICENSE', 'VOTER_ID']),
+  "ownerIdProofNumber": zod.string(),
+  "rtoRegistrationCity": zod.string(),
+  "rtoRegistrationState": zod.string(),
+  "rtoCode": zod.string()
+}).describe('Normalised vehicle + owner + RTO fields for an MSA payload')
+})
+
+export const IngestPushResponse = zod.object({
+  "applicationId": zod.number().describe('ID of the newly created draft application in InsurRouter')
+})
+
+
+/**
  * @summary Get aggregated stats for the dashboard
  */
 export const GetDashboardStatsResponse = zod.object({

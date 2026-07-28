@@ -16,6 +16,8 @@ tags:
     description: Insurance application management
   - name: dashboard
     description: Dashboard analytics and summaries
+  - name: ingest
+    description: Document ingestion and MSA payload extraction (VeloDocs)
 
 paths:
   /healthz:
@@ -377,6 +379,107 @@ paths:
                 $ref: "#/components/schemas/Policy"
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Ingest ──────────────────────────────────────────────────────────────────
+  /ingest/dms-pull:
+    post:
+      operationId: ingestDmsPull
+      tags: [ingest]
+      summary: Pull vehicle data from Dealer DMS by registration number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DmsPullInput"
+      responses:
+        "200":
+          description: Extracted MSA fields with confidence scores
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ingest/browser-scrape:
+    post:
+      operationId: ingestBrowserScrape
+      tags: [ingest]
+      summary: Scrape vehicle data from a dealer portal URL using Playwright
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrowserScrapeInput"
+      responses:
+        "200":
+          description: Extracted MSA fields with confidence scores and raw text
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ingest/ocr:
+    post:
+      operationId: ingestOcr
+      tags: [ingest]
+      summary: Extract vehicle data from an RC book image or dealer invoice PDF via OCR
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OcrInput"
+      responses:
+        "200":
+          description: Extracted MSA fields with confidence scores and raw text
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ingest/push:
+    post:
+      operationId: ingestPush
+      tags: [ingest]
+      summary: Push corrected MSA payload to InsurRouter as a draft application
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IngestPushInput"
+      responses:
+        "201":
+          description: Draft application created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestPushResult"
+        "400":
+          description: Bad request
           content:
             application/json:
               schema:
@@ -877,6 +980,149 @@ components:
         - providerName
         - count
         - completed
+
+    # ── Ingest schemas ──────────────────────────────────────────────────────
+    MsaFields:
+      type: object
+      description: Normalised vehicle + owner + RTO fields for an MSA payload
+      properties:
+        vehicleMake:
+          type: string
+        vehicleModel:
+          type: string
+        vehicleVariant:
+          type: string
+        vehicleEngineNumber:
+          type: string
+        vehicleChassisNumber:
+          type: string
+        vehicleExShowroomPrice:
+          type: number
+        vehicleDateOfPurchase:
+          type: string
+          format: date
+        ownerFullName:
+          type: string
+        ownerBillingAddress:
+          type: string
+        ownerPincode:
+          type: number
+        ownerPhoneNumber:
+          type: string
+        ownerEmail:
+          type: string
+        ownerDateOfBirth:
+          type: string
+          format: date
+        ownerIdProofType:
+          type: string
+          enum: [AADHAR, PAN, PASSPORT, DRIVING_LICENSE, VOTER_ID]
+        ownerIdProofNumber:
+          type: string
+        rtoRegistrationCity:
+          type: string
+        rtoRegistrationState:
+          type: string
+        rtoCode:
+          type: string
+      required:
+        - vehicleMake
+        - vehicleModel
+        - vehicleVariant
+        - vehicleEngineNumber
+        - vehicleChassisNumber
+        - vehicleExShowroomPrice
+        - vehicleDateOfPurchase
+        - ownerFullName
+        - ownerBillingAddress
+        - ownerPincode
+        - ownerPhoneNumber
+        - ownerEmail
+        - ownerDateOfBirth
+        - ownerIdProofType
+        - ownerIdProofNumber
+        - rtoRegistrationCity
+        - rtoRegistrationState
+        - rtoCode
+
+    IngestResult:
+      type: object
+      description: Extracted MSA fields from any ingest source
+      properties:
+        fields:
+          $ref: "#/components/schemas/MsaFields"
+        confidence:
+          type: object
+          description: Per-field confidence score 0-1
+          additionalProperties:
+            type: number
+        rawText:
+          type: ["string", "null"]
+          description: Raw extracted text (OCR/scrape) for display in the review panel
+      required:
+        - fields
+        - confidence
+
+    DmsPullInput:
+      type: object
+      properties:
+        regNo:
+          type: string
+          description: Vehicle registration number, e.g. DL01AB1234
+          minLength: 1
+      required:
+        - regNo
+
+    BrowserScrapeInput:
+      type: object
+      properties:
+        url:
+          type: string
+          description: Dealer portal URL to scrape
+          minLength: 1
+        username:
+          type: ["string", "null"]
+          description: Optional login username for the portal
+        password:
+          type: ["string", "null"]
+          description: Optional login password for the portal
+      required:
+        - url
+
+    OcrInput:
+      type: object
+      properties:
+        imageBase64:
+          type: string
+          description: Base64-encoded image (JPEG/PNG) or PDF content
+        mimeType:
+          type: string
+          description: MIME type of the uploaded file, e.g. image/jpeg or application/pdf
+        model:
+          type: string
+          enum: [paddleocr, qwen-vl, olmocr, stub]
+          description: OCR model to use; stub returns hardcoded demo data
+      required:
+        - imageBase64
+        - mimeType
+        - model
+
+    IngestPushInput:
+      type: object
+      properties:
+        fields:
+          $ref: "#/components/schemas/MsaFields"
+      required:
+        - fields
+
+    IngestPushResult:
+      type: object
+      properties:
+        applicationId:
+          type: number
+          description: ID of the newly created draft application in InsurRouter
+      required:
+        - applicationId
 
     RecentApplication:
       type: object

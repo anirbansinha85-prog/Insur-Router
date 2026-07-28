@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/doc-ingest/"
+title = "VeloDocs"
+version = "1.0.0"
+id = "artifacts/doc-ingest"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/doc-ingest/" ]
+localPort = 18815
+
+[services.development]
+run = "pnpm --filter @workspace/doc-ingest run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/doc-ingest", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/doc-ingest/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18815"
+BASE_PATH = "/doc-ingest/"

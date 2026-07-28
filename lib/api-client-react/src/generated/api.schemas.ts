@@ -391,6 +391,117 @@ export interface DashboardStats {
   providerBreakdown: ProviderStat[];
 }
 
+export type MsaFieldsOwnerIdProofType = typeof MsaFieldsOwnerIdProofType[keyof typeof MsaFieldsOwnerIdProofType];
+
+
+export const MsaFieldsOwnerIdProofType = {
+  AADHAR: 'AADHAR',
+  PAN: 'PAN',
+  PASSPORT: 'PASSPORT',
+  DRIVING_LICENSE: 'DRIVING_LICENSE',
+  VOTER_ID: 'VOTER_ID',
+} as const;
+
+/**
+ * Normalised vehicle + owner + RTO fields for an MSA payload
+ */
+export interface MsaFields {
+  vehicleMake: string;
+  vehicleModel: string;
+  vehicleVariant: string;
+  vehicleEngineNumber: string;
+  vehicleChassisNumber: string;
+  vehicleExShowroomPrice: number;
+  vehicleDateOfPurchase: string;
+  ownerFullName: string;
+  ownerBillingAddress: string;
+  ownerPincode: number;
+  ownerPhoneNumber: string;
+  ownerEmail: string;
+  ownerDateOfBirth: string;
+  ownerIdProofType: MsaFieldsOwnerIdProofType;
+  ownerIdProofNumber: string;
+  rtoRegistrationCity: string;
+  rtoRegistrationState: string;
+  rtoCode: string;
+}
+
+/**
+ * Per-field confidence score 0-1
+ */
+export type IngestResultConfidence = {[key: string]: number};
+
+/**
+ * Extracted MSA fields from any ingest source
+ */
+export interface IngestResult {
+  fields: MsaFields;
+  /** Per-field confidence score 0-1 */
+  confidence: IngestResultConfidence;
+  /**
+     * Raw extracted text (OCR/scrape) for display in the review panel
+     * @nullable
+     */
+  rawText?: string | null;
+}
+
+export interface DmsPullInput {
+  /**
+     * Vehicle registration number, e.g. DL01AB1234
+     * @minLength 1
+     */
+  regNo: string;
+}
+
+export interface BrowserScrapeInput {
+  /**
+     * Dealer portal URL to scrape
+     * @minLength 1
+     */
+  url: string;
+  /**
+     * Optional login username for the portal
+     * @nullable
+     */
+  username?: string | null;
+  /**
+     * Optional login password for the portal
+     * @nullable
+     */
+  password?: string | null;
+}
+
+/**
+ * OCR model to use; stub returns hardcoded demo data
+ */
+export type OcrInputModel = typeof OcrInputModel[keyof typeof OcrInputModel];
+
+
+export const OcrInputModel = {
+  paddleocr: 'paddleocr',
+  'qwen-vl': 'qwen-vl',
+  olmocr: 'olmocr',
+  stub: 'stub',
+} as const;
+
+export interface OcrInput {
+  /** Base64-encoded image (JPEG/PNG) or PDF content */
+  imageBase64: string;
+  /** MIME type of the uploaded file, e.g. image/jpeg or application/pdf */
+  mimeType: string;
+  /** OCR model to use; stub returns hardcoded demo data */
+  model: OcrInputModel;
+}
+
+export interface IngestPushInput {
+  fields: MsaFields;
+}
+
+export interface IngestPushResult {
+  /** ID of the newly created draft application in InsurRouter */
+  applicationId: number;
+}
+
 export type RecentApplicationStatus = typeof RecentApplicationStatus[keyof typeof RecentApplicationStatus];
 
 

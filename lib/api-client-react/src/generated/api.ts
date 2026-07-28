@@ -24,12 +24,18 @@ import type {
   ApplicationDetail,
   ApplicationInput,
   ApplicationUpdate,
+  BrowserScrapeInput,
   DashboardStats,
+  DmsPullInput,
   ErrorResponse,
   ExecutionRequest,
   ExecutionResult,
   HealthStatus,
+  IngestPushInput,
+  IngestPushResult,
+  IngestResult,
   ListApplicationsParams,
+  OcrInput,
   Policy,
   Provider,
   ProviderInput,
@@ -1183,6 +1189,290 @@ export function useGetPolicy<TData = Awaited<ReturnType<typeof getPolicy>>, TErr
 
 
 
+
+export const getIngestDmsPullUrl = () => {
+
+
+
+
+  return `/api/ingest/dms-pull`
+}
+
+/**
+ * @summary Pull vehicle data from Dealer DMS by registration number
+ */
+export const ingestDmsPull = async (dmsPullInput: DmsPullInput, options?: Parameters<typeof customFetch>[1]): Promise<IngestResult> => {
+
+  return customFetch<IngestResult>(getIngestDmsPullUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(dmsPullInput)
+  }
+);}
+
+
+
+
+
+export const getIngestDmsPullMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ingestDmsPull>>, TError,{data: BodyType<DmsPullInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof ingestDmsPull>>, TError,{data: BodyType<DmsPullInput>}, TContext> => {
+
+const mutationKey = ['ingestDmsPull'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof ingestDmsPull>>, {data: BodyType<DmsPullInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  ingestDmsPull(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type IngestDmsPullMutationResult = NonNullable<Awaited<ReturnType<typeof ingestDmsPull>>>
+    export type IngestDmsPullMutationBody = BodyType<DmsPullInput>
+    export type IngestDmsPullMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Pull vehicle data from Dealer DMS by registration number
+ */
+export const useIngestDmsPull = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ingestDmsPull>>, TError,{data: BodyType<DmsPullInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof ingestDmsPull>>,
+        TError,
+        {data: BodyType<DmsPullInput>},
+        TContext
+      > => {
+      return useMutation(getIngestDmsPullMutationOptions(options));
+    }
+
+export const getIngestBrowserScrapeUrl = () => {
+
+
+
+
+  return `/api/ingest/browser-scrape`
+}
+
+/**
+ * @summary Scrape vehicle data from a dealer portal URL using Playwright
+ */
+export const ingestBrowserScrape = async (browserScrapeInput: BrowserScrapeInput, options?: Parameters<typeof customFetch>[1]): Promise<IngestResult> => {
+
+  return customFetch<IngestResult>(getIngestBrowserScrapeUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(browserScrapeInput)
+  }
+);}
+
+
+
+
+
+export const getIngestBrowserScrapeMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ingestBrowserScrape>>, TError,{data: BodyType<BrowserScrapeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof ingestBrowserScrape>>, TError,{data: BodyType<BrowserScrapeInput>}, TContext> => {
+
+const mutationKey = ['ingestBrowserScrape'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof ingestBrowserScrape>>, {data: BodyType<BrowserScrapeInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  ingestBrowserScrape(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type IngestBrowserScrapeMutationResult = NonNullable<Awaited<ReturnType<typeof ingestBrowserScrape>>>
+    export type IngestBrowserScrapeMutationBody = BodyType<BrowserScrapeInput>
+    export type IngestBrowserScrapeMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Scrape vehicle data from a dealer portal URL using Playwright
+ */
+export const useIngestBrowserScrape = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ingestBrowserScrape>>, TError,{data: BodyType<BrowserScrapeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof ingestBrowserScrape>>,
+        TError,
+        {data: BodyType<BrowserScrapeInput>},
+        TContext
+      > => {
+      return useMutation(getIngestBrowserScrapeMutationOptions(options));
+    }
+
+export const getIngestOcrUrl = () => {
+
+
+
+
+  return `/api/ingest/ocr`
+}
+
+/**
+ * @summary Extract vehicle data from an RC book image or dealer invoice PDF via OCR
+ */
+export const ingestOcr = async (ocrInput: OcrInput, options?: Parameters<typeof customFetch>[1]): Promise<IngestResult> => {
+
+  return customFetch<IngestResult>(getIngestOcrUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(ocrInput)
+  }
+);}
+
+
+
+
+
+export const getIngestOcrMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ingestOcr>>, TError,{data: BodyType<OcrInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof ingestOcr>>, TError,{data: BodyType<OcrInput>}, TContext> => {
+
+const mutationKey = ['ingestOcr'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof ingestOcr>>, {data: BodyType<OcrInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  ingestOcr(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type IngestOcrMutationResult = NonNullable<Awaited<ReturnType<typeof ingestOcr>>>
+    export type IngestOcrMutationBody = BodyType<OcrInput>
+    export type IngestOcrMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Extract vehicle data from an RC book image or dealer invoice PDF via OCR
+ */
+export const useIngestOcr = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ingestOcr>>, TError,{data: BodyType<OcrInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof ingestOcr>>,
+        TError,
+        {data: BodyType<OcrInput>},
+        TContext
+      > => {
+      return useMutation(getIngestOcrMutationOptions(options));
+    }
+
+export const getIngestPushUrl = () => {
+
+
+
+
+  return `/api/ingest/push`
+}
+
+/**
+ * @summary Push corrected MSA payload to InsurRouter as a draft application
+ */
+export const ingestPush = async (ingestPushInput: IngestPushInput, options?: Parameters<typeof customFetch>[1]): Promise<IngestPushResult> => {
+
+  return customFetch<IngestPushResult>(getIngestPushUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(ingestPushInput)
+  }
+);}
+
+
+
+
+
+export const getIngestPushMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ingestPush>>, TError,{data: BodyType<IngestPushInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof ingestPush>>, TError,{data: BodyType<IngestPushInput>}, TContext> => {
+
+const mutationKey = ['ingestPush'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof ingestPush>>, {data: BodyType<IngestPushInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  ingestPush(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type IngestPushMutationResult = NonNullable<Awaited<ReturnType<typeof ingestPush>>>
+    export type IngestPushMutationBody = BodyType<IngestPushInput>
+    export type IngestPushMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Push corrected MSA payload to InsurRouter as a draft application
+ */
+export const useIngestPush = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ingestPush>>, TError,{data: BodyType<IngestPushInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof ingestPush>>,
+        TError,
+        {data: BodyType<IngestPushInput>},
+        TContext
+      > => {
+      return useMutation(getIngestPushMutationOptions(options));
+    }
 
 export const getGetDashboardStatsUrl = () => {
 
