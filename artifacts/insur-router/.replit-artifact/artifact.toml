@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "InsurRouter"
+version = "1.0.0"
+id = "artifacts/insur-router"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24791
+
+[services.development]
+run = "pnpm --filter @workspace/insur-router run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/insur-router", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/insur-router/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24791"
+BASE_PATH = "/"

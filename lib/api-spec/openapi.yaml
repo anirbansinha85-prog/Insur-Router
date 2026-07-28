@@ -3,13 +3,20 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: InsurRouter API - Two-wheeler insurance application routing engine
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: providers
+    description: Insurance provider management
+  - name: applications
+    description: Insurance application management
+  - name: dashboard
+    description: Dashboard analytics and summaries
+
 paths:
   /healthz:
     get:
@@ -24,6 +31,386 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ── Providers ──────────────────────────────────────────────────────────────
+  /providers:
+    get:
+      operationId: listProviders
+      tags: [providers]
+      summary: List all insurance providers
+      responses:
+        "200":
+          description: List of providers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Provider"
+    post:
+      operationId: createProvider
+      tags: [providers]
+      summary: Create a new insurance provider
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProviderInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Provider"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /providers/{id}:
+    get:
+      operationId: getProvider
+      tags: [providers]
+      summary: Get a provider by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Provider detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Provider"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateProvider
+      tags: [providers]
+      summary: Update a provider
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProviderUpdate"
+      responses:
+        "200":
+          description: Updated provider
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Provider"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteProvider
+      tags: [providers]
+      summary: Delete a provider
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Applications ────────────────────────────────────────────────────────────
+  /applications:
+    get:
+      operationId: listApplications
+      tags: [applications]
+      summary: List all insurance applications
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [draft, validating, pending_confirmation, submitting, completed, failed]
+        - name: providerId
+          in: query
+          required: false
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: List of applications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Application"
+    post:
+      operationId: createApplication
+      tags: [applications]
+      summary: Create a new insurance application
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplicationInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Application"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /applications/{id}:
+    get:
+      operationId: getApplication
+      tags: [applications]
+      summary: Get application with full MSA payload and logs
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Application detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateApplication
+      tags: [applications]
+      summary: Update application data
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplicationUpdate"
+      responses:
+        "200":
+          description: Updated application
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Application"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteApplication
+      tags: [applications]
+      summary: Delete an application
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /applications/{id}/validate:
+    post:
+      operationId: validateApplication
+      tags: [applications]
+      summary: Validate the MSA payload strictly before submission
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationResult"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /applications/{id}/execute:
+    post:
+      operationId: executeApplication
+      tags: [applications]
+      summary: Execute the insurance application submission (API or Browser mode)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExecutionRequest"
+      responses:
+        "200":
+          description: Execution started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExecutionResult"
+        "400":
+          description: Validation/state error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /applications/{id}/logs:
+    get:
+      operationId: getApplicationLogs
+      tags: [applications]
+      summary: Get submission execution logs for an application
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Execution log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SubmissionLog"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /applications/{id}/policy:
+    get:
+      operationId: getPolicy
+      tags: [applications]
+      summary: Get the generated policy for a completed application
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Policy details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Policy"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Dashboard ───────────────────────────────────────────────────────────────
+  /dashboard/stats:
+    get:
+      operationId: getDashboardStats
+      tags: [dashboard]
+      summary: Get aggregated stats for the dashboard
+      responses:
+        "200":
+          description: Dashboard statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardStats"
+
+  /dashboard/recent:
+    get:
+      operationId: getRecentApplications
+      tags: [dashboard]
+      summary: Get the most recent 10 applications with provider name
+      responses:
+        "200":
+          description: Recent applications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecentApplication"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +421,491 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    # ── Provider schemas ────────────────────────────────────────────────────
+    Provider:
+      type: object
+      properties:
+        id:
+          type: number
+        name:
+          type: string
+        code:
+          type: string
+          description: Short unique code, e.g. "HDFC", "BAJAJ"
+        defaultExecutionMode:
+          type: string
+          enum: [API, BROWSER, AUTO]
+        apiEndpoint:
+          type: ["string", "null"]
+          description: REST endpoint for API mode (null if not available)
+        portalUrl:
+          type: ["string", "null"]
+          description: Dealer portal URL for browser automation mode
+        isActive:
+          type: boolean
+        logoColor:
+          type: ["string", "null"]
+          description: Brand color hex for UI display
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - code
+        - defaultExecutionMode
+        - apiEndpoint
+        - portalUrl
+        - isActive
+        - logoColor
+        - createdAt
+        - updatedAt
+
+    ProviderInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        code:
+          type: string
+          minLength: 1
+        defaultExecutionMode:
+          type: string
+          enum: [API, BROWSER, AUTO]
+        apiEndpoint:
+          type: ["string", "null"]
+        portalUrl:
+          type: ["string", "null"]
+        isActive:
+          type: boolean
+        logoColor:
+          type: ["string", "null"]
+      required:
+        - name
+        - code
+        - defaultExecutionMode
+
+    ProviderUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        code:
+          type: string
+          minLength: 1
+        defaultExecutionMode:
+          type: string
+          enum: [API, BROWSER, AUTO]
+        apiEndpoint:
+          type: ["string", "null"]
+        portalUrl:
+          type: ["string", "null"]
+        isActive:
+          type: boolean
+        logoColor:
+          type: ["string", "null"]
+
+    # ── Application schemas ─────────────────────────────────────────────────
+    VehicleDetails:
+      type: object
+      properties:
+        make:
+          type: string
+        model:
+          type: string
+        variant:
+          type: string
+        engineNumber:
+          type: string
+        chassisNumber:
+          type: string
+        exShowroomPrice:
+          type: number
+        dateOfPurchase:
+          type: string
+          format: date
+      required:
+        - make
+        - model
+        - variant
+        - engineNumber
+        - chassisNumber
+        - exShowroomPrice
+        - dateOfPurchase
+
+    OwnerKyc:
+      type: object
+      properties:
+        fullName:
+          type: string
+        billingAddress:
+          type: string
+        pincode:
+          type: number
+        phoneNumber:
+          type: number
+        email:
+          type: string
+          
+        dateOfBirth:
+          type: string
+          format: date
+        idProofType:
+          type: string
+          enum: [AADHAR, PAN, PASSPORT, DRIVING_LICENSE, VOTER_ID]
+        idProofNumber:
+          type: string
+      required:
+        - fullName
+        - billingAddress
+        - pincode
+        - phoneNumber
+        - email
+        - dateOfBirth
+        - idProofType
+        - idProofNumber
+
+    RtoDetails:
+      type: object
+      properties:
+        registrationCity:
+          type: string
+        registrationState:
+          type: string
+        rtoCode:
+          type: string
+      required:
+        - registrationCity
+        - registrationState
+        - rtoCode
+
+    Application:
+      type: object
+      properties:
+        id:
+          type: number
+        status:
+          type: string
+          enum: [draft, validating, pending_confirmation, submitting, completed, failed]
+        executionMode:
+          type: string
+          enum: [API, BROWSER, AUTO]
+        resolvedExecutionMode:
+          type: ["string", "null"]
+          enum: [API, BROWSER, null]
+        providerId:
+          type: ["integer", "null"]
+        providerName:
+          type: ["string", "null"]
+        vehicleMake:
+          type: string
+        vehicleModel:
+          type: string
+        ownerName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - status
+        - executionMode
+        - resolvedExecutionMode
+        - providerId
+        - providerName
+        - vehicleMake
+        - vehicleModel
+        - ownerName
+        - createdAt
+        - updatedAt
+
+    ApplicationDetail:
+      type: object
+      properties:
+        id:
+          type: number
+        status:
+          type: string
+          enum: [draft, validating, pending_confirmation, submitting, completed, failed]
+        executionMode:
+          type: string
+          enum: [API, BROWSER, AUTO]
+        resolvedExecutionMode:
+          type: ["string", "null"]
+          enum: [API, BROWSER, null]
+        providerId:
+          type: ["integer", "null"]
+        providerName:
+          type: ["string", "null"]
+        vehicleDetails:
+          $ref: "#/components/schemas/VehicleDetails"
+        ownerKyc:
+          $ref: "#/components/schemas/OwnerKyc"
+        rtoDetails:
+          $ref: "#/components/schemas/RtoDetails"
+        validationErrors:
+          type: ["array", "null"]
+          items:
+            type: string
+        logs:
+          type: array
+          items:
+            $ref: "#/components/schemas/SubmissionLog"
+        policy:
+          oneOf:
+            - $ref: "#/components/schemas/Policy"
+            - type: "null"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - status
+        - executionMode
+        - resolvedExecutionMode
+        - providerId
+        - providerName
+        - vehicleDetails
+        - ownerKyc
+        - rtoDetails
+        - validationErrors
+        - logs
+        - policy
+        - createdAt
+        - updatedAt
+
+    ApplicationInput:
+      type: object
+      properties:
+        providerId:
+          type: ["integer", "null"]
+        executionMode:
+          type: string
+          enum: [API, BROWSER, AUTO]
+        vehicleDetails:
+          $ref: "#/components/schemas/VehicleDetails"
+        ownerKyc:
+          $ref: "#/components/schemas/OwnerKyc"
+        rtoDetails:
+          $ref: "#/components/schemas/RtoDetails"
+      required:
+        - executionMode
+        - vehicleDetails
+        - ownerKyc
+        - rtoDetails
+
+    ApplicationUpdate:
+      type: object
+      properties:
+        providerId:
+          type: ["integer", "null"]
+        executionMode:
+          type: string
+          enum: [API, BROWSER, AUTO]
+        vehicleDetails:
+          $ref: "#/components/schemas/VehicleDetails"
+        ownerKyc:
+          $ref: "#/components/schemas/OwnerKyc"
+        rtoDetails:
+          $ref: "#/components/schemas/RtoDetails"
+
+    ExecutionRequest:
+      type: object
+      properties:
+        executionMode:
+          type: string
+          enum: [API, BROWSER, AUTO]
+        confirmedByUser:
+          type: boolean
+          description: User has reviewed and confirmed the data before submission
+      required:
+        - confirmedByUser
+
+    ExecutionResult:
+      type: object
+      properties:
+        applicationId:
+          type: number
+        status:
+          type: string
+          enum: [submitting, completed, failed]
+        resolvedExecutionMode:
+          type: string
+          enum: [API, BROWSER]
+        message:
+          type: string
+        policy:
+          oneOf:
+            - $ref: "#/components/schemas/Policy"
+            - type: "null"
+      required:
+        - applicationId
+        - status
+        - resolvedExecutionMode
+        - message
+        - policy
+
+    ValidationResult:
+      type: object
+      properties:
+        valid:
+          type: boolean
+        errors:
+          type: array
+          items:
+            type: string
+        warnings:
+          type: array
+          items:
+            type: string
+      required:
+        - valid
+        - errors
+        - warnings
+
+    SubmissionLog:
+      type: object
+      properties:
+        id:
+          type: number
+        applicationId:
+          type: number
+        step:
+          type: string
+          enum: [data_ingestion, validation, routing, execution_api, execution_browser, finalization, error]
+        status:
+          type: string
+          enum: [info, success, warning, error]
+        message:
+          type: string
+        metadata:
+          type: ["object", "null"]
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - applicationId
+        - step
+        - status
+        - message
+        - metadata
+        - createdAt
+
+    Policy:
+      type: object
+      properties:
+        id:
+          type: number
+        applicationId:
+          type: number
+        policyNumber:
+          type: string
+        pdfUrl:
+          type: ["string", "null"]
+        providerName:
+          type: string
+        issuedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - applicationId
+        - policyNumber
+        - pdfUrl
+        - providerName
+        - issuedAt
+
+    DashboardStats:
+      type: object
+      properties:
+        total:
+          type: number
+        draft:
+          type: number
+        submitting:
+          type: number
+        completed:
+          type: number
+        failed:
+          type: number
+        policiesIssued:
+          type: number
+        providerBreakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProviderStat"
+      required:
+        - total
+        - draft
+        - submitting
+        - completed
+        - failed
+        - policiesIssued
+        - providerBreakdown
+
+    ProviderStat:
+      type: object
+      properties:
+        providerName:
+          type: string
+        count:
+          type: number
+        completed:
+          type: number
+      required:
+        - providerName
+        - count
+        - completed
+
+    RecentApplication:
+      type: object
+      properties:
+        id:
+          type: number
+        ownerName:
+          type: string
+        vehicleMake:
+          type: string
+        vehicleModel:
+          type: string
+        providerName:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [draft, validating, pending_confirmation, submitting, completed, failed]
+        executionMode:
+          type: string
+          enum: [API, BROWSER, AUTO]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - ownerName
+        - vehicleMake
+        - vehicleModel
+        - providerName
+        - status
+        - executionMode
+        - createdAt

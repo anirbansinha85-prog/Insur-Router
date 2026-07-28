@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "codegen": "orval --config ./orval.config.ts && pnpm -w run typecheck:libs"
+    "codegen": "orval --config ./orval.config.ts && sed -i 's/zod\\.int()/zod.number().int()/g; s/zod\\.email()/zod.string().email()/g' ../../lib/api-zod/src/generated/api.ts && pnpm -w run typecheck:libs"
   },
   "devDependencies": {
     "orval": "^8.23.0"
