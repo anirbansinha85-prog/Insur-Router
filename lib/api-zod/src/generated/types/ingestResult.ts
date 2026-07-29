@@ -7,6 +7,7 @@
  */
 import type { IngestResultConfidence } from './ingestResultConfidence';
 import type { MsaFields } from './msaFields';
+import type { OcrAttempt } from './ocrAttempt';
 
 /**
  * Extracted MSA fields from any ingest source
@@ -20,4 +21,13 @@ export interface IngestResult {
      * @nullable
      */
   rawText?: string | null;
+  /**
+     * OCR engine that actually produced this result. Null for non-OCR sources.
+     * @nullable
+     */
+  engineUsed?: string | null;
+  /** True when the result came from the stub engine and contains fabricated values. */
+  isDemoData?: boolean;
+  /** Every engine tried, in order, including failures. OCR only. */
+  attempts?: OcrAttempt[];
 }

@@ -12,14 +12,33 @@ import { Router, type IRouter } from "express";
 import { URL } from "url";
 import dns from "dns/promises";
 import net from "net";
+import { eq } from "drizzle-orm";
 import {
   IngestDmsPullBody,
   IngestBrowserScrapeBody,
   IngestOcrBody,
   IngestPushBody,
+  UpdateOcrEnginesBody,
+  ListOcrEnginesResponse,
+  UpdateOcrEnginesResponse,
 } from "@workspace/api-zod";
-import { db, applicationsTable, submissionLogsTable } from "@workspace/db";
+import {
+  db,
+  applicationsTable,
+  submissionLogsTable,
+  ocrEnginesTable,
+} from "@workspace/db";
 import { chromiumLaunchOptions } from "../lib/browser-executor";
+import {
+  buildEngineStatuses,
+  resolveChain,
+  runOcrChain,
+  OcrChainError,
+  type EngineSetting,
+  type MsaFields,
+  type IngestResult,
+  type OcrEngineId,
+} from "../lib/ocr-engines";
 import { logger } from "../lib/logger";
 
 // ─── SSRF protection ─────────────────────────────────────────────────────────
@@ -173,34 +192,8 @@ async function validateUrlSsrf(
 
 const router: IRouter = Router();
 
-// ─── Shared types ────────────────────────────────────────────────────────────
-
-interface MsaFields {
-  vehicleMake: string;
-  vehicleModel: string;
-  vehicleVariant: string;
-  vehicleEngineNumber: string;
-  vehicleChassisNumber: string;
-  vehicleExShowroomPrice: number;
-  vehicleDateOfPurchase: string;
-  ownerFullName: string;
-  ownerBillingAddress: string;
-  ownerPincode: number;
-  ownerPhoneNumber: string;
-  ownerEmail: string;
-  ownerDateOfBirth: string;
-  ownerIdProofType: "AADHAR" | "PAN" | "PASSPORT" | "DRIVING_LICENSE" | "VOTER_ID";
-  ownerIdProofNumber: string;
-  rtoRegistrationCity: string;
-  rtoRegistrationState: string;
-  rtoCode: string;
-}
-
-interface IngestResult {
-  fields: MsaFields;
-  confidence: Record<string, number>;
-  rawText?: string | null;
-}
+// MsaFields / IngestResult are defined alongside the engine registry in
+// lib/ocr-engines.ts and imported above — they are shared by all ingest sources.
 
 // ─── DMS Pull ─────────────────────────────────────────────────────────────────
 
@@ -447,323 +440,68 @@ router.post("/ingest/browser-scrape", async (req, res): Promise<void> => {
 });
 
 // ─── OCR ──────────────────────────────────────────────────────────────────────
+//
+// Engine definitions, the shared extraction prompt, the response parser and the
+// fallback chain all live in lib/ocr-engines.ts. These routes only translate
+// between HTTP and that module.
 
-// ─── OCR field parser ─────────────────────────────────────────────────────────
-
-const ID_PROOF_TYPES = ["AADHAR", "PAN", "PASSPORT", "DRIVING_LICENSE", "VOTER_ID"] as const;
-
-/**
- * Parses the JSON blob returned by a vision-language model into MsaFields.
- * The model is prompted to return:
- *   { <MsaFields>, confidence: { <fieldName>: 0.0–1.0 } }
- *
- * Falls back to empty strings/zeros for any missing field and assigns
- * low confidence (0.20) when a field is absent.
- */
-function parseVisionLLMResponseToMsaFields(rawText: string): IngestResult {
-  let parsed: Record<string, unknown> = {};
-  let confidence: Record<string, number> = {};
-
-  // Strip markdown fences if the model wrapped the JSON in ```json ... ```
-  const stripped = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
-  try {
-    const obj = JSON.parse(stripped) as Record<string, unknown>;
-    if (obj.confidence && typeof obj.confidence === "object") {
-      confidence = obj.confidence as Record<string, number>;
-      delete obj.confidence;
-    }
-    parsed = obj;
-  } catch {
-    // JSON parse failed — return empty fields with low confidence
-    logger.warn({ rawText: rawText.slice(0, 300) }, "Vision LLM response was not parseable JSON");
-  }
-
-  const str = (v: unknown) => (v != null && v !== "null" ? String(v) : "");
-  const num = (v: unknown) => (v != null && !isNaN(Number(v)) ? Number(v) : 0);
-  const idType = (v: unknown): MsaFields["ownerIdProofType"] =>
-    ID_PROOF_TYPES.includes(v as MsaFields["ownerIdProofType"])
-      ? (v as MsaFields["ownerIdProofType"])
-      : "AADHAR";
-
-  const fields: MsaFields = {
-    vehicleMake:            str(parsed.vehicleMake),
-    vehicleModel:           str(parsed.vehicleModel),
-    vehicleVariant:         str(parsed.vehicleVariant),
-    vehicleEngineNumber:    str(parsed.vehicleEngineNumber),
-    vehicleChassisNumber:   str(parsed.vehicleChassisNumber),
-    vehicleExShowroomPrice: num(parsed.vehicleExShowroomPrice),
-    vehicleDateOfPurchase:  str(parsed.vehicleDateOfPurchase),
-    ownerFullName:          str(parsed.ownerFullName),
-    ownerBillingAddress:    str(parsed.ownerBillingAddress),
-    ownerPincode:           num(parsed.ownerPincode),
-    ownerPhoneNumber:       str(parsed.ownerPhoneNumber),
-    ownerEmail:             str(parsed.ownerEmail),
-    ownerDateOfBirth:       str(parsed.ownerDateOfBirth),
-    ownerIdProofType:       idType(parsed.ownerIdProofType),
-    ownerIdProofNumber:     str(parsed.ownerIdProofNumber),
-    rtoRegistrationCity:    str(parsed.rtoRegistrationCity),
-    rtoRegistrationState:   str(parsed.rtoRegistrationState),
-    rtoCode:                str(parsed.rtoCode),
-  };
-
-  // Fill in confidence for any field the model didn't score
-  for (const k of Object.keys(fields) as (keyof MsaFields)[]) {
-    if (confidence[k] === undefined) {
-      // Non-empty → medium confidence; empty → low confidence
-      confidence[k] = fields[k] ? 0.65 : 0.20;
-    }
-  }
-
-  return { fields, confidence, rawText };
+/** Read operator settings, falling back to registry defaults for missing rows. */
+async function loadEngineSettings(): Promise<EngineSetting[]> {
+  const rows = await db
+    .select({
+      engineId: ocrEnginesTable.engineId,
+      priority: ocrEnginesTable.priority,
+      isEnabled: ocrEnginesTable.isEnabled,
+    })
+    .from(ocrEnginesTable);
+  return rows;
 }
 
-/** Shared prompt asking the LLM to extract RC-book/invoice fields as JSON. */
-const OCR_EXTRACTION_PROMPT = `You are processing an Indian vehicle Registration Certificate (RC Book) or dealer invoice image.
-Extract all visible text and identify the following fields. Return a single JSON object — no markdown, no extra text.
+// ─── Engine configuration ─────────────────────────────────────────────────────
 
-Required JSON structure:
-{
-  "vehicleMake": "manufacturer e.g. Yamaha, Honda, TVS, Bajaj, Royal Enfield, Hero",
-  "vehicleModel": "model name e.g. FZ-S, CB350",
-  "vehicleVariant": "variant e.g. V3.0 Fi, Standard, or empty string if not visible",
-  "vehicleEngineNumber": "engine number from document",
-  "vehicleChassisNumber": "chassis/VIN number",
-  "vehicleExShowroomPrice": numeric price in INR or 0,
-  "vehicleDateOfPurchase": "YYYY-MM-DD or empty string",
-  "ownerFullName": "owner full name",
-  "ownerBillingAddress": "full address string",
-  "ownerPincode": numeric 6-digit pincode or 0,
-  "ownerPhoneNumber": "10-digit phone number or empty string",
-  "ownerEmail": "email if visible or empty string",
-  "ownerDateOfBirth": "YYYY-MM-DD or empty string",
-  "ownerIdProofType": "AADHAR or PAN or PASSPORT or DRIVING_LICENSE or VOTER_ID",
-  "ownerIdProofNumber": "ID number or empty string",
-  "rtoRegistrationCity": "city where vehicle is registered",
-  "rtoRegistrationState": "state e.g. Delhi, Maharashtra",
-  "rtoCode": "RTO code e.g. DL01, MH02",
-  "confidence": {
-    "vehicleMake": 0.0 to 1.0,
-    "vehicleModel": 0.0 to 1.0,
-    "vehicleVariant": 0.0 to 1.0,
-    "vehicleEngineNumber": 0.0 to 1.0,
-    "vehicleChassisNumber": 0.0 to 1.0,
-    "vehicleExShowroomPrice": 0.0 to 1.0,
-    "vehicleDateOfPurchase": 0.0 to 1.0,
-    "ownerFullName": 0.0 to 1.0,
-    "ownerBillingAddress": 0.0 to 1.0,
-    "ownerPincode": 0.0 to 1.0,
-    "ownerPhoneNumber": 0.0 to 1.0,
-    "ownerEmail": 0.0 to 1.0,
-    "ownerDateOfBirth": 0.0 to 1.0,
-    "ownerIdProofType": 0.0 to 1.0,
-    "ownerIdProofNumber": 0.0 to 1.0,
-    "rtoRegistrationCity": 0.0 to 1.0,
-    "rtoRegistrationState": 0.0 to 1.0,
-    "rtoCode": 0.0 to 1.0
+router.get("/ingest/ocr/engines", async (_req, res): Promise<void> => {
+  const statuses = buildEngineStatuses(await loadEngineSettings());
+  res.json(ListOcrEnginesResponse.parse(statuses));
+});
+
+router.put("/ingest/ocr/engines", async (req, res): Promise<void> => {
+  const parsed = UpdateOcrEnginesBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
   }
-}
 
-Confidence rules:
-- 0.90–1.00: text is clear, unambiguous, and directly matches a known format
-- 0.70–0.89: text is readable but could have minor ambiguity
-- 0.40–0.69: partially visible, blurry, or inferred from context
-- 0.20–0.39: guessed or not visible in the document
-
-Return ONLY the JSON object. No markdown fences, no prose.`;
-
-// ─── OCR model switcher ────────────────────────────────────────────────────────
-
-/**
- * OCR model switcher.
- *
- * qwen-vl  → Alibaba DashScope Qwen2.5-VL (requires DASHSCOPE_API_KEY)
- * gpt-vision → OpenAI-compatible vision API (requires OPENAI_API_KEY, or
- *              AI_INTEGRATIONS_OPENAI_API_KEY + AI_INTEGRATIONS_OPENAI_BASE_URL)
- * paddleocr → local PaddleOCR service (requires PADDLEOCR_API_URL)
- * olmocr    → not yet integrated
- * stub      → hardcoded demo data
- */
-async function runOcr(
-  imageBase64: string,
-  mimeType: string,
-  model: "paddleocr" | "qwen-vl" | "olmocr" | "gpt-vision" | "stub",
-): Promise<IngestResult> {
-  switch (model) {
-    case "stub":
-      return ocrStub(imageBase64, mimeType);
-
-    case "qwen-vl": {
-      const apiKey = process.env.DASHSCOPE_API_KEY;
-      if (!apiKey) {
-        throw new Error(
-          "DASHSCOPE_API_KEY is not configured. Add your Alibaba Cloud DashScope API key as a secret to use Qwen-VL OCR.",
-        );
-      }
-
-      const resp = await fetch(
-        "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "qwen-vl-plus",
-            input: {
-              messages: [
-                {
-                  role: "user",
-                  content: [
-                    { image: `data:${mimeType};base64,${imageBase64}` },
-                    { text: OCR_EXTRACTION_PROMPT },
-                  ],
-                },
-              ],
-            },
-            parameters: { result_format: "message" },
-          }),
+  // Upsert each engine's row. Priority and enabled state are operator
+  // preferences only — availability still depends on the API key at run time.
+  for (const engine of parsed.data.engines) {
+    const values = {
+      engineId: engine.engineId as OcrEngineId,
+      priority: engine.priority,
+      isEnabled: engine.isEnabled,
+    };
+    await db
+      .insert(ocrEnginesTable)
+      .values(values)
+      .onConflictDoUpdate({
+        target: ocrEnginesTable.engineId,
+        set: {
+          priority: values.priority,
+          isEnabled: values.isEnabled,
+          updatedAt: new Date(),
         },
-      );
-
-      if (!resp.ok) {
-        const errBody = await resp.text().catch(() => "");
-        throw new Error(`DashScope API error ${resp.status}: ${errBody.slice(0, 300)}`);
-      }
-
-      const data = await resp.json() as {
-        output?: { choices?: Array<{ message?: { content?: Array<{ text?: string }> | string } }> };
-      };
-      const contentArr = data?.output?.choices?.[0]?.message?.content;
-      const rawText = Array.isArray(contentArr)
-        ? contentArr.map((c) => c.text ?? "").join("")
-        : String(contentArr ?? "");
-
-      logger.info({ model: "qwen-vl", rawLen: rawText.length }, "DashScope OCR response received");
-      return parseVisionLLMResponseToMsaFields(rawText);
-    }
-
-    case "gpt-vision": {
-      // Supports both direct OPENAI_API_KEY and Replit AI Integrations proxy
-      const apiKey =
-        process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? process.env.OPENAI_API_KEY;
-      const baseUrl =
-        process.env.AI_INTEGRATIONS_OPENAI_BASE_URL ?? "https://api.openai.com/v1";
-
-      if (!apiKey) {
-        throw new Error(
-          "OPENAI_API_KEY is not configured. Add your OpenAI API key as a secret to use GPT Vision OCR.",
-        );
-      }
-
-      const resp = await fetch(`${baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "gpt-4o",
-          max_tokens: 1500,
-          messages: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "image_url",
-                  image_url: { url: `data:${mimeType};base64,${imageBase64}`, detail: "high" },
-                },
-                { type: "text", text: OCR_EXTRACTION_PROMPT },
-              ],
-            },
-          ],
-        }),
       });
-
-      if (!resp.ok) {
-        const errBody = await resp.text().catch(() => "");
-        throw new Error(`OpenAI API error ${resp.status}: ${errBody.slice(0, 300)}`);
-      }
-
-      const data = await resp.json() as {
-        choices?: Array<{ message?: { content?: string } }>;
-      };
-      const rawText = data?.choices?.[0]?.message?.content ?? "";
-
-      logger.info({ model: "gpt-vision", rawLen: rawText.length }, "OpenAI GPT Vision OCR response received");
-      return parseVisionLLMResponseToMsaFields(rawText);
-    }
-
-    case "paddleocr":
-      // PaddleOCR returns raw OCR text lines, not structured JSON, so it cannot
-      // be fed directly into parseVisionLLMResponseToMsaFields().
-      // A dedicated text-to-MsaFields extractor (regex heuristics or a second
-      // LLM call) is needed before this branch can be wired safely.
-      throw new Error(
-        "PaddleOCR is not yet fully integrated. Use qwen-vl (DASHSCOPE_API_KEY) or gpt-vision (OPENAI_API_KEY) for real OCR.",
-      );
-
-    case "olmocr":
-      throw new Error(
-        "olmOCR is not yet integrated. Use qwen-vl (DASHSCOPE_API_KEY) or gpt-vision (OPENAI_API_KEY) for real OCR.",
-      );
-
-    default:
-      throw new Error(`Unknown OCR model: ${model}`);
   }
-}
 
-/**
- * Stub OCR — returns a realistic hardcoded RC-book extraction.
- * Represents a Yamaha FZ-S registered in Delhi (DL01 RTO).
- */
-function ocrStub(_imageBase64: string, _mimeType: string): IngestResult {
-  const fields: MsaFields = {
-    vehicleMake: "Yamaha",
-    vehicleModel: "FZ-S",
-    vehicleVariant: "V3.0 Fi",
-    vehicleEngineNumber: "E5C3E0123456",
-    vehicleChassisNumber: "ME1RG8219M0012345",
-    vehicleExShowroomPrice: 122400,
-    vehicleDateOfPurchase: "2022-11-10",
-    ownerFullName: "Priya Mehra",
-    ownerBillingAddress: "B-74, Lajpat Nagar, New Delhi",
-    ownerPincode: 110024,
-    ownerPhoneNumber: "9811223344",
-    ownerEmail: "priya.mehra@gmail.com",
-    ownerDateOfBirth: "1992-04-15",
-    ownerIdProofType: "AADHAR",
-    ownerIdProofNumber: "9988-7766-5544",
-    rtoRegistrationCity: "New Delhi",
-    rtoRegistrationState: "Delhi",
-    rtoCode: "DL01",
-  };
+  logger.info(
+    { engines: parsed.data.engines.map((e) => `${e.engineId}:${e.priority}`) },
+    "OCR engine configuration updated",
+  );
 
-  const confidence: Record<string, number> = {
-    vehicleMake: 0.97,
-    vehicleModel: 0.95,
-    vehicleVariant: 0.72,
-    vehicleEngineNumber: 0.88,
-    vehicleChassisNumber: 0.91,
-    vehicleExShowroomPrice: 0.60,   // OCR on price is often inaccurate
-    vehicleDateOfPurchase: 0.85,
-    ownerFullName: 0.93,
-    ownerBillingAddress: 0.78,
-    ownerPincode: 0.82,
-    ownerPhoneNumber: 0.55,         // phone often partially visible
-    ownerEmail: 0.45,               // email rarely on RC book — low confidence
-    ownerDateOfBirth: 0.80,
-    ownerIdProofType: 0.90,
-    ownerIdProofNumber: 0.65,
-    rtoRegistrationCity: 0.92,
-    rtoRegistrationState: 0.94,
-    rtoCode: 0.96,
-  };
+  const statuses = buildEngineStatuses(await loadEngineSettings());
+  res.json(UpdateOcrEnginesResponse.parse(statuses));
+});
 
-  const rawText = `REGISTRATION CERTIFICATE\nReg No: DL01AB5678\nOwner: PRIYA MEHRA\nAddress: B-74, LAJPAT NAGAR, NEW DELHI - 110024\nVehicle Class: M-Cycle/Scooter\nMaker: YAMAHA MOTOR INDIA\nModel: FZ-S V3.0 Fi\nChasis No: ME1RG8219M0012345\nEngine No: E5C3E0123456\nDate of Registration: 10/11/2022\nFuel: PETROL\nRTO: DL-01, KAMLA NAGAR, NEW DELHI`;
-
-  return { fields, confidence, rawText };
-}
+// ─── OCR extraction ───────────────────────────────────────────────────────────
 
 router.post("/ingest/ocr", async (req, res): Promise<void> => {
   const parsed = IngestOcrBody.safeParse(req.body);
@@ -772,13 +510,28 @@ router.post("/ingest/ocr", async (req, res): Promise<void> => {
     return;
   }
 
-  const { imageBase64, mimeType, model } = parsed.data;
-  logger.info({ model, mimeType }, "OCR requested");
+  const { imageBase64, mimeType } = parsed.data;
+  const requested = (parsed.data.model ?? "auto") as OcrEngineId | "auto";
+  const allowFallback = parsed.data.allowFallback ?? true;
+
+  const statuses = buildEngineStatuses(await loadEngineSettings());
+  const chain = resolveChain(statuses, requested, allowFallback);
+
+  logger.info(
+    { requested, allowFallback, chain, mimeType },
+    "OCR requested",
+  );
 
   try {
-    const result = await runOcr(imageBase64, mimeType, model as "paddleocr" | "qwen-vl" | "olmocr" | "gpt-vision" | "stub");
-    res.json(result);
+    const { result } = await runOcrChain(chain, imageBase64, mimeType);
+    res.json(result satisfies IngestResult);
   } catch (err) {
+    if (err instanceof OcrChainError) {
+      // 502: every upstream engine failed. The attempt list tells the UI which
+      // ones were tried and why each one failed.
+      res.status(502).json({ error: err.message, attempts: err.attempts });
+      return;
+    }
     const msg = err instanceof Error ? err.message : String(err);
     res.status(400).json({ error: msg });
   }

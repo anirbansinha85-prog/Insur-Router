@@ -55,6 +55,8 @@ Four tables, all in `lib/db/src/schema/`:
   the `executeWithBrowser` switch. `apiEndpoint` null ⇒ AUTO mode picks BROWSER.
 - **applications** — the MSA payload stored **flat** (26 columns, not nested
   JSON). Assembled into the nested payload only at execution time.
+- **ocr_engines** — operator preferences (priority, enabled) for the OCR chain.
+  Rows are optional; missing engines use registry defaults. Never stores keys.
 - **submission_logs** — append-only audit trail, FK cascade-deletes with the
   application. Browser steps stash a base64 JPEG in `metadata.screenshot`.
 - **policies** — one row per successful submission, `applicationId` unique.
@@ -107,30 +109,80 @@ copies of this helper (applications.ts and ingest.ts) — change both together.
 
 ## OCR engines
 
-`runOcr()` in `routes/ingest.ts` switches on the `model` field of
-`POST /api/ingest/ocr`.
+All engine logic lives in `api-server/src/lib/ocr-engines.ts`. `routes/ingest.ts`
+only translates between HTTP and that module — put new engine work in the
+registry, not the route.
 
-| Engine | Status | Requires | Model |
+An engine is usable only when **all three** hold:
+
+| Flag | Meaning | Source |
+|---|---|---|
+| `isImplemented` | a real integration exists | code |
+| `isConfigured` | its API key is present | environment, read live |
+| `isEnabled` | operator has it switched on | `ocr_engines` table |
+
+| Engine | Implemented | Requires | Model |
 |---|---|---|---|
-| `gpt-vision` | **working** | `OPENAI_API_KEY` | `gpt-4o`, `detail: high`, 1500 max tokens |
-| `qwen-vl` | **working** | `DASHSCOPE_API_KEY` | `qwen-vl-plus` via DashScope |
-| `stub` | **working** | nothing | fixed Yamaha FZ-S / Delhi DL01 record |
-| `paddleocr` | throws | — | deliberately unwired, see below |
-| `olmocr` | throws | — | not integrated |
+| `gpt-vision` | yes | `OPENAI_API_KEY` | `gpt-4o`, `detail: high`, 1500 max tokens |
+| `qwen-vl` | yes | `DASHSCOPE_API_KEY` | `qwen-vl-plus` via DashScope |
+| `stub` | yes | nothing | fixed Yamaha FZ-S / Delhi DL01 record |
+| `paddleocr` | **no** | `PADDLEOCR_API_URL` | deliberately unwired, see below |
+| `olmocr` | **no** | — | not integrated |
 
 `gpt-vision` also honours `AI_INTEGRATIONS_OPENAI_API_KEY` +
 `AI_INTEGRATIONS_OPENAI_BASE_URL` (the Replit proxy), which take priority over
-`OPENAI_API_KEY`. A missing key returns HTTP 400 with an explicit message — it
-does not fall back to the stub.
+`OPENAI_API_KEY`. Model IDs can be overridden with `OPENAI_VISION_MODEL` /
+`DASHSCOPE_VISION_MODEL`.
+
+### The fallback chain
+
+`resolveChain()` decides what to try; `runOcrChain()` runs it and returns the
+first success, recording every attempt.
+
+```
+model "auto" (default) → all available, auto-eligible engines by priority
+model <engine>         → that engine first, then the rest of the chain
+allowFallback: false   → only the named engine, failure returned as-is
+```
+
+Each attempt gets an `OCR_TIMEOUT_MS` deadline (default 45s) via `AbortController`,
+so one hung provider cannot stall the request. Failures that trigger fallback:
+missing key, HTTP error, timeout, unparseable output, and *zero extracted fields* —
+a model that returns valid JSON with everything blank counts as a failure, not a
+blank success.
+
+If every engine fails, the route returns **502** with the full `attempts` array.
+It never returns a partial or fabricated result.
+
+> **The stub is never reachable automatically.** `autoEligible: false` keeps it
+> out of every chain; it runs only when named explicitly, and its results carry
+> `isDemoData: true`. This is deliberate — the stub returns an invented chassis
+> number and Aadhaar number at high confidence, and if a key expired and the chain
+> quietly fell through to it, that fiction would enter a real insurance
+> application looking like genuine OCR output. Do not make it auto-eligible.
+
+### Runtime configuration
+
+Priority and enabled state live in the `ocr_engines` table, edited from the
+**Engines** tab in VeloDocs. Reordering takes effect on the next extraction with
+no restart. Adding or removing an API *key* still needs a restart, since keys are
+read from the environment.
+
+Rows are optional — any engine without one falls back to its registry defaults,
+so a database that has never been configured works fine.
+
+```
+GET /api/ingest/ocr/engines   → status + live availability, priority order
+PUT /api/ingest/ocr/engines   → set order and enabled state
+```
 
 **Why PaddleOCR is not wired.** Both working engines are vision-LLMs prompted
 with `OCR_EXTRACTION_PROMPT`, which instructs them to return a JSON object of
 MSA fields *plus* a per-field `confidence` map. `parseVisionLLMResponseToMsaFields()`
 parses that JSON. PaddleOCR returns raw OCR text lines, which would always
-JSON-parse-fail and silently yield empty fields — worse than an explicit error.
-**Only pipe model output into `parseVisionLLMResponseToMsaFields()` if the model
-was prompted with `OCR_EXTRACTION_PROMPT`.** A raw-text engine needs its own
-text-to-fields extractor first.
+JSON-parse-fail. **Only pipe model output into `parseVisionLLMResponseToMsaFields()`
+if the model was prompted with `OCR_EXTRACTION_PROMPT`.** A raw-text engine needs
+its own text-to-fields extractor first.
 
 **Confidence scores** drive the review UI. The model self-reports 0.0–1.0 per
 field; the parser backfills anything unscored (0.65 if the field is non-empty,
@@ -230,6 +282,14 @@ pnpm run typecheck      # whole workspace
 pnpm run build          # typecheck + build all
 pnpm run db:push        # push schema changes (dev only, destructive)
 pnpm run db:seed        # insert the 6 starter providers, idempotent
+```
+
+`db:push` invokes drizzle-kit directly, which is not a Node entrypoint, so
+`--env-file` cannot reach it — export `DATABASE_URL` first:
+
+```powershell
+$env:DATABASE_URL = (Get-Content .env | Where-Object { $_ -match '^DATABASE_URL=' }) -replace '^DATABASE_URL=',''
+pnpm run db:push
 ```
 
 **RC Capture does not run on Windows.** Its `dev` script uses POSIX inline env

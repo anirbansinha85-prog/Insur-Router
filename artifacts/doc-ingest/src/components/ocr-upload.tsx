@@ -1,20 +1,26 @@
 import { useState, useRef } from "react"
-import { useIngestOcr } from "@workspace/api-client-react"
+import { useIngestOcr, useListOcrEngines } from "@workspace/api-client-react"
 import { IngestResult, OcrInputModel } from "@workspace/api-client-react"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { UploadCloud, Loader2, FileImage, X } from "lucide-react"
+import { UploadCloud, Loader2, FileImage, X, AlertTriangle } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
 
 export function OcrUpload({ onResult }: { onResult: (res: IngestResult & { previewUrl?: string }) => void }) {
-  const [model, setModel] = useState<OcrInputModel>("gpt-vision")
+  const [model, setModel] = useState<OcrInputModel>("auto")
   const [file, setFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const { mutate, isPending } = useIngestOcr()
+  // Live availability, so the dropdown reflects which keys are actually set.
+  const { data: engines } = useListOcrEngines()
+  const { toast } = useToast()
+
+  const autoChain = (engines ?? []).filter((e) => e.isAvailable && e.autoEligible)
 
   const handleFileSelect = (selectedFile: File | null) => {
     if (!selectedFile) return
@@ -63,17 +69,34 @@ export function OcrUpload({ onResult }: { onResult: (res: IngestResult & { previ
       const base64String = (event.target?.result as string).split(",")[1]
       
       mutate(
-        { 
-          data: { 
-            imageBase64: base64String, 
-            mimeType: file.type, 
-            model 
-          } 
+        {
+          data: {
+            imageBase64: base64String,
+            mimeType: file.type,
+            model
+          }
         },
         {
           onSuccess: (data) => {
+            const fellBack =
+              data.engineUsed && model !== "auto" && data.engineUsed !== model
+            if (fellBack) {
+              toast({
+                title: `Fell back to ${data.engineUsed}`,
+                description: `${model} did not succeed. ${
+                  data.attempts?.find((a) => !a.ok)?.error ?? ""
+                }`,
+              })
+            }
             onResult({ ...data, previewUrl: previewUrl || undefined })
-          }
+          },
+          onError: (err) => {
+            toast({
+              title: "Extraction failed",
+              description: err instanceof Error ? err.message : String(err),
+              variant: "destructive",
+            })
+          },
         }
       )
     }
@@ -100,13 +123,38 @@ export function OcrUpload({ onResult }: { onResult: (res: IngestResult & { previ
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="gpt-vision">GPT-4 Vision (requires OPENAI_API_KEY)</SelectItem>
-                <SelectItem value="qwen-vl">Qwen-VL (requires DASHSCOPE_API_KEY)</SelectItem>
-                <SelectItem value="paddleocr">PaddleOCR (requires PADDLEOCR_API_URL)</SelectItem>
-                <SelectItem value="stub">Stub (Demo Data)</SelectItem>
+                <SelectItem value="auto">
+                  Automatic{autoChain.length > 0 ? ` — ${autoChain.map((e) => e.label).join(" → ")}` : " — none available"}
+                </SelectItem>
+                {(engines ?? []).map((engine) => (
+                  <SelectItem key={engine.engineId} value={engine.engineId}>
+                    {engine.label}
+                    {engine.isAvailable ? "" : ` — ${engine.statusReason}`}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground">
+              {model === "auto"
+                ? "Tries each configured engine in priority order and uses the first that succeeds."
+                : model === "stub"
+                  ? "Returns fabricated demo data. Never selected automatically."
+                  : "Tried first; falls back to the automatic chain if it fails."}
+            </p>
           </div>
+
+          {model === "auto" && autoChain.length === 0 && (
+            <div className="flex items-start gap-2 rounded-md border border-amber/40 bg-amber/5 p-3 text-sm">
+              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber" />
+              <div>
+                <p className="font-medium">No OCR engine is configured.</p>
+                <p className="text-muted-foreground mt-1">
+                  Add an API key to <code className="text-xs">.env</code> and restart the API
+                  server, or pick the stub engine to test with demo data.
+                </p>
+              </div>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label>Document File</Label>

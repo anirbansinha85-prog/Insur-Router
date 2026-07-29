@@ -35,6 +35,7 @@ import type {
   IngestPushResult,
   IngestResult,
   ListApplicationsParams,
+  OcrEngineStatus,
   OcrInput,
   Policy,
   Provider,
@@ -42,6 +43,7 @@ import type {
   ProviderUpdate,
   RecentApplication,
   SubmissionLog,
+  UpdateOcrEnginesInput,
   ValidationResult
 } from './api.schemas';
 
@@ -1401,6 +1403,154 @@ export const useIngestOcr = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getIngestOcrMutationOptions(options));
+    }
+
+export const getListOcrEnginesUrl = () => {
+
+
+
+
+  return `/api/ingest/ocr/engines`
+}
+
+/**
+ * @summary List OCR engines with live availability and configured priority
+ */
+export const listOcrEngines = async ( options?: Parameters<typeof customFetch>[1]): Promise<OcrEngineStatus[]> => {
+
+  return customFetch<OcrEngineStatus[]>(getListOcrEnginesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListOcrEnginesQueryKey = () => {
+    return [
+    `/api/ingest/ocr/engines`
+    ] as const;
+    }
+
+
+export const getListOcrEnginesQueryOptions = <TData = Awaited<ReturnType<typeof listOcrEngines>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listOcrEngines>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListOcrEnginesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listOcrEngines>>> = ({ signal }) => listOcrEngines({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listOcrEngines>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListOcrEnginesQueryResult = NonNullable<Awaited<ReturnType<typeof listOcrEngines>>>
+export type ListOcrEnginesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List OCR engines with live availability and configured priority
+ */
+
+export function useListOcrEngines<TData = Awaited<ReturnType<typeof listOcrEngines>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listOcrEngines>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListOcrEnginesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateOcrEnginesUrl = () => {
+
+
+
+
+  return `/api/ingest/ocr/engines`
+}
+
+/**
+ * @summary Set OCR engine priority order and enabled state
+ */
+export const updateOcrEngines = async (updateOcrEnginesInput: UpdateOcrEnginesInput, options?: Parameters<typeof customFetch>[1]): Promise<OcrEngineStatus[]> => {
+
+  return customFetch<OcrEngineStatus[]>(getUpdateOcrEnginesUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateOcrEnginesInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateOcrEnginesMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateOcrEngines>>, TError,{data: BodyType<UpdateOcrEnginesInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateOcrEngines>>, TError,{data: BodyType<UpdateOcrEnginesInput>}, TContext> => {
+
+const mutationKey = ['updateOcrEngines'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateOcrEngines>>, {data: BodyType<UpdateOcrEnginesInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateOcrEngines(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateOcrEnginesMutationResult = NonNullable<Awaited<ReturnType<typeof updateOcrEngines>>>
+    export type UpdateOcrEnginesMutationBody = BodyType<UpdateOcrEnginesInput>
+    export type UpdateOcrEnginesMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Set OCR engine priority order and enabled state
+ */
+export const useUpdateOcrEngines = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateOcrEngines>>, TError,{data: BodyType<UpdateOcrEnginesInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateOcrEngines>>,
+        TError,
+        {data: BodyType<UpdateOcrEnginesInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateOcrEnginesMutationOptions(options));
     }
 
 export const getIngestPushUrl = () => {

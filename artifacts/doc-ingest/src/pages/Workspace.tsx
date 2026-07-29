@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DmsPull } from "@/components/dms-pull"
 import { BrowserScrape } from "@/components/browser-scrape"
 import { OcrUpload } from "@/components/ocr-upload"
+import { OcrEngineSettings } from "@/components/ocr-engine-settings"
 import { ReviewCorrect } from "@/components/review-correct"
 
 export function Workspace() {
@@ -33,10 +34,11 @@ export function Workspace() {
             </div>
 
             <Tabs defaultValue="dms" className="w-full">
-              <TabsList className="grid w-full grid-cols-3 h-12 mb-6">
+              <TabsList className="grid w-full grid-cols-4 h-12 mb-6">
                 <TabsTrigger value="dms" className="text-sm">DMS Pull</TabsTrigger>
                 <TabsTrigger value="browser" className="text-sm">Browser Scrape</TabsTrigger>
                 <TabsTrigger value="ocr" className="text-sm">OCR Upload</TabsTrigger>
+                <TabsTrigger value="engines" className="text-sm">Engines</TabsTrigger>
               </TabsList>
               
               <div className="mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
@@ -48,6 +50,9 @@ export function Workspace() {
                 </TabsContent>
                 <TabsContent value="ocr" className="m-0 focus-visible:outline-none">
                   <OcrUpload onResult={(res) => setIngestResult({ ...res, sourceName: "OCR Upload" })} />
+                </TabsContent>
+                <TabsContent value="engines" className="m-0 focus-visible:outline-none">
+                  <OcrEngineSettings />
                 </TabsContent>
               </div>
             </Tabs>

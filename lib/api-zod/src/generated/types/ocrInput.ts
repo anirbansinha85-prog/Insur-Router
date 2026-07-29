@@ -12,6 +12,8 @@ export interface OcrInput {
   imageBase64: string;
   /** MIME type of the uploaded file, e.g. image/jpeg or application/pdf */
   mimeType: string;
-  /** OCR model to use; qwen-vl requires DASHSCOPE_API_KEY, gpt-vision requires OPENAI_API_KEY, stub returns hardcoded demo data */
-  model: OcrInputModel;
+  /** Preferred OCR engine. "auto" (the default) walks the configured priority order. Naming an engine puts it first but still falls through to the rest unless allowFallback is false. The stub engine is never reached automatically — it must be named explicitly. */
+  model?: OcrInputModel;
+  /** When false, only the named engine is tried and its failure is returned as-is. Defaults to true. Ignored when model is "auto". */
+  allowFallback?: boolean;
 }

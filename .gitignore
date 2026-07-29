@@ -56,3 +56,6 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Local session handover notes — personal working files, not project content
+SESSION-*.md

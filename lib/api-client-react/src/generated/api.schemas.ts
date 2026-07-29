@@ -431,6 +431,28 @@ export interface MsaFields {
  */
 export type IngestResultConfidence = {[key: string]: number};
 
+export type OcrAttemptEngineId = typeof OcrAttemptEngineId[keyof typeof OcrAttemptEngineId];
+
+
+export const OcrAttemptEngineId = {
+  paddleocr: 'paddleocr',
+  'qwen-vl': 'qwen-vl',
+  olmocr: 'olmocr',
+  'gpt-vision': 'gpt-vision',
+  stub: 'stub',
+} as const;
+
+/**
+ * One engine attempt within a fallback chain
+ */
+export interface OcrAttempt {
+  engineId: OcrAttemptEngineId;
+  ok: boolean;
+  /** @nullable */
+  error: string | null;
+  durationMs: number;
+}
+
 /**
  * Extracted MSA fields from any ingest source
  */
@@ -443,6 +465,15 @@ export interface IngestResult {
      * @nullable
      */
   rawText?: string | null;
+  /**
+     * OCR engine that actually produced this result. Null for non-OCR sources.
+     * @nullable
+     */
+  engineUsed?: string | null;
+  /** True when the result came from the stub engine and contains fabricated values. */
+  isDemoData?: boolean;
+  /** Every engine tried, in order, including failures. OCR only. */
+  attempts?: OcrAttempt[];
 }
 
 export interface DmsPullInput {
@@ -472,12 +503,13 @@ export interface BrowserScrapeInput {
 }
 
 /**
- * OCR model to use; qwen-vl requires DASHSCOPE_API_KEY, gpt-vision requires OPENAI_API_KEY, stub returns hardcoded demo data
+ * Preferred OCR engine. "auto" (the default) walks the configured priority order. Naming an engine puts it first but still falls through to the rest unless allowFallback is false. The stub engine is never reached automatically — it must be named explicitly.
  */
 export type OcrInputModel = typeof OcrInputModel[keyof typeof OcrInputModel];
 
 
 export const OcrInputModel = {
+  auto: 'auto',
   paddleocr: 'paddleocr',
   'qwen-vl': 'qwen-vl',
   olmocr: 'olmocr',
@@ -490,8 +522,67 @@ export interface OcrInput {
   imageBase64: string;
   /** MIME type of the uploaded file, e.g. image/jpeg or application/pdf */
   mimeType: string;
-  /** OCR model to use; qwen-vl requires DASHSCOPE_API_KEY, gpt-vision requires OPENAI_API_KEY, stub returns hardcoded demo data */
-  model: OcrInputModel;
+  /** Preferred OCR engine. "auto" (the default) walks the configured priority order. Naming an engine puts it first but still falls through to the rest unless allowFallback is false. The stub engine is never reached automatically — it must be named explicitly. */
+  model?: OcrInputModel;
+  /** When false, only the named engine is tried and its failure is returned as-is. Defaults to true. Ignored when model is "auto". */
+  allowFallback?: boolean;
+}
+
+export type OcrEngineStatusEngineId = typeof OcrEngineStatusEngineId[keyof typeof OcrEngineStatusEngineId];
+
+
+export const OcrEngineStatusEngineId = {
+  paddleocr: 'paddleocr',
+  'qwen-vl': 'qwen-vl',
+  olmocr: 'olmocr',
+  'gpt-vision': 'gpt-vision',
+  stub: 'stub',
+} as const;
+
+/**
+ * An OCR engine's configuration and live availability
+ */
+export interface OcrEngineStatus {
+  engineId: OcrEngineStatusEngineId;
+  label: string;
+  /** Lower is tried first */
+  priority: number;
+  /** Operator toggle, stored in the database */
+  isEnabled: boolean;
+  /** False for engines that are stubs pending real integration */
+  isImplemented: boolean;
+  /** True when the engine's API key is present in the environment */
+  isConfigured: boolean;
+  /** isEnabled AND isImplemented AND isConfigured */
+  isAvailable: boolean;
+  /** Whether this engine can be selected by the automatic chain */
+  autoEligible: boolean;
+  /** Human-readable explanation of the current status */
+  statusReason: string;
+  /** @nullable */
+  requiredEnvVar: string | null;
+}
+
+export type UpdateOcrEnginesInputEnginesItemEngineId = typeof UpdateOcrEnginesInputEnginesItemEngineId[keyof typeof UpdateOcrEnginesInputEnginesItemEngineId];
+
+
+export const UpdateOcrEnginesInputEnginesItemEngineId = {
+  paddleocr: 'paddleocr',
+  'qwen-vl': 'qwen-vl',
+  olmocr: 'olmocr',
+  'gpt-vision': 'gpt-vision',
+  stub: 'stub',
+} as const;
+
+export type UpdateOcrEnginesInputEnginesItem = {
+  engineId: UpdateOcrEnginesInputEnginesItemEngineId;
+  priority: number;
+  isEnabled: boolean;
+};
+
+export interface UpdateOcrEnginesInput {
+  /** @minItems 1 */
+  engines: UpdateOcrEnginesInputEnginesItem[];
 }
 
 export interface IngestPushInput {

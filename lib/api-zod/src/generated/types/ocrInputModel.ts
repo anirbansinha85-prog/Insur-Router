@@ -7,12 +7,13 @@
  */
 
 /**
- * OCR model to use; qwen-vl requires DASHSCOPE_API_KEY, gpt-vision requires OPENAI_API_KEY, stub returns hardcoded demo data
+ * Preferred OCR engine. "auto" (the default) walks the configured priority order. Naming an engine puts it first but still falls through to the rest unless allowFallback is false. The stub engine is never reached automatically — it must be named explicitly.
  */
 export type OcrInputModel = typeof OcrInputModel[keyof typeof OcrInputModel];
 
 
 export const OcrInputModel = {
+  auto: 'auto',
   paddleocr: 'paddleocr',
   'qwen-vl': 'qwen-vl',
   olmocr: 'olmocr',

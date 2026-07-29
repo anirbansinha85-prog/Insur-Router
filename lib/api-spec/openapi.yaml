@@ -460,6 +460,46 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /ingest/ocr/engines:
+    get:
+      operationId: listOcrEngines
+      tags: [ingest]
+      summary: List OCR engines with live availability and configured priority
+      responses:
+        "200":
+          description: Engine status, ordered by priority
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OcrEngineStatus"
+    put:
+      operationId: updateOcrEngines
+      tags: [ingest]
+      summary: Set OCR engine priority order and enabled state
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOcrEnginesInput"
+      responses:
+        "200":
+          description: Updated engine status, ordered by priority
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OcrEngineStatus"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /ingest/push:
     post:
       operationId: ingestPush
@@ -1059,6 +1099,17 @@ components:
         rawText:
           type: ["string", "null"]
           description: Raw extracted text (OCR/scrape) for display in the review panel
+        engineUsed:
+          type: ["string", "null"]
+          description: OCR engine that actually produced this result. Null for non-OCR sources.
+        isDemoData:
+          type: boolean
+          description: True when the result came from the stub engine and contains fabricated values.
+        attempts:
+          type: array
+          description: Every engine tried, in order, including failures. OCR only.
+          items:
+            $ref: "#/components/schemas/OcrAttempt"
       required:
         - fields
         - confidence
@@ -1100,12 +1151,106 @@ components:
           description: MIME type of the uploaded file, e.g. image/jpeg or application/pdf
         model:
           type: string
-          enum: [paddleocr, qwen-vl, olmocr, gpt-vision, stub]
-          description: "OCR model to use; qwen-vl requires DASHSCOPE_API_KEY, gpt-vision requires OPENAI_API_KEY, stub returns hardcoded demo data"
+          enum: [auto, paddleocr, qwen-vl, olmocr, gpt-vision, stub]
+          description: >-
+            Preferred OCR engine. "auto" (the default) walks the configured
+            priority order. Naming an engine puts it first but still falls
+            through to the rest unless allowFallback is false. The stub engine is
+            never reached automatically — it must be named explicitly.
+        allowFallback:
+          type: boolean
+          description: >-
+            When false, only the named engine is tried and its failure is
+            returned as-is. Defaults to true. Ignored when model is "auto".
       required:
         - imageBase64
         - mimeType
-        - model
+
+    OcrAttempt:
+      type: object
+      description: One engine attempt within a fallback chain
+      properties:
+        engineId:
+          type: string
+          enum: [paddleocr, qwen-vl, olmocr, gpt-vision, stub]
+        ok:
+          type: boolean
+        error:
+          type: ["string", "null"]
+        durationMs:
+          type: number
+      required:
+        - engineId
+        - ok
+        - error
+        - durationMs
+
+    OcrEngineStatus:
+      type: object
+      description: An OCR engine's configuration and live availability
+      properties:
+        engineId:
+          type: string
+          enum: [paddleocr, qwen-vl, olmocr, gpt-vision, stub]
+        label:
+          type: string
+        priority:
+          type: number
+          description: Lower is tried first
+        isEnabled:
+          type: boolean
+          description: Operator toggle, stored in the database
+        isImplemented:
+          type: boolean
+          description: False for engines that are stubs pending real integration
+        isConfigured:
+          type: boolean
+          description: True when the engine's API key is present in the environment
+        isAvailable:
+          type: boolean
+          description: isEnabled AND isImplemented AND isConfigured
+        autoEligible:
+          type: boolean
+          description: Whether this engine can be selected by the automatic chain
+        statusReason:
+          type: string
+          description: Human-readable explanation of the current status
+        requiredEnvVar:
+          type: ["string", "null"]
+      required:
+        - engineId
+        - label
+        - priority
+        - isEnabled
+        - isImplemented
+        - isConfigured
+        - isAvailable
+        - autoEligible
+        - statusReason
+        - requiredEnvVar
+
+    UpdateOcrEnginesInput:
+      type: object
+      properties:
+        engines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            properties:
+              engineId:
+                type: string
+                enum: [paddleocr, qwen-vl, olmocr, gpt-vision, stub]
+              priority:
+                type: number
+              isEnabled:
+                type: boolean
+            required:
+              - engineId
+              - priority
+              - isEnabled
+      required:
+        - engines
 
     IngestPushInput:
       type: object

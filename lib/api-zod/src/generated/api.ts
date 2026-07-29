@@ -435,7 +435,15 @@ export const IngestDmsPullResponse = zod.object({
   "rtoCode": zod.string()
 }).describe('Normalised vehicle + owner + RTO fields for an MSA payload'),
   "confidence": zod.record(zod.string(), zod.number()).describe('Per-field confidence score 0-1'),
-  "rawText": zod.string().nullish().describe('Raw extracted text (OCR\/scrape) for display in the review panel')
+  "rawText": zod.string().nullish().describe('Raw extracted text (OCR\/scrape) for display in the review panel'),
+  "engineUsed": zod.string().nullish().describe('OCR engine that actually produced this result. Null for non-OCR sources.'),
+  "isDemoData": zod.boolean().optional().describe('True when the result came from the stub engine and contains fabricated values.'),
+  "attempts": zod.array(zod.object({
+  "engineId": zod.enum(['paddleocr', 'qwen-vl', 'olmocr', 'gpt-vision', 'stub']),
+  "ok": zod.boolean(),
+  "error": zod.string().nullable(),
+  "durationMs": zod.number()
+}).describe('One engine attempt within a fallback chain')).optional().describe('Every engine tried, in order, including failures. OCR only.')
 }).describe('Extracted MSA fields from any ingest source')
 
 
@@ -473,7 +481,15 @@ export const IngestBrowserScrapeResponse = zod.object({
   "rtoCode": zod.string()
 }).describe('Normalised vehicle + owner + RTO fields for an MSA payload'),
   "confidence": zod.record(zod.string(), zod.number()).describe('Per-field confidence score 0-1'),
-  "rawText": zod.string().nullish().describe('Raw extracted text (OCR\/scrape) for display in the review panel')
+  "rawText": zod.string().nullish().describe('Raw extracted text (OCR\/scrape) for display in the review panel'),
+  "engineUsed": zod.string().nullish().describe('OCR engine that actually produced this result. Null for non-OCR sources.'),
+  "isDemoData": zod.boolean().optional().describe('True when the result came from the stub engine and contains fabricated values.'),
+  "attempts": zod.array(zod.object({
+  "engineId": zod.enum(['paddleocr', 'qwen-vl', 'olmocr', 'gpt-vision', 'stub']),
+  "ok": zod.boolean(),
+  "error": zod.string().nullable(),
+  "durationMs": zod.number()
+}).describe('One engine attempt within a fallback chain')).optional().describe('Every engine tried, in order, including failures. OCR only.')
 }).describe('Extracted MSA fields from any ingest source')
 
 
@@ -483,7 +499,8 @@ export const IngestBrowserScrapeResponse = zod.object({
 export const IngestOcrBody = zod.object({
   "imageBase64": zod.string().describe('Base64-encoded image (JPEG\/PNG) or PDF content'),
   "mimeType": zod.string().describe('MIME type of the uploaded file, e.g. image\/jpeg or application\/pdf'),
-  "model": zod.enum(['paddleocr', 'qwen-vl', 'olmocr', 'gpt-vision', 'stub']).describe('OCR model to use; qwen-vl requires DASHSCOPE_API_KEY, gpt-vision requires OPENAI_API_KEY, stub returns hardcoded demo data')
+  "model": zod.enum(['auto', 'paddleocr', 'qwen-vl', 'olmocr', 'gpt-vision', 'stub']).optional().describe('Preferred OCR engine. \"auto\" (the default) walks the configured priority order. Naming an engine puts it first but still falls through to the rest unless allowFallback is false. The stub engine is never reached automatically — it must be named explicitly.'),
+  "allowFallback": zod.boolean().optional().describe('When false, only the named engine is tried and its failure is returned as-is. Defaults to true. Ignored when model is \"auto\".')
 })
 
 export const IngestOcrResponse = zod.object({
@@ -508,8 +525,63 @@ export const IngestOcrResponse = zod.object({
   "rtoCode": zod.string()
 }).describe('Normalised vehicle + owner + RTO fields for an MSA payload'),
   "confidence": zod.record(zod.string(), zod.number()).describe('Per-field confidence score 0-1'),
-  "rawText": zod.string().nullish().describe('Raw extracted text (OCR\/scrape) for display in the review panel')
+  "rawText": zod.string().nullish().describe('Raw extracted text (OCR\/scrape) for display in the review panel'),
+  "engineUsed": zod.string().nullish().describe('OCR engine that actually produced this result. Null for non-OCR sources.'),
+  "isDemoData": zod.boolean().optional().describe('True when the result came from the stub engine and contains fabricated values.'),
+  "attempts": zod.array(zod.object({
+  "engineId": zod.enum(['paddleocr', 'qwen-vl', 'olmocr', 'gpt-vision', 'stub']),
+  "ok": zod.boolean(),
+  "error": zod.string().nullable(),
+  "durationMs": zod.number()
+}).describe('One engine attempt within a fallback chain')).optional().describe('Every engine tried, in order, including failures. OCR only.')
 }).describe('Extracted MSA fields from any ingest source')
+
+
+/**
+ * @summary List OCR engines with live availability and configured priority
+ */
+export const ListOcrEnginesResponseItem = zod.object({
+  "engineId": zod.enum(['paddleocr', 'qwen-vl', 'olmocr', 'gpt-vision', 'stub']),
+  "label": zod.string(),
+  "priority": zod.number().describe('Lower is tried first'),
+  "isEnabled": zod.boolean().describe('Operator toggle, stored in the database'),
+  "isImplemented": zod.boolean().describe('False for engines that are stubs pending real integration'),
+  "isConfigured": zod.boolean().describe('True when the engine\'s API key is present in the environment'),
+  "isAvailable": zod.boolean().describe('isEnabled AND isImplemented AND isConfigured'),
+  "autoEligible": zod.boolean().describe('Whether this engine can be selected by the automatic chain'),
+  "statusReason": zod.string().describe('Human-readable explanation of the current status'),
+  "requiredEnvVar": zod.string().nullable()
+}).describe('An OCR engine\'s configuration and live availability')
+export const ListOcrEnginesResponse = zod.array(ListOcrEnginesResponseItem)
+
+
+/**
+ * @summary Set OCR engine priority order and enabled state
+ */
+
+
+
+export const UpdateOcrEnginesBody = zod.object({
+  "engines": zod.array(zod.object({
+  "engineId": zod.enum(['paddleocr', 'qwen-vl', 'olmocr', 'gpt-vision', 'stub']),
+  "priority": zod.number(),
+  "isEnabled": zod.boolean()
+})).min(1)
+})
+
+export const UpdateOcrEnginesResponseItem = zod.object({
+  "engineId": zod.enum(['paddleocr', 'qwen-vl', 'olmocr', 'gpt-vision', 'stub']),
+  "label": zod.string(),
+  "priority": zod.number().describe('Lower is tried first'),
+  "isEnabled": zod.boolean().describe('Operator toggle, stored in the database'),
+  "isImplemented": zod.boolean().describe('False for engines that are stubs pending real integration'),
+  "isConfigured": zod.boolean().describe('True when the engine\'s API key is present in the environment'),
+  "isAvailable": zod.boolean().describe('isEnabled AND isImplemented AND isConfigured'),
+  "autoEligible": zod.boolean().describe('Whether this engine can be selected by the automatic chain'),
+  "statusReason": zod.string().describe('Human-readable explanation of the current status'),
+  "requiredEnvVar": zod.string().nullable()
+}).describe('An OCR engine\'s configuration and live availability')
+export const UpdateOcrEnginesResponse = zod.array(UpdateOcrEnginesResponseItem)
 
 
 /**
