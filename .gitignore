@@ -27,6 +27,15 @@ node_modules
 !.vscode/launch.json
 !.vscode/extensions.json
 
+# secrets — .env holds DATABASE_URL and provider/OCR API keys, never commit it.
+# .env.example is the tracked template and is deliberately not ignored.
+.env
+.env.*
+!.env.example
+
+# drizzle-kit generate output — this workspace uses `push`, not migration files
+lib/db/drizzle/
+
 # misc
 /.sass-cache
 /connect.lock

@@ -19,6 +19,7 @@ import {
   IngestPushBody,
 } from "@workspace/api-zod";
 import { db, applicationsTable, submissionLogsTable } from "@workspace/db";
+import { chromiumLaunchOptions } from "../lib/browser-executor";
 import { logger } from "../lib/logger";
 
 // ─── SSRF protection ─────────────────────────────────────────────────────────
@@ -308,18 +309,7 @@ router.post("/ingest/browser-scrape", async (req, res): Promise<void> => {
   try {
     const { chromium } = await import("playwright");
 
-    const browser = await chromium.launch({
-      headless: true,
-      executablePath:
-        "/nix/store/qa9cnw4v5xkxyip6mb9kxqfq1z4x2dx1-chromium-138.0.7204.100/bin/chromium",
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-        "--single-process",
-      ],
-    });
+    const browser = await chromium.launch(chromiumLaunchOptions());
 
     try {
       const context = await browser.newContext({

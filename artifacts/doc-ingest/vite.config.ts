@@ -72,6 +72,16 @@ export default defineConfig({
     fs: {
       strict: true,
     },
+    // The generated API client calls relative "/api/..." URLs. On Replit the
+    // platform router splits "/api" off to the api-server before Vite sees it;
+    // running locally there is no such router, so proxy it ourselves. This is
+    // dev-server only and has no effect on the production static build.
+    proxy: {
+      '/api': {
+        target: `http://localhost:${process.env.API_PORT ?? 8080}`,
+        changeOrigin: true,
+      },
+    },
   },
   preview: {
     port,

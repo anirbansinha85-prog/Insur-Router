@@ -54,6 +54,34 @@ export interface BrowserExecutionResult {
   logs: BrowserExecutionLog[];
 }
 
+/**
+ * Chromium launch options, shared with the portal scraper in routes/ingest.ts.
+ *
+ * Replit has no browser of its own — it needs the Nix Chromium plus sandbox and
+ * GPU workarounds, so set CHROMIUM_EXECUTABLE_PATH there. Everywhere else leave
+ * it unset and Playwright uses its own downloaded browser with default args
+ * (install once: `pnpm --filter @workspace/api-server exec playwright install
+ * chromium`). The Replit-specific flags are deliberately tied to the custom
+ * executable — `--single-process` in particular is unstable on other platforms.
+ */
+export function chromiumLaunchOptions() {
+  const executablePath = process.env.CHROMIUM_EXECUTABLE_PATH;
+  if (!executablePath) {
+    return { headless: true as const };
+  }
+  return {
+    headless: true as const,
+    executablePath,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--single-process",
+    ],
+  };
+}
+
 /** Helper: take a full-page screenshot and return base64 string, or undefined on error. */
 async function snap(page: import("playwright").Page): Promise<string | undefined> {
   try {
@@ -77,18 +105,7 @@ export async function executeWithBrowser(
   try {
     const { chromium } = await import("playwright");
 
-    const browser = await chromium.launch({
-      headless: true,
-      // Use the system Chromium installed via Nix — has all required shared libs
-      executablePath: "/nix/store/qa9cnw4v5xkxyip6mb9kxqfq1z4x2dx1-chromium-138.0.7204.100/bin/chromium",
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-        "--single-process",
-      ],
-    });
+    const browser = await chromium.launch(chromiumLaunchOptions());
 
     const context = await browser.newContext({
       viewport: { width: 1280, height: 900 },
