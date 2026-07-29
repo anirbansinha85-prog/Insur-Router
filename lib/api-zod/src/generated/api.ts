@@ -443,7 +443,22 @@ export const IngestDmsPullResponse = zod.object({
   "ok": zod.boolean(),
   "error": zod.string().nullable(),
   "durationMs": zod.number()
-}).describe('One engine attempt within a fallback chain')).optional().describe('Every engine tried, in order, including failures. OCR only.')
+}).describe('One engine attempt within a fallback chain')).optional().describe('Every engine tried, in order, including failures. OCR only.'),
+  "document": zod.union([zod.object({
+  "documentType": zod.enum(['RC_BOOK', 'DEALER_INVOICE', 'AADHAAR', 'PAN', 'DRIVING_LICENCE', 'INSURANCE_POLICY', 'OTHER']),
+  "documentTypeConfidence": zod.number(),
+  "issuer": zod.string().nullable(),
+  "summary": zod.string(),
+  "fields": zod.array(zod.object({
+  "label": zod.string().describe('The label exactly as printed on the document'),
+  "value": zod.string(),
+  "group": zod.enum(['vehicle', 'owner', 'rto', 'policy', 'other']),
+  "confidence": zod.number()
+}).describe('One labelled value, using the document\'s own printed label')),
+  "rawText": zod.string().nullish()
+}).describe('Stage 1 — what the document is and everything printed on it'),zod.null()]).optional().describe('Stage 1 output — the document as the model actually read it.'),
+  "provenance": zod.record(zod.string(), zod.string().nullable()).optional().describe('MSA field name to the document label it came from, null if unmapped.'),
+  "mappingMethod": zod.union([zod.literal('llm'),zod.literal('rules'),zod.literal(null)]).nullish().describe('How stage 2 resolved — an LLM call, or the deterministic fallback.')
 }).describe('Extracted MSA fields from any ingest source')
 
 
@@ -489,7 +504,22 @@ export const IngestBrowserScrapeResponse = zod.object({
   "ok": zod.boolean(),
   "error": zod.string().nullable(),
   "durationMs": zod.number()
-}).describe('One engine attempt within a fallback chain')).optional().describe('Every engine tried, in order, including failures. OCR only.')
+}).describe('One engine attempt within a fallback chain')).optional().describe('Every engine tried, in order, including failures. OCR only.'),
+  "document": zod.union([zod.object({
+  "documentType": zod.enum(['RC_BOOK', 'DEALER_INVOICE', 'AADHAAR', 'PAN', 'DRIVING_LICENCE', 'INSURANCE_POLICY', 'OTHER']),
+  "documentTypeConfidence": zod.number(),
+  "issuer": zod.string().nullable(),
+  "summary": zod.string(),
+  "fields": zod.array(zod.object({
+  "label": zod.string().describe('The label exactly as printed on the document'),
+  "value": zod.string(),
+  "group": zod.enum(['vehicle', 'owner', 'rto', 'policy', 'other']),
+  "confidence": zod.number()
+}).describe('One labelled value, using the document\'s own printed label')),
+  "rawText": zod.string().nullish()
+}).describe('Stage 1 — what the document is and everything printed on it'),zod.null()]).optional().describe('Stage 1 output — the document as the model actually read it.'),
+  "provenance": zod.record(zod.string(), zod.string().nullable()).optional().describe('MSA field name to the document label it came from, null if unmapped.'),
+  "mappingMethod": zod.union([zod.literal('llm'),zod.literal('rules'),zod.literal(null)]).nullish().describe('How stage 2 resolved — an LLM call, or the deterministic fallback.')
 }).describe('Extracted MSA fields from any ingest source')
 
 
@@ -533,7 +563,22 @@ export const IngestOcrResponse = zod.object({
   "ok": zod.boolean(),
   "error": zod.string().nullable(),
   "durationMs": zod.number()
-}).describe('One engine attempt within a fallback chain')).optional().describe('Every engine tried, in order, including failures. OCR only.')
+}).describe('One engine attempt within a fallback chain')).optional().describe('Every engine tried, in order, including failures. OCR only.'),
+  "document": zod.union([zod.object({
+  "documentType": zod.enum(['RC_BOOK', 'DEALER_INVOICE', 'AADHAAR', 'PAN', 'DRIVING_LICENCE', 'INSURANCE_POLICY', 'OTHER']),
+  "documentTypeConfidence": zod.number(),
+  "issuer": zod.string().nullable(),
+  "summary": zod.string(),
+  "fields": zod.array(zod.object({
+  "label": zod.string().describe('The label exactly as printed on the document'),
+  "value": zod.string(),
+  "group": zod.enum(['vehicle', 'owner', 'rto', 'policy', 'other']),
+  "confidence": zod.number()
+}).describe('One labelled value, using the document\'s own printed label')),
+  "rawText": zod.string().nullish()
+}).describe('Stage 1 — what the document is and everything printed on it'),zod.null()]).optional().describe('Stage 1 output — the document as the model actually read it.'),
+  "provenance": zod.record(zod.string(), zod.string().nullable()).optional().describe('MSA field name to the document label it came from, null if unmapped.'),
+  "mappingMethod": zod.union([zod.literal('llm'),zod.literal('rules'),zod.literal(null)]).nullish().describe('How stage 2 resolved — an LLM call, or the deterministic fallback.')
 }).describe('Extracted MSA fields from any ingest source')
 
 
@@ -607,7 +652,20 @@ export const IngestPushBody = zod.object({
   "rtoRegistrationCity": zod.string(),
   "rtoRegistrationState": zod.string(),
   "rtoCode": zod.string()
-}).describe('Normalised vehicle + owner + RTO fields for an MSA payload')
+}).describe('Normalised vehicle + owner + RTO fields for an MSA payload'),
+  "document": zod.union([zod.object({
+  "documentType": zod.enum(['RC_BOOK', 'DEALER_INVOICE', 'AADHAAR', 'PAN', 'DRIVING_LICENCE', 'INSURANCE_POLICY', 'OTHER']),
+  "documentTypeConfidence": zod.number(),
+  "issuer": zod.string().nullable(),
+  "summary": zod.string(),
+  "fields": zod.array(zod.object({
+  "label": zod.string().describe('The label exactly as printed on the document'),
+  "value": zod.string(),
+  "group": zod.enum(['vehicle', 'owner', 'rto', 'policy', 'other']),
+  "confidence": zod.number()
+}).describe('One labelled value, using the document\'s own printed label')),
+  "rawText": zod.string().nullish()
+}).describe('Stage 1 — what the document is and everything printed on it'),zod.null()]).optional().describe('Stage 1 extraction, stored against the application as an audit trail of what the OCR actually read. Optional — non-OCR sources omit it.')
 })
 
 export const IngestPushResponse = zod.object({

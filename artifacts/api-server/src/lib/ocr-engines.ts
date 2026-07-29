@@ -1,23 +1,34 @@
 /**
- * OCR engine registry and automatic fallback chain.
+ * OCR engine registry and the two-stage extraction chain.
  *
  * An engine is usable only when all three hold:
  *   isImplemented — a real integration exists (not a TODO)
  *   isConfigured  — its API key is present in the environment
  *   isEnabled     — the operator has it switched on (ocr_engines table)
  *
- * The chain tries each usable engine in priority order and returns the first
- * success, recording every attempt so the UI can explain what happened.
+ * Engines expose transport only — `runVision` returns the model's raw text for
+ * a given prompt, `runText` does the same without an image. All prompt design
+ * and parsing lives in document-extraction.ts, so adding a provider never means
+ * touching extraction logic.
  *
  * ── The stub is deliberately never reachable automatically ──────────────────
- * `stub` returns a fabricated Yamaha FZ-S with an invented chassis number and
- * Aadhaar number, at high confidence. If a key expired and the chain quietly
+ * `stub` returns a fabricated RC book. If a key expired and the chain quietly
  * fell through to it, that fiction would flow into a real insurance application
  * looking like genuine OCR output. So `autoEligible` is false for stub, and it
  * runs only when named explicitly. Results from it are flagged `isDemoData`.
  */
 
 import { logger } from "./logger";
+import {
+  DOCUMENT_EXTRACTION_PROMPT,
+  buildMappingPrompt,
+  parseDocumentExtraction,
+  parseMappingResponse,
+  mapDocumentToMsaByRules,
+  type DocumentExtraction,
+  type IngestResult,
+  type OcrAttempt,
+} from "./document-extraction";
 
 export type OcrEngineId =
   | "paddleocr"
@@ -28,47 +39,12 @@ export type OcrEngineId =
   | "openrouter"
   | "stub";
 
-export interface MsaFields {
-  vehicleMake: string;
-  vehicleModel: string;
-  vehicleVariant: string;
-  vehicleEngineNumber: string;
-  vehicleChassisNumber: string;
-  vehicleExShowroomPrice: number;
-  vehicleDateOfPurchase: string;
-  ownerFullName: string;
-  ownerBillingAddress: string;
-  ownerPincode: number;
-  ownerPhoneNumber: string;
-  ownerEmail: string;
-  ownerDateOfBirth: string;
-  ownerIdProofType:
-    | "AADHAR"
-    | "PAN"
-    | "PASSPORT"
-    | "DRIVING_LICENSE"
-    | "VOTER_ID";
-  ownerIdProofNumber: string;
-  rtoRegistrationCity: string;
-  rtoRegistrationState: string;
-  rtoCode: string;
-}
-
-export interface IngestResult {
-  fields: MsaFields;
-  confidence: Record<string, number>;
-  rawText?: string | null;
-  engineUsed?: string | null;
-  isDemoData?: boolean;
-  attempts?: OcrAttempt[];
-}
-
-export interface OcrAttempt {
-  engineId: OcrEngineId;
-  ok: boolean;
-  error: string | null;
-  durationMs: number;
-}
+export type {
+  MsaFields,
+  IngestResult,
+  OcrAttempt,
+  DocumentExtraction,
+} from "./document-extraction";
 
 interface EngineDefinition {
   id: OcrEngineId;
@@ -83,7 +59,15 @@ interface EngineDefinition {
   defaultPriority: number;
   defaultEnabled: boolean;
   isConfigured(): boolean;
-  run(imageBase64: string, mimeType: string, signal: AbortSignal): Promise<IngestResult>;
+  /** Stage 1. Returns the model's raw text response. */
+  runVision(
+    imageBase64: string,
+    mimeType: string,
+    prompt: string,
+    signal: AbortSignal,
+  ): Promise<string>;
+  /** Stage 2. Absent means this engine cannot map, so rules are used instead. */
+  runText?(prompt: string, signal: AbortSignal): Promise<string>;
   /** Explains why the engine is unusable, when it is. */
   unavailableReason?(): string | null;
 }
@@ -91,168 +75,36 @@ interface EngineDefinition {
 /** Per-attempt deadline. A hung provider must not stall the whole chain. */
 const OCR_TIMEOUT_MS = Number(process.env.OCR_TIMEOUT_MS ?? 45_000);
 
-const ID_PROOF_TYPES = [
-  "AADHAR",
-  "PAN",
-  "PASSPORT",
-  "DRIVING_LICENSE",
-  "VOTER_ID",
-] as const;
-
-/** Shared prompt asking the model to extract RC-book/invoice fields as JSON. */
-export const OCR_EXTRACTION_PROMPT = `You are processing an Indian vehicle Registration Certificate (RC Book) or dealer invoice image.
-Extract all visible text and identify the following fields. Return a single JSON object — no markdown, no extra text.
-
-Required JSON structure:
-{
-  "vehicleMake": "manufacturer e.g. Yamaha, Honda, TVS, Bajaj, Royal Enfield, Hero",
-  "vehicleModel": "model name e.g. FZ-S, CB350",
-  "vehicleVariant": "variant e.g. V3.0 Fi, Standard, or empty string if not visible",
-  "vehicleEngineNumber": "engine number from document",
-  "vehicleChassisNumber": "chassis/VIN number",
-  "vehicleExShowroomPrice": numeric price in INR or 0,
-  "vehicleDateOfPurchase": "YYYY-MM-DD or empty string",
-  "ownerFullName": "owner full name",
-  "ownerBillingAddress": "full address string",
-  "ownerPincode": numeric 6-digit pincode or 0,
-  "ownerPhoneNumber": "10-digit phone number or empty string",
-  "ownerEmail": "email if visible or empty string",
-  "ownerDateOfBirth": "YYYY-MM-DD or empty string",
-  "ownerIdProofType": "AADHAR or PAN or PASSPORT or DRIVING_LICENSE or VOTER_ID",
-  "ownerIdProofNumber": "ID number or empty string",
-  "rtoRegistrationCity": "city where vehicle is registered",
-  "rtoRegistrationState": "state e.g. Delhi, Maharashtra",
-  "rtoCode": "RTO code e.g. DL01, MH02",
-  "confidence": {
-    "vehicleMake": 0.0 to 1.0,
-    "vehicleModel": 0.0 to 1.0,
-    "vehicleVariant": 0.0 to 1.0,
-    "vehicleEngineNumber": 0.0 to 1.0,
-    "vehicleChassisNumber": 0.0 to 1.0,
-    "vehicleExShowroomPrice": 0.0 to 1.0,
-    "vehicleDateOfPurchase": 0.0 to 1.0,
-    "ownerFullName": 0.0 to 1.0,
-    "ownerBillingAddress": 0.0 to 1.0,
-    "ownerPincode": 0.0 to 1.0,
-    "ownerPhoneNumber": 0.0 to 1.0,
-    "ownerEmail": 0.0 to 1.0,
-    "ownerDateOfBirth": 0.0 to 1.0,
-    "ownerIdProofType": 0.0 to 1.0,
-    "ownerIdProofNumber": 0.0 to 1.0,
-    "rtoRegistrationCity": 0.0 to 1.0,
-    "rtoRegistrationState": 0.0 to 1.0,
-    "rtoCode": 0.0 to 1.0
-  }
-}
-
-Confidence rules:
-- 0.90–1.00: text is clear, unambiguous, and directly matches a known format
-- 0.70–0.89: text is readable but could have minor ambiguity
-- 0.40–0.69: partially visible, blurry, or inferred from context
-- 0.20–0.39: guessed or not visible in the document
-
-Return ONLY the JSON object. No markdown fences, no prose.`;
+// ─── Transport: OpenAI-compatible ────────────────────────────────────────────
 
 /**
- * Parses the JSON blob returned by a vision-language model into MsaFields.
- *
- * Only ever call this on output from a model prompted with
- * OCR_EXTRACTION_PROMPT. Raw-text OCR engines (PaddleOCR) return text lines,
- * which would JSON-parse-fail and yield silently empty fields — worse than an
- * explicit error. They need their own extractor first.
+ * Shared caller for any OpenAI-compatible /chat/completions endpoint. Used by
+ * both `gpt-vision` (OpenAI proper) and `openrouter` (aggregator), which speak
+ * the identical wire format and differ only in host, key and headers.
  */
-export function parseVisionLLMResponseToMsaFields(rawText: string): IngestResult {
-  let parsed: Record<string, unknown> = {};
-  let confidence: Record<string, number> = {};
-
-  // Strip markdown fences if the model wrapped the JSON in ```json ... ```
-  const stripped = rawText
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/, "")
-    .trim();
-
-  try {
-    const obj = JSON.parse(stripped) as Record<string, unknown>;
-    if (obj.confidence && typeof obj.confidence === "object") {
-      confidence = obj.confidence as Record<string, number>;
-      delete obj.confidence;
-    }
-    parsed = obj;
-  } catch {
-    // A model that returns unparseable output has failed. Throwing here lets
-    // the chain fall through to the next engine instead of handing the
-    // reviewer a silently blank form.
-    logger.warn(
-      { rawText: rawText.slice(0, 300) },
-      "Vision LLM response was not parseable JSON",
-    );
-    throw new Error("Model returned unparseable output (expected a JSON object)");
-  }
-
-  const str = (v: unknown) => (v != null && v !== "null" ? String(v) : "");
-  const num = (v: unknown) => (v != null && !isNaN(Number(v)) ? Number(v) : 0);
-  const idType = (v: unknown): MsaFields["ownerIdProofType"] =>
-    ID_PROOF_TYPES.includes(v as MsaFields["ownerIdProofType"])
-      ? (v as MsaFields["ownerIdProofType"])
-      : "AADHAR";
-
-  const fields: MsaFields = {
-    vehicleMake: str(parsed.vehicleMake),
-    vehicleModel: str(parsed.vehicleModel),
-    vehicleVariant: str(parsed.vehicleVariant),
-    vehicleEngineNumber: str(parsed.vehicleEngineNumber),
-    vehicleChassisNumber: str(parsed.vehicleChassisNumber),
-    vehicleExShowroomPrice: num(parsed.vehicleExShowroomPrice),
-    vehicleDateOfPurchase: str(parsed.vehicleDateOfPurchase),
-    ownerFullName: str(parsed.ownerFullName),
-    ownerBillingAddress: str(parsed.ownerBillingAddress),
-    ownerPincode: num(parsed.ownerPincode),
-    ownerPhoneNumber: str(parsed.ownerPhoneNumber),
-    ownerEmail: str(parsed.ownerEmail),
-    ownerDateOfBirth: str(parsed.ownerDateOfBirth),
-    ownerIdProofType: idType(parsed.ownerIdProofType),
-    ownerIdProofNumber: str(parsed.ownerIdProofNumber),
-    rtoRegistrationCity: str(parsed.rtoRegistrationCity),
-    rtoRegistrationState: str(parsed.rtoRegistrationState),
-    rtoCode: str(parsed.rtoCode),
-  };
-
-  // An engine that produced nothing usable is a failure, not a blank success.
-  const populated = Object.values(fields).filter(
-    (v) => v !== "" && v !== 0,
-  ).length;
-  if (populated === 0) {
-    throw new Error("Model returned no recognisable fields");
-  }
-
-  for (const k of Object.keys(fields) as (keyof MsaFields)[]) {
-    if (confidence[k] === undefined) {
-      confidence[k] = fields[k] ? 0.65 : 0.2;
-    }
-  }
-
-  return { fields, confidence, rawText };
-}
-
-// ─── Engine implementations ──────────────────────────────────────────────────
-
-/**
- * Shared caller for any OpenAI-compatible /chat/completions vision endpoint.
- * Used by both `gpt-vision` (OpenAI proper) and `openrouter` (aggregator),
- * which speak the identical wire format and differ only in host, key and
- * a couple of headers.
- */
-async function callOpenAiCompatibleVision(opts: {
+async function callOpenAiCompatible(opts: {
   engineId: OcrEngineId;
   providerName: string;
   baseUrl: string;
   apiKey: string | undefined;
   model: string;
-  imageBase64: string;
-  mimeType: string;
+  prompt: string;
+  image?: { base64: string; mimeType: string };
   signal: AbortSignal;
   extraHeaders?: Record<string, string>;
-}): Promise<IngestResult> {
+}): Promise<string> {
+  const content: unknown[] = [];
+  if (opts.image) {
+    content.push({
+      type: "image_url",
+      image_url: {
+        url: `data:${opts.image.mimeType};base64,${opts.image.base64}`,
+        detail: "high",
+      },
+    });
+  }
+  content.push({ type: "text", text: opts.prompt });
+
   const resp = await fetch(`${opts.baseUrl}/chat/completions`, {
     method: "POST",
     signal: opts.signal,
@@ -263,22 +115,9 @@ async function callOpenAiCompatibleVision(opts: {
     },
     body: JSON.stringify({
       model: opts.model,
-      max_tokens: 1500,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "image_url",
-              image_url: {
-                url: `data:${opts.mimeType};base64,${opts.imageBase64}`,
-                detail: "high",
-              },
-            },
-            { type: "text", text: OCR_EXTRACTION_PROMPT },
-          ],
-        },
-      ],
+      max_tokens: 4000,
+      response_format: { type: "json_object" },
+      messages: [{ role: "user", content }],
     }),
   });
 
@@ -301,110 +140,57 @@ async function callOpenAiCompatibleVision(opts: {
   }
 
   const rawText = data?.choices?.[0]?.message?.content ?? "";
-
   logger.info(
     { engine: opts.engineId, model: opts.model, rawLen: rawText.length },
-    `${opts.providerName} OCR response received`,
+    `${opts.providerName} response received`,
   );
-  return parseVisionLLMResponseToMsaFields(rawText);
+  return rawText;
 }
 
-async function runGptVision(
-  imageBase64: string,
-  mimeType: string,
-  signal: AbortSignal,
-): Promise<IngestResult> {
-  return callOpenAiCompatibleVision({
-    engineId: "gpt-vision",
-    providerName: "OpenAI",
-    baseUrl:
-      process.env.AI_INTEGRATIONS_OPENAI_BASE_URL ?? "https://api.openai.com/v1",
-    apiKey:
-      process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? process.env.OPENAI_API_KEY,
-    model: process.env.OPENAI_VISION_MODEL ?? "gpt-4o",
-    imageBase64,
-    mimeType,
-    signal,
-  });
-}
+// ─── Transport: Gemini native ────────────────────────────────────────────────
 
 /**
- * OpenRouter — one key, many upstream models, OpenAI-compatible.
- *
- * Free-tier models carry a ":free" suffix and the roster changes often, so the
- * model is configurable and the default is only a starting point. If it has
- * been retired, OpenRouter returns a clear "model not found" and the chain
- * falls through to the next engine.
+ * Google Gemini via the native API rather than its OpenAI-compatible shim, so
+ * we can set responseMimeType: "application/json". That constrains the model to
+ * emit valid JSON, removing the most common parse failure — prose or markdown
+ * fences wrapped around the object.
  */
-async function runOpenRouter(
-  imageBase64: string,
-  mimeType: string,
-  signal: AbortSignal,
-): Promise<IngestResult> {
-  return callOpenAiCompatibleVision({
-    engineId: "openrouter",
-    providerName: "OpenRouter",
-    baseUrl: process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1",
-    apiKey: process.env.OPENROUTER_API_KEY,
-    model: process.env.OPENROUTER_VISION_MODEL ?? "google/gemma-4-31b-it:free",
-    imageBase64,
-    mimeType,
-    signal,
-    // OpenRouter uses these for attribution on its dashboard; both optional.
-    extraHeaders: {
-      "HTTP-Referer": process.env.OPENROUTER_SITE_URL ?? "http://localhost",
-      "X-Title": "InsurRouter / VeloDocs",
-    },
-  });
-}
-
-/**
- * Google Gemini via the native API.
- *
- * Uses the native endpoint rather than Google's OpenAI-compatible shim so we
- * can set responseMimeType: "application/json", which constrains the model to
- * emit valid JSON. That removes the most common failure mode for the shared
- * parser — prose or markdown fences wrapped around the object.
- *
- * The Flash tier is free and multimodal, which makes this the cheapest real
- * OCR path in the registry.
- */
-async function runGemini(
-  imageBase64: string,
-  mimeType: string,
-  signal: AbortSignal,
-): Promise<IngestResult> {
+async function callGemini(opts: {
+  prompt: string;
+  image?: { base64: string; mimeType: string };
+  signal: AbortSignal;
+}): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY;
   // Default to the moving alias, not a pinned version. Google retires specific
-  // versions for new accounts without removing them from the models list —
+  // versions for new accounts WITHOUT removing them from the models list —
   // gemini-2.5-flash still lists but 404s with "no longer available to new
   // users". The alias always resolves to the current Flash, so this cannot rot.
-  // Pin a version via GEMINI_VISION_MODEL only if you need reproducibility.
   const model = process.env.GEMINI_VISION_MODEL ?? "gemini-flash-latest";
   const baseUrl =
     process.env.GEMINI_BASE_URL ??
     "https://generativelanguage.googleapis.com/v1beta";
 
+  const parts: unknown[] = [];
+  if (opts.image) {
+    parts.push({
+      inline_data: { mime_type: opts.image.mimeType, data: opts.image.base64 },
+    });
+  }
+  parts.push({ text: opts.prompt });
+
   const resp = await fetch(`${baseUrl}/models/${model}:generateContent`, {
     method: "POST",
-    signal,
+    signal: opts.signal,
     headers: {
       // Header rather than ?key= so the credential stays out of URL logs.
       "x-goog-api-key": apiKey ?? "",
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      contents: [
-        {
-          parts: [
-            { inline_data: { mime_type: mimeType, data: imageBase64 } },
-            { text: OCR_EXTRACTION_PROMPT },
-          ],
-        },
-      ],
+      contents: [{ parts }],
       generationConfig: {
         responseMimeType: "application/json",
-        maxOutputTokens: 2048,
+        maxOutputTokens: 8192,
       },
     }),
   });
@@ -428,46 +214,45 @@ async function runGemini(
     );
   }
 
-  const rawText =
-    data?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ??
-    "";
+  const candidate = data?.candidates?.[0];
+  if (candidate?.finishReason === "MAX_TOKENS") {
+    throw new Error(
+      "Gemini hit the output token limit before completing the JSON",
+    );
+  }
 
-  logger.info(
-    { engine: "gemini", model, rawLen: rawText.length },
-    "Gemini OCR response received",
-  );
-  return parseVisionLLMResponseToMsaFields(rawText);
+  const rawText =
+    candidate?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
+  logger.info({ engine: "gemini", model, rawLen: rawText.length }, "Gemini response received");
+  return rawText;
 }
 
-async function runQwenVl(
-  imageBase64: string,
-  mimeType: string,
-  signal: AbortSignal,
-): Promise<IngestResult> {
+// ─── Transport: DashScope (Qwen) ─────────────────────────────────────────────
+
+async function callQwen(opts: {
+  prompt: string;
+  image?: { base64: string; mimeType: string };
+  signal: AbortSignal;
+}): Promise<string> {
   const apiKey = process.env.DASHSCOPE_API_KEY;
+  const content: unknown[] = [];
+  if (opts.image) {
+    content.push({ image: `data:${opts.image.mimeType};base64,${opts.image.base64}` });
+  }
+  content.push({ text: opts.prompt });
 
   const resp = await fetch(
     "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
     {
       method: "POST",
-      signal,
+      signal: opts.signal,
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         model: process.env.DASHSCOPE_VISION_MODEL ?? "qwen-vl-plus",
-        input: {
-          messages: [
-            {
-              role: "user",
-              content: [
-                { image: `data:${mimeType};base64,${imageBase64}` },
-                { text: OCR_EXTRACTION_PROMPT },
-              ],
-            },
-          ],
-        },
+        input: { messages: [{ role: "user", content }] },
         parameters: { result_format: "message" },
       }),
     },
@@ -475,16 +260,12 @@ async function runQwenVl(
 
   if (!resp.ok) {
     const errBody = await resp.text().catch(() => "");
-    throw new Error(
-      `DashScope API error ${resp.status}: ${errBody.slice(0, 300)}`,
-    );
+    throw new Error(`DashScope API error ${resp.status}: ${errBody.slice(0, 300)}`);
   }
 
   const data = (await resp.json()) as {
     output?: {
-      choices?: Array<{
-        message?: { content?: Array<{ text?: string }> | string };
-      }>;
+      choices?: Array<{ message?: { content?: Array<{ text?: string }> | string } }>;
     };
   };
   const contentArr = data?.output?.choices?.[0]?.message?.content;
@@ -492,65 +273,59 @@ async function runQwenVl(
     ? contentArr.map((c) => c.text ?? "").join("")
     : String(contentArr ?? "");
 
-  logger.info(
-    { engine: "qwen-vl", rawLen: rawText.length },
-    "DashScope OCR response received",
-  );
-  return parseVisionLLMResponseToMsaFields(rawText);
+  logger.info({ engine: "qwen-vl", rawLen: rawText.length }, "DashScope response received");
+  return rawText;
 }
+
+// ─── Stub ────────────────────────────────────────────────────────────────────
 
 /**
- * Stub OCR — a realistic hardcoded RC-book extraction, for testing the review
- * and push flow without an API key. A Yamaha FZ-S registered in Delhi.
- * Every value here is invented.
+ * A fabricated RC book, shaped exactly like a real stage-1 extraction so the
+ * rest of the pipeline is exercised identically. Every value here is invented.
+ *
+ * The stub deliberately provides no `runText`, so stage 2 falls to the
+ * deterministic rules mapper — meaning every stub run is also a live test of
+ * the fallback path.
  */
-function runStub(): IngestResult {
-  const fields: MsaFields = {
-    vehicleMake: "Yamaha",
-    vehicleModel: "FZ-S",
-    vehicleVariant: "V3.0 Fi",
-    vehicleEngineNumber: "E5C3E0123456",
-    vehicleChassisNumber: "ME1RG8219M0012345",
-    vehicleExShowroomPrice: 122400,
-    vehicleDateOfPurchase: "2022-11-10",
-    ownerFullName: "Priya Mehra",
-    ownerBillingAddress: "B-74, Lajpat Nagar, New Delhi",
-    ownerPincode: 110024,
-    ownerPhoneNumber: "9811223344",
-    ownerEmail: "priya.mehra@gmail.com",
-    ownerDateOfBirth: "1992-04-15",
-    ownerIdProofType: "AADHAR",
-    ownerIdProofNumber: "9988-7766-5544",
-    rtoRegistrationCity: "New Delhi",
-    rtoRegistrationState: "Delhi",
-    rtoCode: "DL01",
-  };
-
-  const confidence: Record<string, number> = {
-    vehicleMake: 0.97,
-    vehicleModel: 0.95,
-    vehicleVariant: 0.72,
-    vehicleEngineNumber: 0.88,
-    vehicleChassisNumber: 0.91,
-    vehicleExShowroomPrice: 0.6,
-    vehicleDateOfPurchase: 0.85,
-    ownerFullName: 0.93,
-    ownerBillingAddress: 0.78,
-    ownerPincode: 0.82,
-    ownerPhoneNumber: 0.55,
-    ownerEmail: 0.45,
-    ownerDateOfBirth: 0.8,
-    ownerIdProofType: 0.9,
-    ownerIdProofNumber: 0.65,
-    rtoRegistrationCity: 0.92,
-    rtoRegistrationState: 0.94,
-    rtoCode: 0.96,
-  };
-
-  const rawText = `REGISTRATION CERTIFICATE\nReg No: DL01AB5678\nOwner: PRIYA MEHRA\nAddress: B-74, LAJPAT NAGAR, NEW DELHI - 110024\nVehicle Class: M-Cycle/Scooter\nMaker: YAMAHA MOTOR INDIA\nModel: FZ-S V3.0 Fi\nChasis No: ME1RG8219M0012345\nEngine No: E5C3E0123456\nDate of Registration: 10/11/2022\nFuel: PETROL\nRTO: DL-01, KAMLA NAGAR, NEW DELHI`;
-
-  return { fields, confidence, rawText, isDemoData: true };
-}
+const STUB_DOCUMENT: DocumentExtraction = {
+  documentType: "RC_BOOK",
+  documentTypeConfidence: 0.99,
+  issuer: "Motor Vehicles Department, Government of NCT of Delhi",
+  summary:
+    "Vehicle registration certificate for a Yamaha FZ-S registered at RTO Delhi (DL01).",
+  fields: [
+    { label: "Registration Number", value: "DL01 AB 5678", group: "rto", confidence: 0.96 },
+    { label: "Registered Owner", value: "PRIYA MEHRA", group: "owner", confidence: 0.93 },
+    { label: "Address", value: "B-74, Lajpat Nagar, New Delhi - 110024", group: "owner", confidence: 0.78 },
+    { label: "Date of Birth", value: "15-04-1992", group: "owner", confidence: 0.8 },
+    { label: "Mobile Number", value: "9811223344", group: "owner", confidence: 0.55 },
+    { label: "Aadhaar Number", value: "9988-7766-5544", group: "owner", confidence: 0.65 },
+    { label: "Maker", value: "YAMAHA MOTOR INDIA", group: "vehicle", confidence: 0.97 },
+    { label: "Model", value: "FZ-S", group: "vehicle", confidence: 0.95 },
+    { label: "Variant", value: "V3.0 Fi", group: "vehicle", confidence: 0.72 },
+    { label: "Vehicle Class", value: "M-Cycle/Scooter", group: "vehicle", confidence: 0.94 },
+    { label: "Chassis No.", value: "ME1RG8219M0012345", group: "vehicle", confidence: 0.91 },
+    { label: "Engine No.", value: "E5C3E0123456", group: "vehicle", confidence: 0.88 },
+    { label: "Fuel Type", value: "PETROL", group: "vehicle", confidence: 0.96 },
+    { label: "Ex-Showroom Price", value: "Rs. 1,22,400/-", group: "vehicle", confidence: 0.6 },
+    { label: "Date of Registration", value: "10-11-2022", group: "vehicle", confidence: 0.85 },
+    { label: "Registration City", value: "New Delhi", group: "rto", confidence: 0.92 },
+    { label: "State", value: "Delhi", group: "rto", confidence: 0.94 },
+    { label: "Registering Authority", value: "RTO DL-01, KAMLA NAGAR, NEW DELHI", group: "rto", confidence: 0.9 },
+  ],
+  rawText: `REGISTRATION CERTIFICATE
+Reg No: DL01AB5678
+Owner: PRIYA MEHRA
+Address: B-74, LAJPAT NAGAR, NEW DELHI - 110024
+Vehicle Class: M-Cycle/Scooter
+Maker: YAMAHA MOTOR INDIA
+Model: FZ-S V3.0 Fi
+Chasis No: ME1RG8219M0012345
+Engine No: E5C3E0123456
+Date of Registration: 10/11/2022
+Fuel: PETROL
+RTO: DL-01, KAMLA NAGAR, NEW DELHI`,
+};
 
 // ─── Registry ────────────────────────────────────────────────────────────────
 
@@ -566,7 +341,9 @@ export const OCR_ENGINES: EngineDefinition[] = [
     defaultEnabled: true,
     isConfigured: () =>
       Boolean(process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY),
-    run: runGemini,
+    runVision: (base64, mimeType, prompt, signal) =>
+      callGemini({ prompt, image: { base64, mimeType }, signal }),
+    runText: (prompt, signal) => callGemini({ prompt, signal }),
   },
   {
     id: "gpt-vision",
@@ -580,10 +357,39 @@ export const OCR_ENGINES: EngineDefinition[] = [
       Boolean(
         process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? process.env.OPENAI_API_KEY,
       ),
-    run: runGptVision,
+    runVision: (base64, mimeType, prompt, signal) =>
+      callOpenAiCompatible({
+        engineId: "gpt-vision",
+        providerName: "OpenAI",
+        baseUrl:
+          process.env.AI_INTEGRATIONS_OPENAI_BASE_URL ??
+          "https://api.openai.com/v1",
+        apiKey:
+          process.env.AI_INTEGRATIONS_OPENAI_API_KEY ??
+          process.env.OPENAI_API_KEY,
+        model: process.env.OPENAI_VISION_MODEL ?? "gpt-4o",
+        prompt,
+        image: { base64, mimeType },
+        signal,
+      }),
+    runText: (prompt, signal) =>
+      callOpenAiCompatible({
+        engineId: "gpt-vision",
+        providerName: "OpenAI",
+        baseUrl:
+          process.env.AI_INTEGRATIONS_OPENAI_BASE_URL ??
+          "https://api.openai.com/v1",
+        apiKey:
+          process.env.AI_INTEGRATIONS_OPENAI_API_KEY ??
+          process.env.OPENAI_API_KEY,
+        // Stage 2 is text-only, so a cheaper model is enough.
+        model: process.env.OPENAI_TEXT_MODEL ?? "gpt-4o-mini",
+        prompt,
+        signal,
+      }),
   },
   {
-    // Aggregator: one key, many upstream models, several free ones.
+    // Aggregator: one key, many upstream models, several free.
     id: "openrouter",
     label: "OpenRouter (aggregator — free models available)",
     isImplemented: true,
@@ -592,7 +398,39 @@ export const OCR_ENGINES: EngineDefinition[] = [
     defaultPriority: 15,
     defaultEnabled: true,
     isConfigured: () => Boolean(process.env.OPENROUTER_API_KEY),
-    run: runOpenRouter,
+    runVision: (base64, mimeType, prompt, signal) =>
+      callOpenAiCompatible({
+        engineId: "openrouter",
+        providerName: "OpenRouter",
+        baseUrl: process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1",
+        apiKey: process.env.OPENROUTER_API_KEY,
+        model:
+          process.env.OPENROUTER_VISION_MODEL ?? "google/gemma-4-31b-it:free",
+        prompt,
+        image: { base64, mimeType },
+        signal,
+        extraHeaders: {
+          "HTTP-Referer": process.env.OPENROUTER_SITE_URL ?? "http://localhost",
+          "X-Title": "InsurRouter / VeloDocs",
+        },
+      }),
+    runText: (prompt, signal) =>
+      callOpenAiCompatible({
+        engineId: "openrouter",
+        providerName: "OpenRouter",
+        baseUrl: process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1",
+        apiKey: process.env.OPENROUTER_API_KEY,
+        model:
+          process.env.OPENROUTER_TEXT_MODEL ??
+          process.env.OPENROUTER_VISION_MODEL ??
+          "google/gemma-4-31b-it:free",
+        prompt,
+        signal,
+        extraHeaders: {
+          "HTTP-Referer": process.env.OPENROUTER_SITE_URL ?? "http://localhost",
+          "X-Title": "InsurRouter / VeloDocs",
+        },
+      }),
   },
   {
     id: "qwen-vl",
@@ -603,7 +441,9 @@ export const OCR_ENGINES: EngineDefinition[] = [
     defaultPriority: 20,
     defaultEnabled: true,
     isConfigured: () => Boolean(process.env.DASHSCOPE_API_KEY),
-    run: runQwenVl,
+    runVision: (base64, mimeType, prompt, signal) =>
+      callQwen({ prompt, image: { base64, mimeType }, signal }),
+    runText: (prompt, signal) => callQwen({ prompt, signal }),
   },
   {
     id: "paddleocr",
@@ -614,9 +454,9 @@ export const OCR_ENGINES: EngineDefinition[] = [
     defaultPriority: 30,
     defaultEnabled: false,
     isConfigured: () => Boolean(process.env.PADDLEOCR_API_URL),
-    run: async () => {
+    runVision: async () => {
       throw new Error(
-        "PaddleOCR returns raw text lines, not the structured JSON the shared parser expects. A dedicated text-to-MsaFields extractor is needed before it can be wired.",
+        "PaddleOCR returns raw text lines, not the structured JSON stage 1 expects. It needs a text-to-fields extractor before it can be wired.",
       );
     },
     unavailableReason: () =>
@@ -631,7 +471,7 @@ export const OCR_ENGINES: EngineDefinition[] = [
     defaultPriority: 40,
     defaultEnabled: false,
     isConfigured: () => false,
-    run: async () => {
+    runVision: async () => {
       throw new Error("olmOCR is not yet integrated.");
     },
     unavailableReason: () => "Not integrated",
@@ -646,7 +486,9 @@ export const OCR_ENGINES: EngineDefinition[] = [
     defaultPriority: 99,
     defaultEnabled: true,
     isConfigured: () => true,
-    run: async () => runStub(),
+    runVision: async () => JSON.stringify(STUB_DOCUMENT),
+    // No runText on purpose — stage 2 uses the rules mapper, so every stub run
+    // exercises the deterministic fallback path.
   },
 ];
 
@@ -747,12 +589,62 @@ export function resolveChain(
   return [requested, ...autoChain.filter((id) => id !== requested)];
 }
 
+export class OcrChainError extends Error {
+  constructor(
+    message: string,
+    public readonly attempts: OcrAttempt[],
+  ) {
+    super(message);
+    this.name = "OcrChainError";
+  }
+}
+
+/**
+ * Stage 2. Ask the engine to map the extraction onto MSA fields; if it cannot
+ * or the call fails, fall back to deterministic label matching so a mapping
+ * outage degrades to a partial result rather than losing stage 1's work.
+ */
+async function mapToMsa(
+  engine: EngineDefinition,
+  doc: DocumentExtraction,
+): Promise<{
+  fields: IngestResult["fields"];
+  provenance: Record<string, string | null>;
+  confidence: Record<string, number>;
+  mappingMethod: "llm" | "rules";
+}> {
+  if (engine.runText) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), OCR_TIMEOUT_MS);
+    try {
+      const raw = await engine.runText(
+        buildMappingPrompt(doc),
+        controller.signal,
+      );
+      const mapped = parseMappingResponse(raw);
+      return { ...mapped, mappingMethod: "llm" };
+    } catch (err) {
+      logger.warn(
+        { engineId: engine.id, err: err instanceof Error ? err.message : err },
+        "Stage 2 mapping failed, falling back to rules",
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  return { ...mapDocumentToMsaByRules(doc), mappingMethod: "rules" };
+}
+
 export interface ChainOutcome {
   result: IngestResult;
   attempts: OcrAttempt[];
 }
 
-/** Run the chain, returning the first success. Throws if every engine fails. */
+/**
+ * Run the chain: stage 1 on each engine until one produces a readable document,
+ * then stage 2 on that same engine. Throws if every engine fails stage 1.
+ */
 export async function runOcrChain(
   chain: OcrEngineId[],
   imageBase64: string,
@@ -770,12 +662,7 @@ export async function runOcrChain(
   for (const engineId of chain) {
     const engine = getEngine(engineId);
     if (!engine) {
-      attempts.push({
-        engineId,
-        ok: false,
-        error: "Unknown engine",
-        durationMs: 0,
-      });
+      attempts.push({ engineId, ok: false, error: "Unknown engine", durationMs: 0 });
       continue;
     }
 
@@ -784,19 +671,55 @@ export async function runOcrChain(
     const timer = setTimeout(() => controller.abort(), OCR_TIMEOUT_MS);
 
     try {
-      const result = await engine.run(imageBase64, mimeType, controller.signal);
+      // ── Stage 1: what is this document, and what does it say? ────────────
+      const raw = await engine.runVision(
+        imageBase64,
+        mimeType,
+        DOCUMENT_EXTRACTION_PROMPT,
+        controller.signal,
+      );
+      const document = parseDocumentExtraction(raw);
+      clearTimeout(timer);
+
       attempts.push({
         engineId,
         ok: true,
         error: null,
         durationMs: Date.now() - startedAt,
       });
-      logger.info({ engineId, attempts: attempts.length }, "OCR succeeded");
+
+      // ── Stage 2: map that document onto the MSA payload ──────────────────
+      const { fields, provenance, confidence, mappingMethod } = await mapToMsa(
+        engine,
+        document,
+      );
+
+      logger.info(
+        {
+          engineId,
+          documentType: document.documentType,
+          docFields: document.fields.length,
+          mappingMethod,
+        },
+        "Extraction complete",
+      );
+
       return {
-        result: { ...result, engineUsed: engineId, attempts },
+        result: {
+          fields,
+          confidence,
+          provenance,
+          document,
+          mappingMethod,
+          rawText: document.rawText,
+          engineUsed: engineId,
+          isDemoData: engineId === "stub",
+          attempts,
+        },
         attempts,
       };
     } catch (err) {
+      clearTimeout(timer);
       const aborted = controller.signal.aborted;
       const message = aborted
         ? `Timed out after ${OCR_TIMEOUT_MS}ms`
@@ -810,8 +733,6 @@ export async function runOcrChain(
         durationMs: Date.now() - startedAt,
       });
       logger.warn({ engineId, err: message }, "OCR engine failed, trying next");
-    } finally {
-      clearTimeout(timer);
     }
   }
 
@@ -821,14 +742,4 @@ export async function runOcrChain(
       .join("; ")}`,
     attempts,
   );
-}
-
-export class OcrChainError extends Error {
-  constructor(
-    message: string,
-    public readonly attempts: OcrAttempt[],
-  ) {
-    super(message);
-    this.name = "OcrChainError";
-  }
 }

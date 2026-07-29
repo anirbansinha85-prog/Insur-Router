@@ -64,6 +64,14 @@ export const applicationsTable = pgTable("applications", {
   rtoCode: text("rto_code").notNull(),
   // Validation
   validationErrors: jsonb("validation_errors").$type<string[]>(),
+  /**
+   * Stage 1 OCR extraction, kept as an audit trail of what the model actually
+   * read off the document — document type, every printed label/value pair, and
+   * the raw text. Null for applications created by hand or from non-OCR
+   * sources. Deliberately not normalised into columns: its shape varies by
+   * document type and it is evidence, not queryable business data.
+   */
+  sourceDocument: jsonb("source_document").$type<Record<string, unknown>>(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

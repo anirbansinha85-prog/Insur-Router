@@ -5,8 +5,11 @@
  * InsurRouter API - Two-wheeler insurance application routing engine
  * OpenAPI spec version: 0.1.0
  */
+import type { DocumentExtraction } from './documentExtraction';
 import type { MsaFields } from './msaFields';
 
 export interface IngestPushInput {
   fields: MsaFields;
+  /** Stage 1 extraction, stored against the application as an audit trail of what the OCR actually read. Optional — non-OCR sources omit it. */
+  document?: DocumentExtraction | null;
 }

@@ -431,6 +431,23 @@ export interface MsaFields {
  */
 export type IngestResultConfidence = {[key: string]: number};
 
+/**
+ * MSA field name to the document label it came from, null if unmapped.
+ */
+export type IngestResultProvenance = {[key: string]: string | null};
+
+/**
+ * How stage 2 resolved — an LLM call, or the deterministic fallback.
+ * @nullable
+ */
+export type IngestResultMappingMethod = typeof IngestResultMappingMethod[keyof typeof IngestResultMappingMethod] | null;
+
+
+export const IngestResultMappingMethod = {
+  llm: 'llm',
+  rules: 'rules',
+} as const;
+
 export type OcrAttemptEngineId = typeof OcrAttemptEngineId[keyof typeof OcrAttemptEngineId];
 
 
@@ -455,6 +472,55 @@ export interface OcrAttempt {
   durationMs: number;
 }
 
+export type DocumentExtractionDocumentType = typeof DocumentExtractionDocumentType[keyof typeof DocumentExtractionDocumentType];
+
+
+export const DocumentExtractionDocumentType = {
+  RC_BOOK: 'RC_BOOK',
+  DEALER_INVOICE: 'DEALER_INVOICE',
+  AADHAAR: 'AADHAAR',
+  PAN: 'PAN',
+  DRIVING_LICENCE: 'DRIVING_LICENCE',
+  INSURANCE_POLICY: 'INSURANCE_POLICY',
+  OTHER: 'OTHER',
+} as const;
+
+export type DocumentFieldGroup = typeof DocumentFieldGroup[keyof typeof DocumentFieldGroup];
+
+
+export const DocumentFieldGroup = {
+  vehicle: 'vehicle',
+  owner: 'owner',
+  rto: 'rto',
+  policy: 'policy',
+  other: 'other',
+} as const;
+
+/**
+ * One labelled value, using the document's own printed label
+ */
+export interface DocumentField {
+  /** The label exactly as printed on the document */
+  label: string;
+  value: string;
+  group: DocumentFieldGroup;
+  confidence: number;
+}
+
+/**
+ * Stage 1 — what the document is and everything printed on it
+ */
+export interface DocumentExtraction {
+  documentType: DocumentExtractionDocumentType;
+  documentTypeConfidence: number;
+  /** @nullable */
+  issuer: string | null;
+  summary: string;
+  fields: DocumentField[];
+  /** @nullable */
+  rawText?: string | null;
+}
+
 /**
  * Extracted MSA fields from any ingest source
  */
@@ -476,6 +542,15 @@ export interface IngestResult {
   isDemoData?: boolean;
   /** Every engine tried, in order, including failures. OCR only. */
   attempts?: OcrAttempt[];
+  /** Stage 1 output — the document as the model actually read it. */
+  document?: DocumentExtraction | null;
+  /** MSA field name to the document label it came from, null if unmapped. */
+  provenance?: IngestResultProvenance;
+  /**
+     * How stage 2 resolved — an LLM call, or the deterministic fallback.
+     * @nullable
+     */
+  mappingMethod?: IngestResultMappingMethod;
 }
 
 export interface DmsPullInput {
@@ -595,6 +670,8 @@ export interface UpdateOcrEnginesInput {
 
 export interface IngestPushInput {
   fields: MsaFields;
+  /** Stage 1 extraction, stored against the application as an audit trail of what the OCR actually read. Optional — non-OCR sources omit it. */
+  document?: DocumentExtraction | null;
 }
 
 export interface IngestPushResult {

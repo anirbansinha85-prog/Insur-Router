@@ -1,11 +1,18 @@
 /**
  * VeloDocs — Document Ingestion Routes
  *
- * Three ingest sources → normalised MsaFields + confidence scores:
+ * Ingest sources → normalised MsaFields + confidence scores:
  *   POST /api/ingest/dms-pull       — Dealer DMS stub (reg-no lookup)
  *   POST /api/ingest/browser-scrape — Playwright scrape of dealer portal
- *   POST /api/ingest/ocr            — OCR model switcher (stub / TODO real models)
+ *   POST /api/ingest/ocr            — two-stage document extraction
+ *   GET  /api/ingest/ocr/engines    — engine availability and priority
+ *   PUT  /api/ingest/ocr/engines    — set engine priority and enabled state
  *   POST /api/ingest/push           — Push reviewed payload to InsurRouter as draft
+ *
+ * OCR runs in two stages (see lib/document-extraction.ts): the model first
+ * identifies the document and transcribes it under its own printed labels, then
+ * a second pass maps that onto the MSA payload with provenance. DMS and scrape
+ * sources produce MSA fields directly and carry no document extraction.
  */
 
 import { Router, type IRouter } from "express";
@@ -39,6 +46,7 @@ import {
   type IngestResult,
   type OcrEngineId,
 } from "../lib/ocr-engines";
+import { EMPTY_MSA_FIELDS } from "../lib/document-extraction";
 import { logger } from "../lib/logger";
 
 // ─── SSRF protection ─────────────────────────────────────────────────────────
@@ -652,14 +660,24 @@ router.post("/ingest/push", async (req, res): Promise<void> => {
       rtoRegistrationCity: fields.rtoRegistrationCity,
       rtoRegistrationState: fields.rtoRegistrationState,
       rtoCode: fields.rtoCode,
+      // Audit trail: what the OCR actually read, before any mapping.
+      sourceDocument: parsed.data.document
+        ? (parsed.data.document as unknown as Record<string, unknown>)
+        : null,
     })
     .returning();
 
+  const doc = parsed.data.document;
   await db.insert(submissionLogsTable).values({
     applicationId: app.id,
     step: "data_ingestion",
     status: "success",
-    message: `Draft created via VeloDocs ingest: ${fields.vehicleMake} ${fields.vehicleModel} (${fields.ownerFullName})`,
+    message: doc
+      ? `Draft created via VeloDocs ingest from ${doc.documentType} (${doc.fields.length} fields read): ${fields.vehicleMake} ${fields.vehicleModel} (${fields.ownerFullName})`
+      : `Draft created via VeloDocs ingest: ${fields.vehicleMake} ${fields.vehicleModel} (${fields.ownerFullName})`,
+    metadata: doc
+      ? { documentType: doc.documentType, issuer: doc.issuer, summary: doc.summary }
+      : null,
   });
 
   res.status(201).json({ applicationId: app.id });

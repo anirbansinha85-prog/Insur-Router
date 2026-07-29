@@ -1110,9 +1110,69 @@ components:
           description: Every engine tried, in order, including failures. OCR only.
           items:
             $ref: "#/components/schemas/OcrAttempt"
+        document:
+          description: Stage 1 output — the document as the model actually read it.
+          oneOf:
+            - $ref: "#/components/schemas/DocumentExtraction"
+            - type: "null"
+        provenance:
+          type: object
+          description: MSA field name to the document label it came from, null if unmapped.
+          additionalProperties:
+            type: ["string", "null"]
+        mappingMethod:
+          type: ["string", "null"]
+          enum: [llm, rules, null]
+          description: How stage 2 resolved — an LLM call, or the deterministic fallback.
       required:
         - fields
         - confidence
+
+    DocumentField:
+      type: object
+      description: One labelled value, using the document's own printed label
+      properties:
+        label:
+          type: string
+          description: The label exactly as printed on the document
+        value:
+          type: string
+        group:
+          type: string
+          enum: [vehicle, owner, rto, policy, other]
+        confidence:
+          type: number
+      required:
+        - label
+        - value
+        - group
+        - confidence
+
+    DocumentExtraction:
+      type: object
+      description: Stage 1 — what the document is and everything printed on it
+      properties:
+        documentType:
+          type: string
+          enum: [RC_BOOK, DEALER_INVOICE, AADHAAR, PAN, DRIVING_LICENCE, INSURANCE_POLICY, OTHER]
+        documentTypeConfidence:
+          type: number
+        issuer:
+          type: ["string", "null"]
+        summary:
+          type: string
+        fields:
+          type: array
+          items:
+            $ref: "#/components/schemas/DocumentField"
+        rawText:
+          type: ["string", "null"]
+      required:
+        - documentType
+        - documentTypeConfidence
+        - issuer
+        - summary
+        - fields
 
     DmsPullInput:
       type: object
@@ -1257,6 +1317,13 @@ components:
       properties:
         fields:
           $ref: "#/components/schemas/MsaFields"
+        document:
+          description: >-
+            Stage 1 extraction, stored against the application as an audit trail
+            of what the OCR actually read. Optional — non-OCR sources omit it.
+          oneOf:
+            - $ref: "#/components/schemas/DocumentExtraction"
+            - type: "null"
       required:
         - fields
 

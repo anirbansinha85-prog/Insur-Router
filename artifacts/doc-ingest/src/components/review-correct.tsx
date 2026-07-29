@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { CheckCircle2, Download, Send, AlertTriangle, XCircle } from "lucide-react"
+import { DocumentPanel } from "@/components/document-panel"
 
 interface ReviewCorrectProps {
   result: IngestResult & { previewUrl?: string; sourceName?: string }
@@ -24,8 +25,20 @@ export function ReviewCorrect({ result, onReset }: ReviewCorrectProps) {
   
   const { mutate: pushToRouter, isPending: isPushing } = useIngestPush()
 
+  // Export the whole picture, not just the MSA form: the document as read, the
+  // mapped fields, and which document label fed each one.
   const handleExport = () => {
-    const blob = new Blob([JSON.stringify(formData, null, 2)], { type: 'application/json' })
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      source: result.sourceName ?? null,
+      engineUsed: result.engineUsed ?? null,
+      mappingMethod: result.mappingMethod ?? null,
+      document: result.document ?? null,
+      msaFields: formData,
+      provenance: result.provenance ?? null,
+      confidence: result.confidence,
+    }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -37,7 +50,9 @@ export function ReviewCorrect({ result, onReset }: ReviewCorrectProps) {
   const handlePush = () => {
     setServerErrors(null)
     pushToRouter(
-      { data: { fields: formData } },
+      // The document extraction travels with the payload so InsurRouter keeps
+      // an audit trail of what the OCR actually read.
+      { data: { fields: formData, document: result.document ?? null } },
       {
         onSuccess: (res) => {
           setSuccessAppId(res.applicationId)
@@ -81,6 +96,7 @@ export function ReviewCorrect({ result, onReset }: ReviewCorrectProps) {
     const isLowConfidence = result.confidence[key] !== undefined && result.confidence[key] < 0.7
     const isServerInvalid = serverInvalidFields.has(key as string)
     const isHighlighted = isLowConfidence || isServerInvalid
+    const provenance = result.provenance?.[key as string] ?? null
     
     return (
       <div
@@ -120,10 +136,10 @@ export function ReviewCorrect({ result, onReset }: ReviewCorrectProps) {
             </span>
           )}
         </div>
-        <Input 
+        <Input
           id={key as string}
           type={type}
-          value={formData[key] || ""} 
+          value={formData[key] || ""}
           onChange={(e) => handleChange(key, type === 'number' ? Number(e.target.value) : e.target.value)}
           className={`h-8 text-sm ${
             isServerInvalid
@@ -133,7 +149,18 @@ export function ReviewCorrect({ result, onReset }: ReviewCorrectProps) {
               : ''
           }`}
         />
-        {isServerInvalid && !isHighlighted && null}
+        {/* Provenance: which label on the document produced this value. Lets a
+            reviewer verify against the source instead of trusting the mapping. */}
+        {provenance && (
+          <p className="mt-1 truncate text-[10px] text-muted-foreground" title={provenance}>
+            from <span className="font-medium">"{provenance}"</span>
+          </p>
+        )}
+        {!provenance && result.document && (
+          <p className="mt-1 text-[10px] italic text-muted-foreground">
+            not found on the document
+          </p>
+        )}
       </div>
     )
   }
@@ -169,6 +196,12 @@ export function ReviewCorrect({ result, onReset }: ReviewCorrectProps) {
           <h2 className="text-xl font-display font-semibold">Review & Correct</h2>
           <Button variant="outline" size="sm" onClick={onReset}>Cancel</Button>
         </div>
+
+        {/* Stage 1 first: what the document IS and what it literally says,
+            before the MSA interpretation of it below. */}
+        {result.document && (
+          <DocumentPanel document={result.document} mappingMethod={result.mappingMethod} />
+        )}
 
         {serverErrors && serverErrors.errors.length > 0 && (
           <div className="rounded-md border border-destructive/50 bg-destructive/5 p-4">

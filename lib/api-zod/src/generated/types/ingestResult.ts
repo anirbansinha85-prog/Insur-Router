@@ -5,7 +5,10 @@
  * InsurRouter API - Two-wheeler insurance application routing engine
  * OpenAPI spec version: 0.1.0
  */
+import type { DocumentExtraction } from './documentExtraction';
 import type { IngestResultConfidence } from './ingestResultConfidence';
+import type { IngestResultMappingMethod } from './ingestResultMappingMethod';
+import type { IngestResultProvenance } from './ingestResultProvenance';
 import type { MsaFields } from './msaFields';
 import type { OcrAttempt } from './ocrAttempt';
 
@@ -30,4 +33,13 @@ export interface IngestResult {
   isDemoData?: boolean;
   /** Every engine tried, in order, including failures. OCR only. */
   attempts?: OcrAttempt[];
+  /** Stage 1 output — the document as the model actually read it. */
+  document?: DocumentExtraction | null;
+  /** MSA field name to the document label it came from, null if unmapped. */
+  provenance?: IngestResultProvenance;
+  /**
+     * How stage 2 resolved — an LLM call, or the deterministic fallback.
+     * @nullable
+     */
+  mappingMethod?: IngestResultMappingMethod;
 }
