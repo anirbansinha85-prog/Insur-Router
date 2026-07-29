@@ -375,7 +375,12 @@ async function runGemini(
   signal: AbortSignal,
 ): Promise<IngestResult> {
   const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY;
-  const model = process.env.GEMINI_VISION_MODEL ?? "gemini-2.5-flash";
+  // Default to the moving alias, not a pinned version. Google retires specific
+  // versions for new accounts without removing them from the models list —
+  // gemini-2.5-flash still lists but 404s with "no longer available to new
+  // users". The alias always resolves to the current Flash, so this cannot rot.
+  // Pin a version via GEMINI_VISION_MODEL only if you need reproducibility.
+  const model = process.env.GEMINI_VISION_MODEL ?? "gemini-flash-latest";
   const baseUrl =
     process.env.GEMINI_BASE_URL ??
     "https://generativelanguage.googleapis.com/v1beta";

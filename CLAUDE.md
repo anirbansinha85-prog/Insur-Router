@@ -125,7 +125,7 @@ Listed in default priority order — free options first:
 
 | Prio | Engine | Implemented | Requires | Cost | Model |
 |---|---|---|---|---|---|
-| 5 | `gemini` | yes | `GEMINI_API_KEY` | **free tier** | `gemini-2.5-flash`, native API |
+| 5 | `gemini` | yes | `GEMINI_API_KEY` | **free tier** | `gemini-flash-latest`, native API |
 | 10 | `gpt-vision` | yes | `OPENAI_API_KEY` | paid | `gpt-4o`, `detail: high` |
 | 15 | `openrouter` | yes | `OPENROUTER_API_KEY` | **free tier** | configurable, `:free` models |
 | 20 | `qwen-vl` | yes | `DASHSCOPE_API_KEY` | paid | `qwen-vl-plus` via DashScope |
