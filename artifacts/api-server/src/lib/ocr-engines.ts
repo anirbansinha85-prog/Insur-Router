@@ -24,6 +24,8 @@ export type OcrEngineId =
   | "qwen-vl"
   | "olmocr"
   | "gpt-vision"
+  | "gemini"
+  | "openrouter"
   | "stub";
 
 export interface MsaFields {
@@ -234,25 +236,33 @@ export function parseVisionLLMResponseToMsaFields(rawText: string): IngestResult
 
 // ─── Engine implementations ──────────────────────────────────────────────────
 
-async function runGptVision(
-  imageBase64: string,
-  mimeType: string,
-  signal: AbortSignal,
-): Promise<IngestResult> {
-  const apiKey =
-    process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? process.env.OPENAI_API_KEY;
-  const baseUrl =
-    process.env.AI_INTEGRATIONS_OPENAI_BASE_URL ?? "https://api.openai.com/v1";
-
-  const resp = await fetch(`${baseUrl}/chat/completions`, {
+/**
+ * Shared caller for any OpenAI-compatible /chat/completions vision endpoint.
+ * Used by both `gpt-vision` (OpenAI proper) and `openrouter` (aggregator),
+ * which speak the identical wire format and differ only in host, key and
+ * a couple of headers.
+ */
+async function callOpenAiCompatibleVision(opts: {
+  engineId: OcrEngineId;
+  providerName: string;
+  baseUrl: string;
+  apiKey: string | undefined;
+  model: string;
+  imageBase64: string;
+  mimeType: string;
+  signal: AbortSignal;
+  extraHeaders?: Record<string, string>;
+}): Promise<IngestResult> {
+  const resp = await fetch(`${opts.baseUrl}/chat/completions`, {
     method: "POST",
-    signal,
+    signal: opts.signal,
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${opts.apiKey}`,
       "Content-Type": "application/json",
+      ...opts.extraHeaders,
     },
     body: JSON.stringify({
-      model: process.env.OPENAI_VISION_MODEL ?? "gpt-4o",
+      model: opts.model,
       max_tokens: 1500,
       messages: [
         {
@@ -261,7 +271,7 @@ async function runGptVision(
             {
               type: "image_url",
               image_url: {
-                url: `data:${mimeType};base64,${imageBase64}`,
+                url: `data:${opts.mimeType};base64,${opts.imageBase64}`,
                 detail: "high",
               },
             },
@@ -274,17 +284,152 @@ async function runGptVision(
 
   if (!resp.ok) {
     const errBody = await resp.text().catch(() => "");
-    throw new Error(`OpenAI API error ${resp.status}: ${errBody.slice(0, 300)}`);
+    throw new Error(
+      `${opts.providerName} API error ${resp.status}: ${errBody.slice(0, 300)}`,
+    );
   }
 
   const data = (await resp.json()) as {
     choices?: Array<{ message?: { content?: string } }>;
+    error?: { message?: string };
   };
+
+  // OpenRouter can return HTTP 200 with an error body when an upstream
+  // provider fails. Treat that as a failure so the chain moves on.
+  if (data.error?.message) {
+    throw new Error(`${opts.providerName} error: ${data.error.message}`);
+  }
+
   const rawText = data?.choices?.[0]?.message?.content ?? "";
 
   logger.info(
-    { engine: "gpt-vision", rawLen: rawText.length },
-    "OpenAI GPT Vision OCR response received",
+    { engine: opts.engineId, model: opts.model, rawLen: rawText.length },
+    `${opts.providerName} OCR response received`,
+  );
+  return parseVisionLLMResponseToMsaFields(rawText);
+}
+
+async function runGptVision(
+  imageBase64: string,
+  mimeType: string,
+  signal: AbortSignal,
+): Promise<IngestResult> {
+  return callOpenAiCompatibleVision({
+    engineId: "gpt-vision",
+    providerName: "OpenAI",
+    baseUrl:
+      process.env.AI_INTEGRATIONS_OPENAI_BASE_URL ?? "https://api.openai.com/v1",
+    apiKey:
+      process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? process.env.OPENAI_API_KEY,
+    model: process.env.OPENAI_VISION_MODEL ?? "gpt-4o",
+    imageBase64,
+    mimeType,
+    signal,
+  });
+}
+
+/**
+ * OpenRouter — one key, many upstream models, OpenAI-compatible.
+ *
+ * Free-tier models carry a ":free" suffix and the roster changes often, so the
+ * model is configurable and the default is only a starting point. If it has
+ * been retired, OpenRouter returns a clear "model not found" and the chain
+ * falls through to the next engine.
+ */
+async function runOpenRouter(
+  imageBase64: string,
+  mimeType: string,
+  signal: AbortSignal,
+): Promise<IngestResult> {
+  return callOpenAiCompatibleVision({
+    engineId: "openrouter",
+    providerName: "OpenRouter",
+    baseUrl: process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1",
+    apiKey: process.env.OPENROUTER_API_KEY,
+    model: process.env.OPENROUTER_VISION_MODEL ?? "google/gemma-4-31b-it:free",
+    imageBase64,
+    mimeType,
+    signal,
+    // OpenRouter uses these for attribution on its dashboard; both optional.
+    extraHeaders: {
+      "HTTP-Referer": process.env.OPENROUTER_SITE_URL ?? "http://localhost",
+      "X-Title": "InsurRouter / VeloDocs",
+    },
+  });
+}
+
+/**
+ * Google Gemini via the native API.
+ *
+ * Uses the native endpoint rather than Google's OpenAI-compatible shim so we
+ * can set responseMimeType: "application/json", which constrains the model to
+ * emit valid JSON. That removes the most common failure mode for the shared
+ * parser — prose or markdown fences wrapped around the object.
+ *
+ * The Flash tier is free and multimodal, which makes this the cheapest real
+ * OCR path in the registry.
+ */
+async function runGemini(
+  imageBase64: string,
+  mimeType: string,
+  signal: AbortSignal,
+): Promise<IngestResult> {
+  const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY;
+  const model = process.env.GEMINI_VISION_MODEL ?? "gemini-2.5-flash";
+  const baseUrl =
+    process.env.GEMINI_BASE_URL ??
+    "https://generativelanguage.googleapis.com/v1beta";
+
+  const resp = await fetch(`${baseUrl}/models/${model}:generateContent`, {
+    method: "POST",
+    signal,
+    headers: {
+      // Header rather than ?key= so the credential stays out of URL logs.
+      "x-goog-api-key": apiKey ?? "",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      contents: [
+        {
+          parts: [
+            { inline_data: { mime_type: mimeType, data: imageBase64 } },
+            { text: OCR_EXTRACTION_PROMPT },
+          ],
+        },
+      ],
+      generationConfig: {
+        responseMimeType: "application/json",
+        maxOutputTokens: 2048,
+      },
+    }),
+  });
+
+  if (!resp.ok) {
+    const errBody = await resp.text().catch(() => "");
+    throw new Error(`Gemini API error ${resp.status}: ${errBody.slice(0, 300)}`);
+  }
+
+  const data = (await resp.json()) as {
+    candidates?: Array<{
+      content?: { parts?: Array<{ text?: string }> };
+      finishReason?: string;
+    }>;
+    promptFeedback?: { blockReason?: string };
+  };
+
+  if (data.promptFeedback?.blockReason) {
+    throw new Error(
+      `Gemini blocked the request: ${data.promptFeedback.blockReason}`,
+    );
+  }
+
+  const rawText =
+    data?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ??
+    "";
+
+  logger.info(
+    { engine: "gemini", model, rawLen: rawText.length },
+    "Gemini OCR response received",
   );
   return parseVisionLLMResponseToMsaFields(rawText);
 }
@@ -406,6 +551,19 @@ function runStub(): IngestResult {
 
 export const OCR_ENGINES: EngineDefinition[] = [
   {
+    // Free tier includes vision on the Flash models, so this goes first.
+    id: "gemini",
+    label: "Gemini Flash (Google — free tier)",
+    isImplemented: true,
+    autoEligible: true,
+    requiredEnvVar: "GEMINI_API_KEY",
+    defaultPriority: 5,
+    defaultEnabled: true,
+    isConfigured: () =>
+      Boolean(process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY),
+    run: runGemini,
+  },
+  {
     id: "gpt-vision",
     label: "GPT-4 Vision (OpenAI)",
     isImplemented: true,
@@ -418,6 +576,18 @@ export const OCR_ENGINES: EngineDefinition[] = [
         process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? process.env.OPENAI_API_KEY,
       ),
     run: runGptVision,
+  },
+  {
+    // Aggregator: one key, many upstream models, several free ones.
+    id: "openrouter",
+    label: "OpenRouter (aggregator — free models available)",
+    isImplemented: true,
+    autoEligible: true,
+    requiredEnvVar: "OPENROUTER_API_KEY",
+    defaultPriority: 15,
+    defaultEnabled: true,
+    isConfigured: () => Boolean(process.env.OPENROUTER_API_KEY),
+    run: runOpenRouter,
   },
   {
     id: "qwen-vl",

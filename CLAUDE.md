@@ -121,18 +121,40 @@ An engine is usable only when **all three** hold:
 | `isConfigured` | its API key is present | environment, read live |
 | `isEnabled` | operator has it switched on | `ocr_engines` table |
 
-| Engine | Implemented | Requires | Model |
-|---|---|---|---|
-| `gpt-vision` | yes | `OPENAI_API_KEY` | `gpt-4o`, `detail: high`, 1500 max tokens |
-| `qwen-vl` | yes | `DASHSCOPE_API_KEY` | `qwen-vl-plus` via DashScope |
-| `stub` | yes | nothing | fixed Yamaha FZ-S / Delhi DL01 record |
-| `paddleocr` | **no** | `PADDLEOCR_API_URL` | deliberately unwired, see below |
-| `olmocr` | **no** | — | not integrated |
+Listed in default priority order — free options first:
 
-`gpt-vision` also honours `AI_INTEGRATIONS_OPENAI_API_KEY` +
-`AI_INTEGRATIONS_OPENAI_BASE_URL` (the Replit proxy), which take priority over
-`OPENAI_API_KEY`. Model IDs can be overridden with `OPENAI_VISION_MODEL` /
-`DASHSCOPE_VISION_MODEL`.
+| Prio | Engine | Implemented | Requires | Cost | Model |
+|---|---|---|---|---|---|
+| 5 | `gemini` | yes | `GEMINI_API_KEY` | **free tier** | `gemini-2.5-flash`, native API |
+| 10 | `gpt-vision` | yes | `OPENAI_API_KEY` | paid | `gpt-4o`, `detail: high` |
+| 15 | `openrouter` | yes | `OPENROUTER_API_KEY` | **free tier** | configurable, `:free` models |
+| 20 | `qwen-vl` | yes | `DASHSCOPE_API_KEY` | paid | `qwen-vl-plus` via DashScope |
+| 30 | `paddleocr` | **no** | `PADDLEOCR_API_URL` | — | deliberately unwired, see below |
+| 40 | `olmocr` | **no** | — | — | not integrated |
+| 99 | `stub` | yes | nothing | — | fixed Yamaha FZ-S / Delhi DL01 record |
+
+`gpt-vision` and `openrouter` share `callOpenAiCompatibleVision()` — identical
+wire format, differing only in host, key and headers. Add any other
+OpenAI-compatible provider by calling that helper rather than writing new fetch
+code.
+
+**`gemini` uses the native API, not Google's OpenAI-compatible shim**, so it can
+set `responseMimeType: "application/json"`. That constrains the model to emit
+valid JSON and eliminates the most common parse failure — prose or markdown
+fences around the object. Keep it that way.
+
+**OpenRouter can return HTTP 200 with an error body** when an upstream provider
+fails; the shared helper checks for that and throws, so the chain moves on
+instead of parsing an error as a result.
+
+Model IDs are all overridable: `GEMINI_VISION_MODEL`, `OPENAI_VISION_MODEL`,
+`OPENROUTER_VISION_MODEL`, `DASHSCOPE_VISION_MODEL`. `gpt-vision` also honours
+`AI_INTEGRATIONS_OPENAI_API_KEY` + `AI_INTEGRATIONS_OPENAI_BASE_URL` (the Replit
+proxy), which take priority over `OPENAI_API_KEY`.
+
+OpenRouter's `:free` model roster rotates. If the configured model is retired it
+returns a clear "model not found" and the chain falls through — no code change
+needed, just update `OPENROUTER_VISION_MODEL`.
 
 ### The fallback chain
 

@@ -439,7 +439,7 @@ export const IngestDmsPullResponse = zod.object({
   "engineUsed": zod.string().nullish().describe('OCR engine that actually produced this result. Null for non-OCR sources.'),
   "isDemoData": zod.boolean().optional().describe('True when the result came from the stub engine and contains fabricated values.'),
   "attempts": zod.array(zod.object({
-  "engineId": zod.enum(['paddleocr', 'qwen-vl', 'olmocr', 'gpt-vision', 'stub']),
+  "engineId": zod.enum(['paddleocr', 'qwen-vl', 'olmocr', 'gpt-vision', 'gemini', 'openrouter', 'stub']),
   "ok": zod.boolean(),
   "error": zod.string().nullable(),
   "durationMs": zod.number()
@@ -485,7 +485,7 @@ export const IngestBrowserScrapeResponse = zod.object({
   "engineUsed": zod.string().nullish().describe('OCR engine that actually produced this result. Null for non-OCR sources.'),
   "isDemoData": zod.boolean().optional().describe('True when the result came from the stub engine and contains fabricated values.'),
   "attempts": zod.array(zod.object({
-  "engineId": zod.enum(['paddleocr', 'qwen-vl', 'olmocr', 'gpt-vision', 'stub']),
+  "engineId": zod.enum(['paddleocr', 'qwen-vl', 'olmocr', 'gpt-vision', 'gemini', 'openrouter', 'stub']),
   "ok": zod.boolean(),
   "error": zod.string().nullable(),
   "durationMs": zod.number()
@@ -499,7 +499,7 @@ export const IngestBrowserScrapeResponse = zod.object({
 export const IngestOcrBody = zod.object({
   "imageBase64": zod.string().describe('Base64-encoded image (JPEG\/PNG) or PDF content'),
   "mimeType": zod.string().describe('MIME type of the uploaded file, e.g. image\/jpeg or application\/pdf'),
-  "model": zod.enum(['auto', 'paddleocr', 'qwen-vl', 'olmocr', 'gpt-vision', 'stub']).optional().describe('Preferred OCR engine. \"auto\" (the default) walks the configured priority order. Naming an engine puts it first but still falls through to the rest unless allowFallback is false. The stub engine is never reached automatically — it must be named explicitly.'),
+  "model": zod.enum(['auto', 'paddleocr', 'qwen-vl', 'olmocr', 'gpt-vision', 'gemini', 'openrouter', 'stub']).optional().describe('Preferred OCR engine. \"auto\" (the default) walks the configured priority order. Naming an engine puts it first but still falls through to the rest unless allowFallback is false. The stub engine is never reached automatically — it must be named explicitly.'),
   "allowFallback": zod.boolean().optional().describe('When false, only the named engine is tried and its failure is returned as-is. Defaults to true. Ignored when model is \"auto\".')
 })
 
@@ -529,7 +529,7 @@ export const IngestOcrResponse = zod.object({
   "engineUsed": zod.string().nullish().describe('OCR engine that actually produced this result. Null for non-OCR sources.'),
   "isDemoData": zod.boolean().optional().describe('True when the result came from the stub engine and contains fabricated values.'),
   "attempts": zod.array(zod.object({
-  "engineId": zod.enum(['paddleocr', 'qwen-vl', 'olmocr', 'gpt-vision', 'stub']),
+  "engineId": zod.enum(['paddleocr', 'qwen-vl', 'olmocr', 'gpt-vision', 'gemini', 'openrouter', 'stub']),
   "ok": zod.boolean(),
   "error": zod.string().nullable(),
   "durationMs": zod.number()
@@ -541,7 +541,7 @@ export const IngestOcrResponse = zod.object({
  * @summary List OCR engines with live availability and configured priority
  */
 export const ListOcrEnginesResponseItem = zod.object({
-  "engineId": zod.enum(['paddleocr', 'qwen-vl', 'olmocr', 'gpt-vision', 'stub']),
+  "engineId": zod.enum(['paddleocr', 'qwen-vl', 'olmocr', 'gpt-vision', 'gemini', 'openrouter', 'stub']),
   "label": zod.string(),
   "priority": zod.number().describe('Lower is tried first'),
   "isEnabled": zod.boolean().describe('Operator toggle, stored in the database'),
@@ -563,14 +563,14 @@ export const ListOcrEnginesResponse = zod.array(ListOcrEnginesResponseItem)
 
 export const UpdateOcrEnginesBody = zod.object({
   "engines": zod.array(zod.object({
-  "engineId": zod.enum(['paddleocr', 'qwen-vl', 'olmocr', 'gpt-vision', 'stub']),
+  "engineId": zod.enum(['paddleocr', 'qwen-vl', 'olmocr', 'gpt-vision', 'gemini', 'openrouter', 'stub']),
   "priority": zod.number(),
   "isEnabled": zod.boolean()
 })).min(1)
 })
 
 export const UpdateOcrEnginesResponseItem = zod.object({
-  "engineId": zod.enum(['paddleocr', 'qwen-vl', 'olmocr', 'gpt-vision', 'stub']),
+  "engineId": zod.enum(['paddleocr', 'qwen-vl', 'olmocr', 'gpt-vision', 'gemini', 'openrouter', 'stub']),
   "label": zod.string(),
   "priority": zod.number().describe('Lower is tried first'),
   "isEnabled": zod.boolean().describe('Operator toggle, stored in the database'),

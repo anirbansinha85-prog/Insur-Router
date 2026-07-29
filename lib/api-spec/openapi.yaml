@@ -1151,7 +1151,7 @@ components:
           description: MIME type of the uploaded file, e.g. image/jpeg or application/pdf
         model:
           type: string
-          enum: [auto, paddleocr, qwen-vl, olmocr, gpt-vision, stub]
+          enum: [auto, paddleocr, qwen-vl, olmocr, gpt-vision, gemini, openrouter, stub]
           description: >-
             Preferred OCR engine. "auto" (the default) walks the configured
             priority order. Naming an engine puts it first but still falls
@@ -1172,7 +1172,7 @@ components:
       properties:
         engineId:
           type: string
-          enum: [paddleocr, qwen-vl, olmocr, gpt-vision, stub]
+          enum: [paddleocr, qwen-vl, olmocr, gpt-vision, gemini, openrouter, stub]
         ok:
           type: boolean
         error:
@@ -1191,7 +1191,7 @@ components:
       properties:
         engineId:
           type: string
-          enum: [paddleocr, qwen-vl, olmocr, gpt-vision, stub]
+          enum: [paddleocr, qwen-vl, olmocr, gpt-vision, gemini, openrouter, stub]
         label:
           type: string
         priority:
@@ -1240,7 +1240,7 @@ components:
             properties:
               engineId:
                 type: string
-                enum: [paddleocr, qwen-vl, olmocr, gpt-vision, stub]
+                enum: [paddleocr, qwen-vl, olmocr, gpt-vision, gemini, openrouter, stub]
               priority:
                 type: number
               isEnabled:

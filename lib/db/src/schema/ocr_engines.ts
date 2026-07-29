@@ -15,7 +15,15 @@ import { z } from "zod/v4";
 export const ocrEnginesTable = pgTable("ocr_engines", {
   id: serial("id").primaryKey(),
   engineId: text("engine_id", {
-    enum: ["paddleocr", "qwen-vl", "olmocr", "gpt-vision", "stub"],
+    enum: [
+      "paddleocr",
+      "qwen-vl",
+      "olmocr",
+      "gpt-vision",
+      "gemini",
+      "openrouter",
+      "stub",
+    ],
   })
     .notNull()
     .unique(),

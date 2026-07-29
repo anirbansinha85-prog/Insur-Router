@@ -439,6 +439,8 @@ export const OcrAttemptEngineId = {
   'qwen-vl': 'qwen-vl',
   olmocr: 'olmocr',
   'gpt-vision': 'gpt-vision',
+  gemini: 'gemini',
+  openrouter: 'openrouter',
   stub: 'stub',
 } as const;
 
@@ -514,6 +516,8 @@ export const OcrInputModel = {
   'qwen-vl': 'qwen-vl',
   olmocr: 'olmocr',
   'gpt-vision': 'gpt-vision',
+  gemini: 'gemini',
+  openrouter: 'openrouter',
   stub: 'stub',
 } as const;
 
@@ -536,6 +540,8 @@ export const OcrEngineStatusEngineId = {
   'qwen-vl': 'qwen-vl',
   olmocr: 'olmocr',
   'gpt-vision': 'gpt-vision',
+  gemini: 'gemini',
+  openrouter: 'openrouter',
   stub: 'stub',
 } as const;
 
@@ -571,6 +577,8 @@ export const UpdateOcrEnginesInputEnginesItemEngineId = {
   'qwen-vl': 'qwen-vl',
   olmocr: 'olmocr',
   'gpt-vision': 'gpt-vision',
+  gemini: 'gemini',
+  openrouter: 'openrouter',
   stub: 'stub',
 } as const;
 
