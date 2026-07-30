@@ -41,10 +41,21 @@ app.get("/dms/v1/health", (_req, res) => {
 /**
  * Shared-secret auth, which is what these systems actually use — a static key
  * per integration, rotated by email. Not a model to copy, just one to expect.
+ *
+ * `?apiKey=` is accepted as well as the header, purely so the mock can be poked
+ * from a browser address bar — a browser cannot set a custom header on a plain
+ * navigation. Never do this in real code: query strings land in access logs,
+ * browser history and `Referer` headers. It is tolerable here only because the
+ * key is a published default guarding invented data on localhost. The adapter
+ * must use the header.
  */
 app.use("/dms/v1", (req: Request, res: Response, next: NextFunction) => {
-  if (req.header("x-dms-api-key") !== API_KEY) {
-    res.status(401).json({ errCode: "AUTH_FAILED", errDesc: "Invalid or missing X-DMS-API-Key" });
+  const supplied = req.header("x-dms-api-key") ?? (req.query.apiKey as string | undefined);
+  if (supplied !== API_KEY) {
+    res.status(401).json({
+      errCode: "AUTH_FAILED",
+      errDesc: "Invalid or missing X-DMS-API-Key (or ?apiKey= when browsing)",
+    });
     return;
   }
   next();
