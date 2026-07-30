@@ -1,0 +1,556 @@
+/**
+ * Seeded dealers, stock and deals.
+ *
+ * Every record is fictional. Names, chassis/engine numbers, PANs and Aadhaar
+ * fragments are invented and deliberately unusable — the PANs do not satisfy the
+ * real checksum, and only the last four Aadhaar digits exist at all.
+ *
+ * The seed set is chosen so each deal exercises a different failure or branch,
+ * because a demo where every record is complete teaches nothing:
+ *
+ *   000181  complete, cash, nominee captured        → the happy path
+ *   000182  financed, NOMINEE MISSING               → the field no document carries
+ *   000183  electric (kW-rated), EMAIL MISSING      → EV path + a blocking gap
+ *   000184  CORPORATE buyer, financed, other dealer → GSTIN path + second tenant
+ *   000185  delivered, insured, registered          → the write-back fields filled
+ *
+ * Two dealers are seeded, on different channels, because the insurer-reach
+ * question differs per dealer: 0417 goes through a broker's consolidated
+ * platform, 1182 is a direct agent of one insurer.
+ */
+
+import type { DmsDeal, DmsDealer, DmsStockUnit } from "./types.ts";
+import { MODELS } from "./catalogue.ts";
+
+export const DEALERS: Record<string, DmsDealer> = {
+  "HMC-DL-0417": {
+    dealerCode: "HMC-DL-0417",
+    dealerName: "Saraswati Automobiles Pvt Ltd",
+    oemCode: "HERO",
+    gstin: "07AABCS1429P1ZX",
+    addr: {
+      line1: "Plot 14, Najafgarh Road",
+      line2: "Kirti Nagar Industrial Area",
+      locality: "Kirti Nagar",
+      cityDesc: "New Delhi",
+      distDesc: "West Delhi",
+      stateDesc: "Delhi",
+      pin: "110015",
+    },
+    intermediary: {
+      channel: "BROKER",
+      intermediaryName: "Sundaram Motor Insurance Brokers Pvt Ltd",
+      intermediaryCode: "IRDAI/DB/0731/2019",
+      contactEmail: "dealerdesk@sundarambrokers.example",
+      contactMobile: "9811004417",
+    },
+  },
+  "HMC-MH-1182": {
+    dealerCode: "HMC-MH-1182",
+    dealerName: "Deccan Two Wheelers LLP",
+    oemCode: "HERO",
+    gstin: "27AAFCD8821K1Z6",
+    addr: {
+      line1: "Survey 221/2, Satara Road",
+      line2: null,
+      locality: "Bibwewadi",
+      cityDesc: "Pune",
+      distDesc: "Pune",
+      stateDesc: "Maharashtra",
+      pin: "411037",
+    },
+    intermediary: {
+      channel: "DIRECT_AGENT",
+      intermediaryName: "Deccan Two Wheelers LLP",
+      // A dealer's own agency code with one insurer, not a broker registration.
+      intermediaryCode: "AGT-BAJAJ-4471882",
+      contactEmail: "insurance@deccantw.example",
+      contactMobile: "9822011182",
+    },
+  },
+};
+
+/**
+ * Unallocated yard stock, reachable by chassis number.
+ *
+ * These exist so a chassis lookup can be tested independently of a deal — the
+ * moment a dealer allocates one of these, every vehicle attribute an insurer
+ * needs is already known, with no document involved.
+ */
+export const FREE_STOCK: DmsStockUnit[] = [
+  {
+    chassisNo: "MBLHAR0748NK41772",
+    engineNo: "HA11ERNHK41772",
+    modelCode: "HER-SPL-PLUS",
+    colourDesc: "Black With Blue",
+    mfgMth: 6,
+    mfgYr: 2026,
+    exShowroomAmt: "79150.00",
+    importedFlg: "N",
+    yardInDt: "02-07-2026",
+    allocatedToDealId: null,
+  },
+  {
+    chassisNo: "MBLHAR0748NK41803",
+    engineNo: "HA11ERNHK41803",
+    modelCode: "HER-XTR-125R",
+    colourDesc: "Sports Red",
+    mfgMth: 5,
+    mfgYr: 2026,
+    exShowroomAmt: "99500.00",
+    importedFlg: "N",
+    yardInDt: "18-06-2026",
+    allocatedToDealId: null,
+  },
+];
+
+export const DEALS: DmsDeal[] = [
+  // ── 000181 — complete. Cash sale, nominee captured at booking. ──────────────
+  {
+    dealId: "HMC-DL-2026-000181",
+    dealerCode: "HMC-DL-0417",
+    status: "AWAITING_INSURANCE",
+    bookingDt: "26-07-2026",
+    plannedDeliveryDt: "31-07-2026",
+    actualDeliveryDt: null,
+    salesPerson: { empCode: "SA-0417-19", empName: "Vikram Chandel", mobileNo: "9810044219" },
+    customer: {
+      custId: "CUST-0417-88213",
+      custType: "INDIVIDUAL",
+      salutation: "Mr",
+      firstName: "Rohit",
+      midName: "Kumar",
+      lastName: "Bansal",
+      gender: "M",
+      dob: "14-03-1994",
+      occupationDesc: "Salaried - Private Sector",
+      mobileNo: "9873310482",
+      emailId: "rohit.bansal94@example.in",
+      panNo: "AQWPB4417L",
+      aadhaarLast4: "7731",
+      gstin: null,
+      areaType: "URBAN",
+      addr: {
+        line1: "B-402, Sunrise Apartments",
+        line2: "Ramesh Nagar",
+        locality: "Ramesh Nagar",
+        cityDesc: "New Delhi",
+        distDesc: "West Delhi",
+        stateDesc: "Delhi",
+        pin: "110015",
+      },
+    },
+    vehicle: {
+      chassisNo: "MBLHAR0748NK41694",
+      engineNo: "HA11ERNHK41694",
+      modelCode: "HER-SPL-PLUS",
+      model: MODELS["HER-SPL-PLUS"],
+      colourDesc: "Heavy Grey Green",
+      mfgMth: 6,
+      mfgYr: 2026,
+      exShowroomAmt: "79150.00",
+      importedFlg: "N",
+      yardInDt: "28-06-2026",
+      allocatedToDealId: "HMC-DL-2026-000181",
+    },
+    nominee: {
+      nomineeName: "Sunita Bansal",
+      nomineeDob: "09-11-1966",
+      relationDesc: "MOTHER",
+      appointeeName: null,
+      appointeeRelationDesc: null,
+    },
+    finance: {
+      financedFlg: "N",
+      financierName: null,
+      financierBranchDesc: null,
+      loanAcctNo: null,
+      loanAmt: null,
+      tenureMths: null,
+    },
+    invoice: { invoiceNo: "INV/0417/26-27/01184", invoiceDt: "28-07-2026", invoiceAmt: "79150.00" },
+    registration: {
+      // Nothing here yet, and that is the whole point — the RTO will not issue
+      // an RC until a policy exists, so insurance necessarily precedes it.
+      regNo: null,
+      regDt: null,
+      rtoCode: null,
+      form21No: "F21/0417/26-27/01184",
+      form21Dt: "28-07-2026",
+      form22No: "F22-HMC-2026-4471882",
+    },
+    insurance: {
+      insurerCode: null,
+      policyNo: null,
+      odStartDt: null,
+      odEndDt: null,
+      tpStartDt: null,
+      tpEndDt: null,
+      odPremiumAmt: null,
+      tpPremiumAmt: null,
+      paPremiumAmt: null,
+      totalPremiumAmt: null,
+      idvAmt: null,
+    },
+  },
+
+  // ── 000182 — financed, and the nominee was never captured. ──────────────────
+  {
+    dealId: "HMC-DL-2026-000182",
+    dealerCode: "HMC-DL-0417",
+    status: "AWAITING_INSURANCE",
+    bookingDt: "24-07-2026",
+    plannedDeliveryDt: "01-08-2026",
+    actualDeliveryDt: null,
+    salesPerson: { empCode: "SA-0417-07", empName: "Neha Aggarwal", mobileNo: "9810044207" },
+    customer: {
+      custId: "CUST-0417-88104",
+      custType: "INDIVIDUAL",
+      salutation: "Mr",
+      firstName: "Imran",
+      midName: null,
+      lastName: "Qureshi",
+      gender: "M",
+      dob: "02-09-1988",
+      occupationDesc: "Self Employed - Trader",
+      mobileNo: "9711250934",
+      emailId: "imran.qureshi88@example.in",
+      panNo: "BLZPQ9925C",
+      aadhaarLast4: "2214",
+      gstin: null,
+      areaType: "URBAN",
+      addr: {
+        line1: "1147, Gali Kundewalan",
+        line2: "Ajmeri Gate",
+        locality: "Ajmeri Gate",
+        cityDesc: "New Delhi",
+        distDesc: "Central Delhi",
+        stateDesc: "Delhi",
+        pin: "110006",
+      },
+    },
+    vehicle: {
+      chassisNo: "MBLKAR0921NK18337",
+      engineNo: "KA21ERNHK18337",
+      modelCode: "HER-XPL-200",
+      model: MODELS["HER-XPL-200"],
+      colourDesc: "Matte Nexus Blue",
+      mfgMth: 5,
+      mfgYr: 2026,
+      exShowroomAmt: "154800.00",
+      importedFlg: "N",
+      yardInDt: "12-06-2026",
+      allocatedToDealId: "HMC-DL-2026-000182",
+    },
+    nominee: {
+      // Never asked. A vehicle sale has no reason to collect this, so the DMS
+      // has nothing — yet the compulsory PA cover cannot be issued without it.
+      nomineeName: null,
+      nomineeDob: null,
+      relationDesc: null,
+      appointeeName: null,
+      appointeeRelationDesc: null,
+    },
+    finance: {
+      financedFlg: "Y",
+      financierName: "HDFC Bank Ltd",
+      financierBranchDesc: "Karol Bagh, New Delhi",
+      loanAcctNo: "TWL0041882337",
+      loanAmt: "132000.00",
+      tenureMths: 36,
+    },
+    invoice: { invoiceNo: "INV/0417/26-27/01179", invoiceDt: "27-07-2026", invoiceAmt: "154800.00" },
+    registration: {
+      regNo: null,
+      regDt: null,
+      rtoCode: null,
+      form21No: "F21/0417/26-27/01179",
+      form21Dt: "27-07-2026",
+      form22No: "F22-HMC-2026-4471651",
+    },
+    insurance: {
+      insurerCode: null,
+      policyNo: null,
+      odStartDt: null,
+      odEndDt: null,
+      tpStartDt: null,
+      tpEndDt: null,
+      odPremiumAmt: null,
+      tpPremiumAmt: null,
+      paPremiumAmt: null,
+      totalPremiumAmt: null,
+      idvAmt: null,
+    },
+  },
+
+  // ── 000183 — electric, rated on kW. No email on file. ───────────────────────
+  {
+    dealId: "HMC-DL-2026-000183",
+    dealerCode: "HMC-DL-0417",
+    status: "AWAITING_INSURANCE",
+    bookingDt: "28-07-2026",
+    plannedDeliveryDt: "03-08-2026",
+    actualDeliveryDt: null,
+    salesPerson: { empCode: "SA-0417-19", empName: "Vikram Chandel", mobileNo: "9810044219" },
+    customer: {
+      custId: "CUST-0417-88301",
+      custType: "INDIVIDUAL",
+      salutation: "Ms",
+      firstName: "Ananya",
+      midName: null,
+      lastName: "Iyer",
+      gender: "F",
+      dob: "21-12-2000",
+      occupationDesc: "Salaried - IT Services",
+      mobileNo: "9004471123",
+      // Walk-in customer who gave a phone number and nothing else. The policy
+      // has to be delivered somewhere, so this has to be asked before issuance.
+      emailId: null,
+      panNo: "CJKPI7714D",
+      aadhaarLast4: "9048",
+      gstin: null,
+      areaType: "URBAN",
+      addr: {
+        line1: "C-9, Vasant Vihar",
+        line2: null,
+        locality: "Vasant Vihar",
+        cityDesc: "New Delhi",
+        distDesc: "South West Delhi",
+        stateDesc: "Delhi",
+        pin: "110057",
+      },
+    },
+    vehicle: {
+      chassisNo: "MBLVDA0114NK07219",
+      engineNo: "VDA6KWNHK07219",
+      modelCode: "VID-V2-PLUS",
+      model: MODELS["VID-V2-PLUS"],
+      colourDesc: "Matte White",
+      mfgMth: 6,
+      mfgYr: 2026,
+      exShowroomAmt: "119900.00",
+      importedFlg: "N",
+      yardInDt: "09-07-2026",
+      allocatedToDealId: "HMC-DL-2026-000183",
+    },
+    nominee: {
+      nomineeName: "Lakshmi Iyer",
+      nomineeDob: "17-05-1972",
+      relationDesc: "MOTHER",
+      appointeeName: null,
+      appointeeRelationDesc: null,
+    },
+    finance: {
+      financedFlg: "N",
+      financierName: null,
+      financierBranchDesc: null,
+      loanAcctNo: null,
+      loanAmt: null,
+      tenureMths: null,
+    },
+    invoice: { invoiceNo: "INV/0417/26-27/01191", invoiceDt: "29-07-2026", invoiceAmt: "119900.00" },
+    registration: {
+      regNo: null,
+      regDt: null,
+      rtoCode: null,
+      form21No: "F21/0417/26-27/01191",
+      form21Dt: "29-07-2026",
+      form22No: "F22-VID-2026-0721991",
+    },
+    insurance: {
+      insurerCode: null,
+      policyNo: null,
+      odStartDt: null,
+      odEndDt: null,
+      tpStartDt: null,
+      tpEndDt: null,
+      odPremiumAmt: null,
+      tpPremiumAmt: null,
+      paPremiumAmt: null,
+      totalPremiumAmt: null,
+      idvAmt: null,
+    },
+  },
+
+  // ── 000184 — corporate buyer at the second dealer (direct-agent channel). ───
+  {
+    dealId: "HMC-MH-2026-000184",
+    dealerCode: "HMC-MH-1182",
+    status: "AWAITING_INSURANCE",
+    bookingDt: "27-07-2026",
+    plannedDeliveryDt: "02-08-2026",
+    actualDeliveryDt: null,
+    salesPerson: { empCode: "SA-1182-04", empName: "Prashant Kulkarni", mobileNo: "9822011204" },
+    customer: {
+      custId: "CUST-1182-30117",
+      custType: "CORPORATE",
+      salutation: "M/s",
+      firstName: "Greenmile Logistics",
+      midName: null,
+      lastName: "Private Limited",
+      // A company has no gender or date of birth. Any adapter that treats these
+      // as unconditionally present will fail on this record.
+      gender: null,
+      dob: null,
+      occupationDesc: "Last Mile Delivery Services",
+      mobileNo: "9820117733",
+      emailId: "fleet@greenmile.example",
+      panNo: "AAGCG4471M",
+      aadhaarLast4: null,
+      gstin: "27AAGCG4471M1ZP",
+      areaType: "URBAN",
+      addr: {
+        line1: "Unit 7, Pride Purple Square",
+        line2: "Wakad",
+        locality: "Wakad",
+        cityDesc: "Pune",
+        distDesc: "Pune",
+        stateDesc: "Maharashtra",
+        pin: "411057",
+      },
+    },
+    vehicle: {
+      chassisNo: "MBLDST0125NK55210",
+      engineNo: "DST12ENHK55210",
+      modelCode: "HER-DST-125",
+      model: MODELS["HER-DST-125"],
+      colourDesc: "Panther Black",
+      mfgMth: 4,
+      mfgYr: 2026,
+      exShowroomAmt: "82400.00",
+      importedFlg: "N",
+      yardInDt: "22-05-2026",
+      allocatedToDealId: "HMC-MH-2026-000184",
+    },
+    nominee: {
+      // A corporate owner has no owner-driver, so the compulsory PA cover does
+      // not apply the same way. Another branch the adapter has to respect.
+      nomineeName: null,
+      nomineeDob: null,
+      relationDesc: null,
+      appointeeName: null,
+      appointeeRelationDesc: null,
+    },
+    finance: {
+      financedFlg: "Y",
+      financierName: "Bajaj Finance Ltd",
+      financierBranchDesc: "Hinjewadi, Pune",
+      loanAcctNo: "BFL2W00551210",
+      loanAmt: "70000.00",
+      tenureMths: 24,
+    },
+    invoice: { invoiceNo: "INV/1182/26-27/00551", invoiceDt: "28-07-2026", invoiceAmt: "82400.00" },
+    registration: {
+      regNo: null,
+      regDt: null,
+      rtoCode: null,
+      form21No: "F21/1182/26-27/00551",
+      form21Dt: "28-07-2026",
+      form22No: "F22-HMC-2026-5521004",
+    },
+    insurance: {
+      insurerCode: null,
+      policyNo: null,
+      odStartDt: null,
+      odEndDt: null,
+      tpStartDt: null,
+      tpEndDt: null,
+      odPremiumAmt: null,
+      tpPremiumAmt: null,
+      paPremiumAmt: null,
+      totalPremiumAmt: null,
+      idvAmt: null,
+    },
+  },
+
+  // ── 000185 — the finished state: insured, registered, delivered. ────────────
+  {
+    dealId: "HMC-DL-2026-000185",
+    dealerCode: "HMC-DL-0417",
+    status: "DELIVERED",
+    bookingDt: "02-02-2026",
+    plannedDeliveryDt: "09-02-2026",
+    actualDeliveryDt: "09-02-2026",
+    salesPerson: { empCode: "SA-0417-07", empName: "Neha Aggarwal", mobileNo: "9810044207" },
+    customer: {
+      custId: "CUST-0417-81140",
+      custType: "INDIVIDUAL",
+      salutation: "Mr",
+      firstName: "Devender",
+      midName: "Singh",
+      lastName: "Rathee",
+      gender: "M",
+      dob: "30-06-1979",
+      occupationDesc: "Self Employed - Contractor",
+      mobileNo: "9868112047",
+      emailId: "d.rathee79@example.in",
+      panNo: "AKRPR2214H",
+      aadhaarLast4: "5580",
+      gstin: null,
+      areaType: "URBAN",
+      addr: {
+        line1: "H No 88, Village Kanjhawala",
+        line2: null,
+        locality: "Kanjhawala",
+        cityDesc: "New Delhi",
+        distDesc: "North West Delhi",
+        stateDesc: "Delhi",
+        pin: "110081",
+      },
+    },
+    vehicle: {
+      chassisNo: "MBLHFD0097NK30118",
+      engineNo: "HFD09ENHK30118",
+      modelCode: "HER-HFD-100",
+      model: MODELS["HER-HFD-100"],
+      colourDesc: "Techno Blue",
+      mfgMth: 12,
+      mfgYr: 2025,
+      exShowroomAmt: "62300.00",
+      importedFlg: "N",
+      yardInDt: "14-01-2026",
+      allocatedToDealId: "HMC-DL-2026-000185",
+    },
+    nominee: {
+      nomineeName: "Kavita Rathee",
+      nomineeDob: "04-08-1983",
+      relationDesc: "SPOUSE",
+      appointeeName: null,
+      appointeeRelationDesc: null,
+    },
+    finance: {
+      financedFlg: "Y",
+      financierName: "Hero FinCorp Ltd",
+      financierBranchDesc: "Rohini, New Delhi",
+      loanAcctNo: "HFC2W00301180",
+      loanAmt: "52000.00",
+      tenureMths: 30,
+    },
+    invoice: { invoiceNo: "INV/0417/25-26/00944", invoiceDt: "07-02-2026", invoiceAmt: "62300.00" },
+    registration: {
+      // Written back weeks after the policy was issued, which is the normal
+      // sequence — the policy is then endorsed with this number.
+      regNo: "DL03SR4471",
+      regDt: "24-02-2026",
+      rtoCode: "DL03",
+      form21No: "F21/0417/25-26/00944",
+      form21Dt: "07-02-2026",
+      form22No: "F22-HMC-2025-3011804",
+    },
+    insurance: {
+      insurerCode: "BAJAJ",
+      policyNo: "OG-27-1201-1847-00004471",
+      // One year of own damage...
+      odStartDt: "09-02-2026",
+      odEndDt: "08-02-2027",
+      // ...bundled with five years of third party.
+      tpStartDt: "09-02-2026",
+      tpEndDt: "08-02-2031",
+      odPremiumAmt: "1104.00",
+      tpPremiumAmt: "3851.00",
+      paPremiumAmt: "330.00",
+      totalPremiumAmt: "5285.00",
+      idvAmt: "56070.00",
+    },
+  },
+];

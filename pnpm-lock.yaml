@@ -219,6 +219,19 @@ importers:
         specifier: 3.1.0
         version: 3.1.0
 
+  artifacts/dms-mock:
+    dependencies:
+      express:
+        specifier: ^5.2.1
+        version: 5.2.1(supports-color@8.1.1)
+    devDependencies:
+      '@types/express':
+        specifier: ^5.0.6
+        version: 5.0.6
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.9.5
+
   artifacts/doc-ingest:
     devDependencies:
       '@hookform/resolvers':

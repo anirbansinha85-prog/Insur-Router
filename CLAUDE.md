@@ -28,6 +28,8 @@ artifacts/            deployable apps
   doc-ingest/         React 19 + Vite — VeloDocs frontend
   rc-capture/         Expo mobile app
   mockup-sandbox/     component preview canvas, not a product
+  dms-mock/           fake OEM dealer system, dev fixture — see its README
+docs/                 domain reference (issuance field requirements, IRDAI rates)
 lib/                  shared packages
   db/                 Drizzle schema + pg pool. Source of truth for tables.
   api-spec/           openapi.yaml — source of truth for API contracts
@@ -363,7 +365,8 @@ real request.
 - **`preinstall` refuses npm and yarn.** Use pnpm.
 - **`lib/api-client-react` is a composite TS package.** After codegen it must be
   rebuilt with `tsc` before Expo (rc-capture) will typecheck against it.
-- **RLS is disabled** on all four Supabase tables. The API connects as the
-  Postgres owner over a direct `pg` pool, so RLS does not affect it — but the
-  Supabase anon key would expose every row if anyone used the client libraries
-  against this project.
+- **RLS is enabled deny-all** (no policies) on the Supabase tables. The API
+  connects as the Postgres owner over a direct `pg` pool, which bypasses RLS, so
+  the app is unaffected. This deliberately blocks the Supabase anon key from
+  reading anything — any future Supabase-client frontend needs policies written
+  first, and will read zero rows until then.
