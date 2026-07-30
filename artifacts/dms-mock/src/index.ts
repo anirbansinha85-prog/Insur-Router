@@ -39,6 +39,162 @@ app.get("/dms/v1/health", (_req, res) => {
 });
 
 /**
+ * A browsable index at `/`.
+ *
+ * Exists only so the mock can be inspected by eye instead of by curl — raw JSON
+ * in a browser is unreadable, and the point of the seed data is that each record
+ * is broken in a *different* way. Surfacing those gaps in a table makes them
+ * obvious; a JSON dump hides them.
+ *
+ * This is not part of the DMS contract and nothing should consume it. A real DMS
+ * has a full dealer UI that is none of our business.
+ */
+app.get("/", (_req, res) => {
+  const esc = (s: unknown) =>
+    String(s ?? "").replace(/[&<>"]/g, (c) => `&${{ "&": "amp", "<": "lt", ">": "gt", '"': "quot" }[c]};`);
+
+  /** What is missing on this deal that a policy cannot be issued without. */
+  const gapsFor = (d: (typeof DEALS)[number]) => {
+    const gaps: string[] = [];
+    if (!d.nominee.nomineeName && d.customer.custType === "INDIVIDUAL") gaps.push("nominee");
+    if (!d.customer.emailId) gaps.push("email");
+    if (!d.customer.dob && d.customer.custType === "INDIVIDUAL") gaps.push("date of birth");
+    return gaps;
+  };
+
+  const ratingBasis = (d: (typeof DEALS)[number]) =>
+    d.vehicle.model.fuel === "ELECTRIC"
+      ? `${d.vehicle.model.motorKw} kW`
+      : `${d.vehicle.model.cc} cc`;
+
+  const rows = DEALS.map((d) => {
+    const gaps = gapsFor(d);
+    return `<tr>
+      <td><a href="/dms/v1/deals/${esc(d.dealId)}?apiKey=${esc(API_KEY)}"><code>${esc(d.dealId)}</code></a></td>
+      <td><span class="st st-${esc(d.status)}">${esc(d.status.replace(/_/g, " "))}</span></td>
+      <td>${esc(d.customer.salutation)} ${esc(d.customer.firstName)} ${esc(d.customer.lastName)}
+          ${d.customer.custType === "CORPORATE" ? '<span class="tag">corporate</span>' : ""}</td>
+      <td>${esc(d.vehicle.model.modelDesc)}<br><small>${esc(ratingBasis(d))}${
+        d.vehicle.model.fuel === "ELECTRIC" ? ' <span class="tag tag-ev">EV</span>' : ""
+      }</small></td>
+      <td><code>${esc(d.vehicle.chassisNo)}</code></td>
+      <td>${d.finance.financedFlg === "Y" ? esc(d.finance.financierName) : "<small>cash</small>"}</td>
+      <td>${
+        gaps.length
+          ? gaps.map((g) => `<span class="gap">${esc(g)}</span>`).join(" ")
+          : '<span class="ok">complete</span>'
+      }</td>
+      <td>${
+        d.registration.regNo
+          ? `<code>${esc(d.registration.regNo)}</code>`
+          : '<small class="none">not registered yet</small>'
+      }</td>
+      <td>${
+        d.actualDeliveryDt
+          ? `<a href="/dms/v1/deals/${esc(d.dealId)}/service-schedule?apiKey=${esc(API_KEY)}">schedule</a>`
+          : "<small>—</small>"
+      }</td>
+    </tr>`;
+  }).join("");
+
+  const dealerRows = Object.values(DEALERS)
+    .map(
+      (dl) => `<tr>
+        <td><a href="/dms/v1/dealers/${esc(dl.dealerCode)}?apiKey=${esc(API_KEY)}"><code>${esc(dl.dealerCode)}</code></a></td>
+        <td>${esc(dl.dealerName)}</td>
+        <td>${esc(dl.addr.cityDesc)}, ${esc(dl.addr.stateDesc)}</td>
+        <td><span class="st st-${esc(dl.intermediary.channel)}">${esc(dl.intermediary.channel.replace(/_/g, " "))}</span></td>
+        <td>${esc(dl.intermediary.intermediaryName)}<br><small><code>${esc(dl.intermediary.intermediaryCode)}</code></small></td>
+      </tr>`,
+    )
+    .join("");
+
+  res.type("html").send(`<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mock OEM DMS — Hero</title>
+<style>
+  :root { color-scheme: light dark; --bd:#d0d7de; --mut:#57606a; --bg2:#f6f8fa; --acc:#0969da; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bd:#30363d; --mut:#8b949e; --bg2:#161b22; --acc:#4493f8; }
+  }
+  body { font:14px/1.55 -apple-system,Segoe UI,Roboto,sans-serif; margin:0; padding:2rem 1.25rem 4rem; max-width:1180px; }
+  h1 { font-size:1.35rem; margin:0 0 .2rem; }
+  h2 { font-size:1rem; margin:2.25rem 0 .6rem; }
+  .sub { color:var(--mut); margin:0 0 1.5rem; }
+  .warn { border:1px solid var(--bd); border-left:3px solid #bf8700; background:var(--bg2);
+          padding:.7rem .9rem; border-radius:6px; margin:0 0 1.5rem; }
+  .scroll { overflow-x:auto; border:1px solid var(--bd); border-radius:6px; }
+  table { border-collapse:collapse; width:100%; min-width:900px; }
+  th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.04em;
+       color:var(--mut); padding:.55rem .7rem; background:var(--bg2); border-bottom:1px solid var(--bd);
+       white-space:nowrap; }
+  td { padding:.55rem .7rem; border-bottom:1px solid var(--bd); vertical-align:top; }
+  tr:last-child td { border-bottom:0; }
+  code { font:12px ui-monospace,SFMono-Regular,Menlo,monospace; }
+  small { color:var(--mut); font-size:12px; }
+  a { color:var(--acc); }
+  .st { font-size:11px; padding:.15rem .45rem; border-radius:10px; border:1px solid var(--bd);
+        white-space:nowrap; display:inline-block; }
+  .st-AWAITING_INSURANCE { border-color:#bf8700; color:#9a6700; }
+  .st-DELIVERED { border-color:#1a7f37; color:#1a7f37; }
+  .st-BROKER { border-color:#0969da; color:var(--acc); }
+  .st-DIRECT_AGENT { border-color:#8250df; color:#8250df; }
+  .gap { font-size:11px; padding:.15rem .45rem; border-radius:4px; background:#ffebe9;
+         color:#a40e26; border:1px solid #ff818266; display:inline-block; }
+  @media (prefers-color-scheme: dark) { .gap { background:#3c1618; color:#ff9b96; } }
+  .ok { font-size:11px; color:#1a7f37; }
+  .none { font-style:italic; }
+  .tag { font-size:10px; padding:.1rem .35rem; border:1px solid var(--bd); border-radius:3px; color:var(--mut); }
+  .tag-ev { border-color:#1a7f37; color:#1a7f37; }
+  ul { padding-left:1.2rem; }
+</style></head><body>
+
+<h1>Mock OEM DMS &mdash; Hero</h1>
+<p class="sub">Development fixture standing in for a dealer management system.
+State is in memory and resets on restart.</p>
+
+<div class="warn"><strong>This is not InsurRouter.</strong> It is the fake
+<em>dealer-side</em> system InsurRouter will pull from. Every record is invented.
+The adapter that consumes this is not written yet, so nothing here flows into the
+app.</div>
+
+<h2>Deals</h2>
+<p class="sub">Each row is broken differently on purpose &mdash; a seed set where
+everything is complete teaches nothing. The <strong>gaps</strong> column is what
+blocks issuance.</p>
+<div class="scroll"><table>
+<thead><tr>
+  <th>Deal</th><th>Status</th><th>Customer</th><th>Vehicle</th><th>Chassis</th>
+  <th>Finance</th><th>Gaps blocking issuance</th><th>Registration</th><th>Service</th>
+</tr></thead>
+<tbody>${rows}</tbody></table></div>
+
+<h2>Dealers</h2>
+<p class="sub">Two channels, because how a dealer reaches insurers differs. A
+broker's consolidated platform fronts several insurers behind one login; a direct
+agency code reaches exactly one.</p>
+<div class="scroll"><table>
+<thead><tr><th>Code</th><th>Name</th><th>Location</th><th>Channel</th><th>Intermediary</th></tr></thead>
+<tbody>${dealerRows}</tbody></table></div>
+
+<h2>Raw endpoints</h2>
+<ul>
+  <li><a href="/dms/v1/health">/dms/v1/health</a> &mdash; no key needed</li>
+  <li><a href="/dms/v1/deals?status=AWAITING_INSURANCE&apiKey=${esc(API_KEY)}">/dms/v1/deals?status=AWAITING_INSURANCE</a>
+      &mdash; the queue this product exists to drain</li>
+  <li><a href="/dms/v1/models?apiKey=${esc(API_KEY)}">/dms/v1/models</a> &mdash; OEM catalogue</li>
+  <li><a href="/dms/v1/stock/MBLHAR0748NK41772?apiKey=${esc(API_KEY)}">/dms/v1/stock/&lt;chassisNo&gt;</a>
+      &mdash; unallocated yard stock</li>
+</ul>
+<p><small>Links carry <code>?apiKey=</code> so a browser can reach them &mdash; a
+browser cannot set a custom header on a navigation. Real clients send
+<code>X-DMS-API-Key</code>.</small></p>
+
+</body></html>`);
+});
+
+/**
  * Shared-secret auth, which is what these systems actually use — a static key
  * per integration, rotated by email. Not a model to copy, just one to expect.
  *
