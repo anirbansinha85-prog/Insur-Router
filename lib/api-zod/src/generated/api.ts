@@ -697,7 +697,17 @@ export const IngestPushBody = zod.object({
   "confidence": zod.number()
 }).describe('One labelled value, using the document\'s own printed label')),
   "rawText": zod.string().nullish()
-}).describe('Stage 1 — what the document is and everything printed on it'),zod.null()]).optional().describe('Stage 1 extraction, stored against the application as an audit trail of what the OCR actually read. Optional — non-OCR sources omit it.')
+}).describe('Stage 1 — what the document is and everything printed on it'),zod.null()]).optional().describe('Stage 1 extraction, stored against the application as an audit trail of what the OCR actually read. Optional — non-OCR sources omit it.'),
+  "tenant": zod.union([zod.object({
+  "showroomId": zod.number().int(),
+  "showroomCode": zod.string(),
+  "showroomName": zod.string(),
+  "ownerId": zod.number().int(),
+  "ownerCode": zod.string(),
+  "ownerName": zod.string(),
+  "insuranceChannel": zod.union([zod.literal('BROKER'),zod.literal('DIRECT_AGENT'),zod.literal(null)]).nullish().describe('How this showroom reaches insurers for deals from this DMS account. Held per account rather than per showroom because the arrangement belongs to the legal entity — one outlet may go through a broker platform while another holds its own agency code.\n')
+}).describe('Resolved from the OEM\'s dealer code via showroom_dms_accounts. Null when that dealer code is not mapped to a showroom — a configuration gap, and reported as one rather than guessed at.\n'),zod.null()]).optional().describe('Pass back the `tenant` block from a DMS pull so the draft is attributed to a showroom and therefore an owner. Omitted by OCR and scrape, which have no way of knowing which outlet they belong to — those drafts are unattributed until someone says otherwise.'),
+  "dealContext": zod.record(zod.string(), zod.unknown()).optional().describe('Pass back the `dealContext` block from a DMS pull. Everything the flat MSA payload has no room for — cubic capacity or motor kW, nominee, hypothecation, seating, manufacture date, entity type — lands in its own column from here. Without it the premium engine has no rating input and nothing can be priced.')
 })
 
 export const IngestPushResponse = zod.object({

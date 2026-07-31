@@ -63,8 +63,16 @@ export const applicationsTable = pgTable("applications", {
   vehicleFuelType: text("vehicle_fuel_type", {
     enum: ["PETROL", "ELECTRIC"],
   }),
-  /** Engine displacement. Null on electric — TP is rated on kW there instead. */
-  vehicleCubicCapacity: integer("vehicle_cubic_capacity"),
+  /**
+   * Engine displacement. Null on electric — TP is rated on kW there instead.
+   *
+   * `real`, not `integer`: actual displacement is fractional. A Hero Xpulse is
+   * 199.6cc, a Splendor 97.2cc, a Destini 124.6cc — those are the figures the
+   * DMS holds and the numbers printed on Form 21. Rounding them would be
+   * storing something the source never said, and 149.6 rounding to 150 would
+   * cross an IRDAI band boundary in the wrong direction.
+   */
+  vehicleCubicCapacity: real("vehicle_cubic_capacity"),
   /** Continuous motor rating. Null on petrol. */
   vehicleMotorKw: real("vehicle_motor_kw"),
   vehicleSeatingCapacity: integer("vehicle_seating_capacity"),

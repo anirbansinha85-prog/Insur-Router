@@ -1396,6 +1396,24 @@ components:
           oneOf:
             - $ref: "#/components/schemas/DocumentExtraction"
             - type: "null"
+        tenant:
+          description: >-
+            Pass back the `tenant` block from a DMS pull so the draft is
+            attributed to a showroom and therefore an owner. Omitted by OCR and
+            scrape, which have no way of knowing which outlet they belong to —
+            those drafts are unattributed until someone says otherwise.
+          oneOf:
+            - $ref: "#/components/schemas/DmsTenant"
+            - type: "null"
+        dealContext:
+          type: object
+          additionalProperties: true
+          description: >-
+            Pass back the `dealContext` block from a DMS pull. Everything the
+            flat MSA payload has no room for — cubic capacity or motor kW,
+            nominee, hypothecation, seating, manufacture date, entity type —
+            lands in its own column from here. Without it the premium engine
+            has no rating input and nothing can be priced.
       required:
         - fields
 

@@ -50,9 +50,21 @@ export function ReviewCorrect({ result, onReset }: ReviewCorrectProps) {
   const handlePush = () => {
     setServerErrors(null)
     pushToRouter(
-      // The document extraction travels with the payload so InsurRouter keeps
-      // an audit trail of what the OCR actually read.
-      { data: { fields: formData, document: result.document ?? null } },
+      // Everything the source produced travels with the payload:
+      //   document     — audit trail of what the OCR actually read
+      //   tenant       — which showroom, and so which owner, owns the draft
+      //   dealContext  — cc/kW, nominee, hypothecation and the rest, which the
+      //                  flat MSA form has no fields for but the proposal needs
+      // OCR and scrape supply neither of the last two, and those columns stay
+      // null rather than being guessed at.
+      {
+        data: {
+          fields: formData,
+          document: result.document ?? null,
+          tenant: result.tenant ?? null,
+          dealContext: result.dealContext ?? undefined,
+        },
+      },
       {
         onSuccess: (res) => {
           setSuccessAppId(res.applicationId)

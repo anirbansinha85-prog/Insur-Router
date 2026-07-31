@@ -5,11 +5,17 @@
  * InsurRouter API - Two-wheeler insurance application routing engine
  * OpenAPI spec version: 0.1.0
  */
+import type { DmsTenant } from './dmsTenant';
 import type { DocumentExtraction } from './documentExtraction';
+import type { IngestPushInputDealContext } from './ingestPushInputDealContext';
 import type { MsaFields } from './msaFields';
 
 export interface IngestPushInput {
   fields: MsaFields;
   /** Stage 1 extraction, stored against the application as an audit trail of what the OCR actually read. Optional — non-OCR sources omit it. */
   document?: DocumentExtraction | null;
+  /** Pass back the `tenant` block from a DMS pull so the draft is attributed to a showroom and therefore an owner. Omitted by OCR and scrape, which have no way of knowing which outlet they belong to — those drafts are unattributed until someone says otherwise. */
+  tenant?: DmsTenant | null;
+  /** Pass back the `dealContext` block from a DMS pull. Everything the flat MSA payload has no room for — cubic capacity or motor kW, nominee, hypothecation, seating, manufacture date, entity type — lands in its own column from here. Without it the premium engine has no rating input and nothing can be priced. */
+  dealContext?: IngestPushInputDealContext;
 }

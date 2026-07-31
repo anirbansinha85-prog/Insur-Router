@@ -35,6 +35,7 @@ export * from './executionResultResolvedExecutionMode';
 export * from './executionResultStatus';
 export * from './healthStatus';
 export * from './ingestPushInput';
+export * from './ingestPushInputDealContext';
 export * from './ingestPushResult';
 export * from './ingestResult';
 export * from './ingestResultConfidence';

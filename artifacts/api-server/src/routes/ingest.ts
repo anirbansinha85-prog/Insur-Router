@@ -43,6 +43,7 @@ import {
   fetchStockByChassis,
   isDmsConfigured,
   resolveTenantByDealerCode,
+  type DmsDealContext,
 } from "../lib/dms";
 import {
   buildEngineStatuses,
@@ -663,6 +664,43 @@ function validateMsaFields(fields: MsaFields): MsaValidationResult {
   return { errors, invalidFields };
 }
 
+/**
+ * DMS relationship description → the `nominee_relationship` enum.
+ *
+ * The mock already emits enum-shaped values, but a real dealer system holds
+ * whatever the salesperson typed — "Wife", "S/o", "Husband", "Mother-in-law".
+ * Unrecognised input maps to OTHER rather than being dropped: the enum is a
+ * storage convenience, and losing the fact that a nominee exists because the
+ * word was unfamiliar would be a far worse outcome than a coarse label.
+ *
+ * The original text is not lost either — it stays in the deal record on the
+ * DMS side, which remains the system of record for it.
+ */
+const RELATIONSHIP_SYNONYMS: Record<string, string> = {
+  WIFE: "SPOUSE",
+  HUSBAND: "SPOUSE",
+  SPOUSE: "SPOUSE",
+  FATHER: "FATHER",
+  DAD: "FATHER",
+  MOTHER: "MOTHER",
+  MOM: "MOTHER",
+  SON: "SON",
+  DAUGHTER: "DAUGHTER",
+  BROTHER: "BROTHER",
+  SISTER: "SISTER",
+};
+
+type NomineeRelationship =
+  typeof applicationsTable.$inferInsert["nomineeRelationship"];
+
+function normaliseRelationship(
+  desc: string | null | undefined,
+): NomineeRelationship {
+  if (!desc) return null;
+  const key = desc.trim().toUpperCase().replace(/[^A-Z]/g, "");
+  return (RELATIONSHIP_SYNONYMS[key] ?? "OTHER") as NomineeRelationship;
+}
+
 router.post("/ingest/push", async (req, res): Promise<void> => {
   const parsed = IngestPushBody.safeParse(req.body);
   if (!parsed.success) {
@@ -671,7 +709,23 @@ router.post("/ingest/push", async (req, res): Promise<void> => {
   }
 
   const { fields } = parsed.data;
-  logger.info({ vehicleMake: fields.vehicleMake, ownerFullName: fields.ownerFullName }, "Ingest push to InsurRouter");
+
+  // A DMS pull hands back `tenant` and `dealContext`; the caller passes both
+  // straight through. OCR and scrape send neither and the columns stay null,
+  // which is the honest answer — a scanned Aadhaar cannot say which showroom
+  // it belongs to or what the engine capacity is.
+  const tenant = parsed.data.tenant ?? null;
+  const ctx = (parsed.data.dealContext ?? null) as DmsDealContext | null;
+
+  logger.info(
+    {
+      vehicleMake: fields.vehicleMake,
+      ownerFullName: fields.ownerFullName,
+      showroom: tenant?.showroomCode ?? null,
+      dealId: ctx?.dealId ?? null,
+    },
+    "Ingest push to InsurRouter",
+  );
 
   // Validate required MSA fields before creating the draft
   const validation = validateMsaFields(fields as unknown as MsaFields);
@@ -708,6 +762,42 @@ router.post("/ingest/push", async (req, res): Promise<void> => {
       rtoRegistrationCity: fields.rtoRegistrationCity,
       rtoRegistrationState: fields.rtoRegistrationState,
       rtoCode: fields.rtoCode,
+
+      // ── Tenant scope ────────────────────────────────────────────────────
+      // Which showroom, and through it which owner, owns this row.
+      showroomId: tenant?.showroomId ?? null,
+      dmsDealerCode: ctx?.dealerCode ?? null,
+      dmsDealId: ctx?.dealId ?? null,
+
+      // ── Rating attributes ───────────────────────────────────────────────
+      // Without these the premium engine has nothing to band on: third-party
+      // premium is slabbed by cc on petrol and by kW on electric, and a
+      // deal reaching the pricer with neither has no price at all.
+      vehicleFuelType: ctx?.vehicle.fuelType ?? null,
+      vehicleCubicCapacity: ctx?.vehicle.cubicCapacity ?? null,
+      vehicleMotorKw: ctx?.vehicle.motorKw ?? null,
+      vehicleSeatingCapacity: ctx?.vehicle.seatingCapacity ?? null,
+      vehicleManufactureMonth: ctx?.vehicle.manufactureMonth ?? null,
+      vehicleManufactureYear: ctx?.vehicle.manufactureYear ?? null,
+
+      // A company has no owner-driver, so compulsory PA cover does not apply.
+      ownerEntityType: ctx?.owner.entityType ?? "INDIVIDUAL",
+
+      // ── Nominee ─────────────────────────────────────────────────────────
+      // Frequently null even here: a vehicle sale does not require a nominee,
+      // so the DMS often has not captured one. No document carries it either,
+      // which is why it ends up being asked in the UI.
+      nomineeFullName: ctx?.nominee.fullName ?? null,
+      nomineeDateOfBirth: ctx?.nominee.dateOfBirth ?? null,
+      nomineeRelationship: normaliseRelationship(ctx?.nominee.relationship),
+      nomineeAppointeeName: ctx?.nominee.appointeeName ?? null,
+      nomineeAppointeeRelationship: ctx?.nominee.appointeeRelationship ?? null,
+
+      // ── Hypothecation ───────────────────────────────────────────────────
+      isHypothecated: ctx?.hypothecation.isHypothecated ?? false,
+      hypothecationFinancierName: ctx?.hypothecation.financierName ?? null,
+      hypothecationLoanAccountNumber: ctx?.hypothecation.loanAccountNumber ?? null,
+
       // Audit trail: what the OCR actually read, before any mapping.
       sourceDocument: parsed.data.document
         ? (parsed.data.document as unknown as Record<string, unknown>)
