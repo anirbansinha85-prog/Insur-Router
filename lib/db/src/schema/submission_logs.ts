@@ -35,7 +35,7 @@ export const submissionLogsTable = pgTable("submission_logs", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
-});
+}).enableRLS();
 
 export const insertSubmissionLogSchema = createInsertSchema(
   submissionLogsTable,

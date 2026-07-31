@@ -79,7 +79,7 @@ export const applicationsTable = pgTable("applications", {
     .notNull()
     .defaultNow()
     .$onUpdate(() => new Date()),
-});
+}).enableRLS();
 
 export const insertApplicationSchema = createInsertSchema(
   applicationsTable,

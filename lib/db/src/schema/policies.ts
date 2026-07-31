@@ -13,7 +13,7 @@ export const policiesTable = pgTable("policies", {
   pdfUrl: text("pdf_url"),
   providerName: text("provider_name").notNull(),
   issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}).enableRLS();
 
 export const insertPolicySchema = createInsertSchema(policiesTable).omit({
   id: true,

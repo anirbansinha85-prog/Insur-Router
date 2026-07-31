@@ -37,7 +37,7 @@ export const ocrEnginesTable = pgTable("ocr_engines", {
     .notNull()
     .defaultNow()
     .$onUpdate(() => new Date()),
-});
+}).enableRLS();
 
 export const insertOcrEngineSchema = createInsertSchema(ocrEnginesTable).omit({
   id: true,

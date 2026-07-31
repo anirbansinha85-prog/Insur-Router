@@ -22,7 +22,7 @@ export const providersTable = pgTable("providers", {
     .notNull()
     .defaultNow()
     .$onUpdate(() => new Date()),
-});
+}).enableRLS();
 
 export const insertProviderSchema = createInsertSchema(providersTable).omit({
   id: true,
