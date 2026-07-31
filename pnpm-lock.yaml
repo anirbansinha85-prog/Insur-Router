@@ -221,6 +221,9 @@ importers:
 
   artifacts/dms-mock:
     dependencies:
+      '@workspace/quoting':
+        specifier: workspace:*
+        version: link:../../lib/quoting
       express:
         specifier: ^5.2.1
         version: 5.2.1(supports-color@8.1.1)
@@ -976,6 +979,12 @@ importers:
       drizzle-kit:
         specifier: ^0.31.10
         version: 0.31.10
+
+  lib/quoting:
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.9.5
 
   scripts:
     dependencies:

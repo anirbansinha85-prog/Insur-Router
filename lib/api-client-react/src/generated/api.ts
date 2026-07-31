@@ -1201,7 +1201,7 @@ export const getIngestDmsPullUrl = () => {
 }
 
 /**
- * @summary Pull vehicle data from Dealer DMS by registration number
+ * @summary Pull deal, vehicle and customer data from the dealer's DMS
  */
 export const ingestDmsPull = async (dmsPullInput: DmsPullInput, options?: Parameters<typeof customFetch>[1]): Promise<IngestResult> => {
 
@@ -1250,7 +1250,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type IngestDmsPullMutationError = ErrorType<ErrorResponse>
 
     /**
- * @summary Pull vehicle data from Dealer DMS by registration number
+ * @summary Pull deal, vehicle and customer data from the dealer's DMS
  */
 export const useIngestDmsPull = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ingestDmsPull>>, TError,{data: BodyType<DmsPullInput>}, TContext>, request?: SecondParameter<typeof customFetch>}

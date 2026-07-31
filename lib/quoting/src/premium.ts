@@ -15,7 +15,21 @@
  * government notification — everything here is data, not logic.
  */
 
-import type { DmsModel } from "./types.ts";
+/**
+ * The only vehicle facts that affect the premium.
+ *
+ * Deliberately not the DMS wire type. This package is shared by the mock
+ * dealer portal and the real API server, and neither should have to agree on a
+ * vehicle record shape to get a price. Any object carrying these three fields
+ * satisfies it structurally, so a `DmsModel` can still be passed directly.
+ */
+export interface RatedVehicle {
+  fuel: "PETROL" | "ELECTRIC";
+  /** Engine displacement. Null on electric. */
+  cc: number | null;
+  /** Continuous motor rating in kW. Null on petrol. */
+  motorKw: number | null;
+}
 
 /** GST on motor insurance premium. */
 export const GST_RATE = 0.18;
@@ -101,9 +115,9 @@ export interface TpResult {
 }
 
 /** Third-party premium — the figure that is identical at every insurer. */
-export function computeTp(model: DmsModel, years = NEW_VEHICLE_TP_YEARS): TpResult {
-  if (model.fuel === "ELECTRIC") {
-    const kw = model.motorKw ?? 0;
+export function computeTp(vehicle: RatedVehicle, years = NEW_VEHICLE_TP_YEARS): TpResult {
+  if (vehicle.fuel === "ELECTRIC") {
+    const kw = vehicle.motorKw ?? 0;
     const band = TP_ELECTRIC.find((b) => kw <= b.maxKw) ?? TP_ELECTRIC.at(-1)!;
     const amount =
       years === 1 ? band.oneYear : Math.round(band.oneYear * FIVE_YEAR_MULTIPLIER);
@@ -116,7 +130,7 @@ export function computeTp(model: DmsModel, years = NEW_VEHICLE_TP_YEARS): TpResu
     };
   }
 
-  const cc = model.cc ?? 0;
+  const cc = vehicle.cc ?? 0;
   const band = TP_PETROL.find((b) => cc <= b.maxCc) ?? TP_PETROL.at(-1)!;
   return {
     band: band.label,
@@ -146,7 +160,7 @@ export interface PremiumBreakdown {
 }
 
 export interface PremiumInput {
-  model: DmsModel;
+  model: RatedVehicle;
   exShowroomAmt: number;
   registeringCity: string;
   /** Insurer's filed OD rate as a fraction of IDV, before zone loading. */

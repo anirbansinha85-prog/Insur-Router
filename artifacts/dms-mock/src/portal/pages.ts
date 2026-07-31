@@ -11,8 +11,9 @@
 import { DEALS, FREE_STOCK } from "../deals.ts";
 import { MODELS } from "../catalogue.ts";
 import { buildServiceSchedule } from "../service-schedule.ts";
-import { panelFor, quotaState, eligibility } from "../insurers.ts";
-import { formatInr } from "../premium.ts";
+import { panelFor } from "../insurers.ts";
+import { quotaState, eligibility } from "@workspace/quoting/panel";
+import { formatInr } from "@workspace/quoting/premium";
 import { esc } from "./shell.ts";
 import {
   gaps,

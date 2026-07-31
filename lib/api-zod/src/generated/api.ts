@@ -404,14 +404,16 @@ export const GetPolicyResponse = zod.object({
 
 
 /**
- * @summary Pull vehicle data from Dealer DMS by registration number
+ * @summary Pull deal, vehicle and customer data from the dealer's DMS
  */
 
 
 
+
 export const IngestDmsPullBody = zod.object({
-  "regNo": zod.string().min(1).describe('Vehicle registration number, e.g. DL01AB1234')
-})
+  "dealId": zod.string().min(1).optional().describe('The dealer\'s own deal or booking identifier, e.g. HMC-DL-2026-000183. Preferred: a deal is customer plus vehicle plus finance, where a chassis is only the vehicle.\n'),
+  "chassisNo": zod.string().min(1).optional().describe('Chassis number (VIN) of the allocated unit, e.g. MBLKAR0921NK18337. Present on Form 21 before any RC exists, and unlike a registration number it never changes on transfer or re-registration.\n')
+}).describe('Identifies the deal to pull. Deliberately not keyed on a registration number: under the Motor Vehicles Act an RTO will not register a vehicle without live insurance, so a new vehicle has no registration number at the moment the policy is bought. The keys that do exist at that point are the dealer\'s own deal identifier and the chassis number of the allocated stock unit. Supply at least one — dealId wins if both are given, because it resolves a whole deal rather than just a vehicle.\n')
 
 export const IngestDmsPullResponse = zod.object({
   "fields": zod.object({

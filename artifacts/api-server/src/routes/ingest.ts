@@ -2,7 +2,7 @@
  * VeloDocs — Document Ingestion Routes
  *
  * Ingest sources → normalised MsaFields + confidence scores:
- *   POST /api/ingest/dms-pull       — Dealer DMS stub (reg-no lookup)
+ *   POST /api/ingest/dms-pull       — Dealer DMS, keyed on dealId or chassisNo
  *   POST /api/ingest/browser-scrape — Playwright scrape of dealer portal
  *   POST /api/ingest/ocr            — two-stage document extraction
  *   GET  /api/ingest/ocr/engines    — engine availability and priority
@@ -36,6 +36,13 @@ import {
   ocrEnginesTable,
 } from "@workspace/db";
 import { chromiumLaunchOptions } from "../lib/browser-executor";
+import {
+  DmsError,
+  adapterForDealer,
+  fetchDeal,
+  fetchStockByChassis,
+  isDmsConfigured,
+} from "../lib/dms";
 import {
   buildEngineStatuses,
   resolveChain,
@@ -206,71 +213,19 @@ const router: IRouter = Router();
 // ─── DMS Pull ─────────────────────────────────────────────────────────────────
 
 /**
- * Stub Dealer DMS lookup.
+ * Pull a deal from the dealer's DMS.
  *
- * // TODO: Connect real Dealer DMS API here
- * Replace the stub below with a real DMS HTTP call, e.g.:
- *   const resp = await fetch(`${process.env.DMS_API_URL}/vehicle/${regNo}`, {
- *     headers: { Authorization: `Bearer ${process.env.DMS_API_TOKEN}` }
- *   });
- *   const data = await resp.json();
- *   return mapDmsResponseToMsaFields(data);
+ * This replaces a stub that took a registration number and hashed it into a
+ * plausible-looking record. Both halves were wrong for this scope: an RTO will
+ * not register a vehicle without live insurance, so a new vehicle has **no
+ * registration number** at the moment the policy is bought — and fabricating
+ * the record is the same defect as the OCR stub, output that reads as a
+ * successful lookup while being invented.
+ *
+ * The key is the dealer's deal ID, or the chassis number of the allocated unit.
+ * A chassis resolves to a deal via stock; unallocated stock has no customer, so
+ * there is nothing to insure yet and that is reported rather than guessed.
  */
-function callDealerDMS(regNo: string): IngestResult {
-  // // TODO: Connect real Dealer DMS API here — replace this stub with a real
-  // integration once the DMS vendor API credentials are available.
-  // The stub generates a plausible-looking record from the reg number.
-  const seed = regNo.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  const makes = ["Yamaha", "Honda", "TVS", "Bajaj", "Royal Enfield", "Hero"];
-  const models: Record<string, string[]> = {
-    Yamaha: ["FZ-S", "R15", "MT-15", "FZ25"],
-    Honda: ["CB350", "Hornet 2.0", "CB300R", "Unicorn"],
-    TVS: ["Apache RTR 160", "Apache RR 310", "Ntorq 125"],
-    Bajaj: ["Pulsar NS200", "Dominar 400", "Pulsar 150"],
-    "Royal Enfield": ["Classic 350", "Meteor 350", "Hunter 350", "Himalayan"],
-    Hero: ["Splendor Plus", "HF Deluxe", "Xpulse 200"],
-  };
-  const makeIdx = seed.charCodeAt(0) % makes.length;
-  const make = makes[makeIdx];
-  const modelList = models[make];
-  const model = modelList[seed.charCodeAt(1) % modelList.length];
-
-  const priceBase = 85000 + (seed.charCodeAt(2) % 10) * 15000;
-  const purchaseYear = 2021 + (seed.charCodeAt(3) % 4);
-
-  const rtoCodes = ["DL01", "DL02", "MH02", "MH12", "KA01", "TN09", "GJ01"];
-  const rtoCities = ["New Delhi", "New Delhi", "Mumbai", "Pune", "Bengaluru", "Chennai", "Ahmedabad"];
-  const rtoStates = ["Delhi", "Delhi", "Maharashtra", "Maharashtra", "Karnataka", "Tamil Nadu", "Gujarat"];
-  const rtoIdx = seed.charCodeAt(4) % rtoCodes.length;
-
-  const fields: MsaFields = {
-    vehicleMake: make,
-    vehicleModel: model,
-    vehicleVariant: "Standard",
-    vehicleEngineNumber: `ENG${seed.slice(0, 6).padEnd(6, "0")}`,
-    vehicleChassisNumber: `CHS${seed.padEnd(9, "0").slice(0, 9)}`,
-    vehicleExShowroomPrice: priceBase,
-    vehicleDateOfPurchase: `${purchaseYear}-03-15`,
-    ownerFullName: "Rajesh Kumar Sharma",
-    ownerBillingAddress: "42, MG Road, Sector 14",
-    ownerPincode: 110001,
-    ownerPhoneNumber: "9876543210",
-    ownerEmail: "rajesh.sharma@example.in",
-    ownerDateOfBirth: "1985-06-20",
-    ownerIdProofType: "AADHAR",
-    ownerIdProofNumber: "1234-5678-9012",
-    rtoRegistrationCity: rtoCities[rtoIdx],
-    rtoRegistrationState: rtoStates[rtoIdx],
-    rtoCode: rtoCodes[rtoIdx],
-  };
-
-  // All DMS fields have high confidence since they come directly from the DB
-  const confidence: Record<string, number> = {};
-  for (const k of Object.keys(fields)) confidence[k] = 0.95;
-
-  return { fields, confidence, rawText: null };
-}
-
 router.post("/ingest/dms-pull", async (req, res): Promise<void> => {
   const parsed = IngestDmsPullBody.safeParse(req.body);
   if (!parsed.success) {
@@ -278,9 +233,85 @@ router.post("/ingest/dms-pull", async (req, res): Promise<void> => {
     return;
   }
 
-  logger.info({ regNo: parsed.data.regNo }, "DMS pull requested");
-  const result = callDealerDMS(parsed.data.regNo);
-  res.json(result);
+  const { dealId, chassisNo } = parsed.data;
+
+  // The spec says minProperties: 1, but Orval does not carry that into the
+  // generated Zod, so the gate lives here. Same pattern as the MSA validation
+  // rules, which are also enforced in the route rather than by the schema.
+  if (!dealId && !chassisNo) {
+    res.status(400).json({
+      error: "Supply either dealId or chassisNo. A new vehicle has no registration number yet.",
+    });
+    return;
+  }
+
+  if (!isDmsConfigured()) {
+    res.status(503).json({
+      error:
+        "DMS is not configured. Set DMS_API_URL and DMS_API_KEY " +
+        "(http://localhost:9090 and dev-dms-key for the local mock).",
+    });
+    return;
+  }
+
+  try {
+    let resolvedDealId = dealId ?? null;
+
+    // Chassis → deal. The chassis is the vehicle's natural key: it exists
+    // before registration, it is printed on Form 21, and unlike a registration
+    // number it never changes on transfer.
+    if (!resolvedDealId && chassisNo) {
+      const unit = await fetchStockByChassis(chassisNo);
+      if (!unit) {
+        res.status(404).json({ error: `No stock unit with chassis ${chassisNo}` });
+        return;
+      }
+      if (!unit.dealId) {
+        res.status(409).json({
+          error:
+            `Chassis ${chassisNo} is unallocated stock — no customer is attached, ` +
+            `so there is no deal to insure yet.`,
+        });
+        return;
+      }
+      resolvedDealId = unit.dealId;
+    }
+
+    const deal = await fetchDeal(resolvedDealId!);
+    if (!deal) {
+      res.status(404).json({ error: `No deal ${resolvedDealId}` });
+      return;
+    }
+
+    // Which OEM's DMS this is decides the translation. One adapter per OEM, so
+    // the second brand is a new file rather than a rewrite of this route.
+    const adapter = adapterForDealer(deal.dealerCode);
+    const result = adapter.adaptDeal(deal);
+
+    logger.info(
+      {
+        dealId: deal.dealId,
+        dealerCode: deal.dealerCode,
+        oem: adapter.oemCode,
+        status: deal.status,
+        gaps: result.dealContext.gaps.length,
+      },
+      "DMS pull completed",
+    );
+
+    res.json(result);
+  } catch (err) {
+    if (err instanceof DmsError) {
+      // Configuration and auth problems are ours; unavailability is theirs.
+      // Both are 502/503 rather than 500 so the caller can tell "the DMS is
+      // down, retry" from "this request was wrong".
+      const status = err.kind === "not_found" ? 404 : err.kind === "bad_response" ? 502 : 503;
+      logger.error({ err: err.message, kind: err.kind, attempts: err.attempts }, "DMS pull failed");
+      res.status(status).json({ error: err.message, kind: err.kind });
+      return;
+    }
+    throw err;
+  }
 });
 
 // ─── Browser Scrape ───────────────────────────────────────────────────────────

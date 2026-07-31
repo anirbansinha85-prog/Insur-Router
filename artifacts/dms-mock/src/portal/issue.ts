@@ -24,8 +24,9 @@
  */
 
 import { DEALS } from "../deals.ts";
-import { panelFor, eligibility, quotaState, type PanelEntry } from "../insurers.ts";
-import { computePremium, type PremiumBreakdown } from "../premium.ts";
+import { panelFor } from "../insurers.ts";
+import { eligibility, quotaState, type PanelEntry } from "@workspace/quoting/panel";
+import { computePremium, type PremiumBreakdown } from "@workspace/quoting/premium";
 import { formatDmsDate } from "../service-schedule.ts";
 import { esc } from "./shell.ts";
 import { fullName, gaps, human, money, ratingBasis, type Ctx } from "./context.ts";

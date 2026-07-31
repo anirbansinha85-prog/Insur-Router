@@ -4,6 +4,7 @@ import {
   serial,
   integer,
   real,
+  boolean,
   timestamp,
   date,
   jsonb,
@@ -47,6 +48,28 @@ export const applicationsTable = pgTable("applications", {
   vehicleDateOfPurchase: date("vehicle_date_of_purchase", {
     mode: "string",
   }).notNull(),
+  /**
+   * Rating attributes. All nullable: every column above this block predates
+   * them, and an application created by hand or by OCR may legitimately not
+   * know them yet. They are required to *price*, not to exist — the validation
+   * gate decides that, not the column definition.
+   *
+   * `PETROL` and `ELECTRIC` only, matching `RatedVehicle` in
+   * `@workspace/quoting/premium`. The IRDAI tables cover exactly these two for
+   * two-wheelers, and widening the enum here without widening the rate tables
+   * would let a deal reach the pricer with no band to land in.
+   */
+  vehicleFuelType: text("vehicle_fuel_type", {
+    enum: ["PETROL", "ELECTRIC"],
+  }),
+  /** Engine displacement. Null on electric — TP is rated on kW there instead. */
+  vehicleCubicCapacity: integer("vehicle_cubic_capacity"),
+  /** Continuous motor rating. Null on petrol. */
+  vehicleMotorKw: real("vehicle_motor_kw"),
+  vehicleSeatingCapacity: integer("vehicle_seating_capacity"),
+  /** 1-12. Held apart from the year because IDV depreciation steps by month. */
+  vehicleManufactureMonth: integer("vehicle_manufacture_month"),
+  vehicleManufactureYear: integer("vehicle_manufacture_year"),
   // Owner KYC
   ownerFullName: text("owner_full_name").notNull(),
   ownerBillingAddress: text("owner_billing_address").notNull(),
@@ -58,6 +81,90 @@ export const applicationsTable = pgTable("applications", {
     enum: ["AADHAR", "PAN", "PASSPORT", "DRIVING_LICENSE", "VOTER_ID"],
   }).notNull(),
   ownerIdProofNumber: text("owner_id_proof_number").notNull(),
+  /**
+   * A company has no owner-driver, so the compulsory ₹15L personal accident
+   * cover does not apply and no nominee is required. Nothing else in the
+   * schema could express that, which is why a corporate buyer previously had
+   * to be treated as an individual with missing data.
+   */
+  ownerEntityType: text("owner_entity_type", {
+    enum: ["INDIVIDUAL", "CORPORATE"],
+  }).default("INDIVIDUAL"),
+  /**
+   * Nominee for the compulsory owner-driver personal accident cover.
+   *
+   * The one mandatory group that **no document carries** — not the RC, not
+   * Form 21, not Aadhaar. It is always asked, never extracted, and that single
+   * fact is why "scan a document, get a policy" cannot work. Nullable because
+   * an application legitimately exists before the question is put to the
+   * customer; required at the validation gate for an individual owner.
+   */
+  nomineeFullName: text("nominee_full_name"),
+  nomineeDateOfBirth: date("nominee_date_of_birth", { mode: "string" }),
+  nomineeRelationship: text("nominee_relationship", {
+    enum: [
+      "SPOUSE",
+      "FATHER",
+      "MOTHER",
+      "SON",
+      "DAUGHTER",
+      "BROTHER",
+      "SISTER",
+      "OTHER",
+    ],
+  }),
+  /**
+   * Required only when the nominee is a minor — the payout is made to the
+   * appointee on their behalf. Asked conditionally, from the nominee's DOB.
+   */
+  nomineeAppointeeName: text("nominee_appointee_name"),
+  nomineeAppointeeRelationship: text("nominee_appointee_relationship"),
+  /**
+   * Hypothecation. A financed vehicle is endorsed in the financier's favour,
+   * and the insurer needs the financier on the policy — getting this wrong
+   * means reissuing the document.
+   */
+  isHypothecated: boolean("is_hypothecated").default(false),
+  hypothecationFinancierName: text("hypothecation_financier_name"),
+  hypothecationLoanAccountNumber: text("hypothecation_loan_account_number"),
+  /**
+   * What is actually being bought. The system previously routed and submitted
+   * an application without recording this anywhere.
+   *
+   * `BUNDLED_1OD_5TP` is the new two-wheeler default: since September 2018 the
+   * five-year third-party cover is compulsory at first sale, and own damage is
+   * written annually alongside it.
+   */
+  coverageType: text("coverage_type", {
+    enum: ["TP_ONLY_5Y", "BUNDLED_1OD_5TP", "COMPREHENSIVE_1Y"],
+  }),
+  coverageTpTermYears: integer("coverage_tp_term_years"),
+  coverageOdTermYears: integer("coverage_od_term_years"),
+  /** Insured declared value — the basis for the own-damage premium. */
+  coverageIdv: real("coverage_idv"),
+  coverageVoluntaryDeductible: real("coverage_voluntary_deductible"),
+  /** Selected add-ons, as `[{ code, label }]`. Priced at quote time, not here. */
+  coverageAddOns: jsonb("coverage_add_ons").$type<
+    Array<{ code: string; label: string }>
+  >(),
+  /**
+   * PA cover can be declined only for a specific, documented reason — the
+   * customer already holds ₹15L of PA cover elsewhere, or has no valid driving
+   * licence, which makes them ineligible rather than unwilling.
+   */
+  cpaOptedOut: boolean("cpa_opted_out").default(false),
+  cpaOptOutReason: text("cpa_opt_out_reason"),
+  /**
+   * Where this application came from in the dealer's own system.
+   *
+   * The natural key is the deal, not the registration number — a new vehicle
+   * has no registration at the moment insurance is bought, because the RTO
+   * will not register it without live cover. Chassis is kept alongside so a
+   * pull can be re-driven from stock, and so OCR output can be matched against
+   * a known finite set rather than establishing identity on its own.
+   */
+  dmsDealerCode: text("dms_dealer_code"),
+  dmsDealId: text("dms_deal_id"),
   // RTO details
   rtoRegistrationCity: text("rto_registration_city").notNull(),
   rtoRegistrationState: text("rto_registration_state").notNull(),

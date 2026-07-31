@@ -9,6 +9,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@workspace/quoting": "workspace:*",
     "express": "^5.2.1"
   },
   "devDependencies": {
