@@ -12,6 +12,7 @@ import {
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { providersTable } from "./providers";
+import { showroomsTable } from "./showrooms";
 
 export const applicationsTable = pgTable("applications", {
   id: serial("id").primaryKey(),
@@ -155,6 +156,17 @@ export const applicationsTable = pgTable("applications", {
   cpaOptedOut: boolean("cpa_opted_out").default(false),
   cpaOptOutReason: text("cpa_opt_out_reason"),
   /**
+   * Which showroom this application belongs to, and through it which owner.
+   *
+   * This is the tenant scope. Nullable only because rows created before the
+   * owner tier existed have no answer — every new application should carry it,
+   * and once auth is in place a query without it is a bug rather than a
+   * broad search.
+   */
+  showroomId: integer("showroom_id").references(() => showroomsTable.id, {
+    onDelete: "set null",
+  }),
+  /**
    * Where this application came from in the dealer's own system.
    *
    * The natural key is the deal, not the registration number — a new vehicle
@@ -162,6 +174,10 @@ export const applicationsTable = pgTable("applications", {
    * will not register it without live cover. Chassis is kept alongside so a
    * pull can be re-driven from stock, and so OCR output can be matched against
    * a known finite set rather than establishing identity on its own.
+   *
+   * `dmsDealerCode` is the OEM's code and resolves to a showroom via
+   * `showroom_dms_accounts`; `showroomId` above is the resolved answer, kept
+   * denormalised so scoping a query never needs the join.
    */
   dmsDealerCode: text("dms_dealer_code"),
   dmsDealId: text("dms_deal_id"),

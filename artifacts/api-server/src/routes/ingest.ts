@@ -42,6 +42,7 @@ import {
   fetchDeal,
   fetchStockByChassis,
   isDmsConfigured,
+  resolveTenantByDealerCode,
 } from "../lib/dms";
 import {
   buildEngineStatuses,
@@ -288,18 +289,34 @@ router.post("/ingest/dms-pull", async (req, res): Promise<void> => {
     const adapter = adapterForDealer(deal.dealerCode);
     const result = adapter.adaptDeal(deal);
 
+    // Who the deal belongs to. Resolved here rather than in the adapter: an
+    // adapter translates a wire format and should not touch the database, and
+    // keeping the split means a second OEM inherits this for free.
+    const tenant = await resolveTenantByDealerCode(deal.dealerCode);
+    if (!tenant) {
+      // A configuration gap, not a failure. The deal is real; the operator has
+      // simply not linked this dealer code to a showroom yet. Say so and carry
+      // on rather than failing the pull or inventing an owner.
+      result.dealContext.gaps.push(
+        `Dealer code ${deal.dealerCode} is not linked to a showroom — ` +
+          `the application cannot be attributed to an owner until it is`,
+      );
+    }
+
     logger.info(
       {
         dealId: deal.dealId,
         dealerCode: deal.dealerCode,
         oem: adapter.oemCode,
         status: deal.status,
+        owner: tenant?.ownerCode ?? null,
+        showroom: tenant?.showroomCode ?? null,
         gaps: result.dealContext.gaps.length,
       },
       "DMS pull completed",
     );
 
-    res.json(result);
+    res.json({ ...result, tenant });
   } catch (err) {
     if (err instanceof DmsError) {
       // Configuration and auth problems are ours; unavailability is theirs.

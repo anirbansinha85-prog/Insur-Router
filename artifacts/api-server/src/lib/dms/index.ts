@@ -11,6 +11,7 @@
  *   hero-adapter.ts  wire → MsaFields + DmsDealContext
  *   registry.ts      adapters keyed by OEM
  *   rto.ts           pincode → RTO, because a new vehicle has no RC to read
+ *   tenant.ts        dealer code → showroom → owner
  */
 
 export { DmsError, fetchDeal, fetchStockByChassis, isDmsConfigured } from "./client";
@@ -18,5 +19,7 @@ export { adapterFor, adapterForDealer, listAdapters, oemForDealer, DEFAULT_OEM }
 export type { DmsAdapter, OemCode } from "./registry";
 export type { AdaptedDeal, DmsDealContext } from "./hero-adapter";
 export { rtoForPincode, RTO_TABLE_SIZE } from "./rto";
+export { resolveTenantByDealerCode } from "./tenant";
+export type { DmsTenant } from "./tenant";
 export type { RtoLookup } from "./rto";
 export type { DmsDeal, DmsStockLookup } from "./types";

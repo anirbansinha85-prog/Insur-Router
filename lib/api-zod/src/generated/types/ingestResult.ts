@@ -5,8 +5,10 @@
  * InsurRouter API - Two-wheeler insurance application routing engine
  * OpenAPI spec version: 0.1.0
  */
+import type { DmsTenant } from './dmsTenant';
 import type { DocumentExtraction } from './documentExtraction';
 import type { IngestResultConfidence } from './ingestResultConfidence';
+import type { IngestResultDealContext } from './ingestResultDealContext';
 import type { IngestResultMappingMethod } from './ingestResultMappingMethod';
 import type { IngestResultProvenance } from './ingestResultProvenance';
 import type { MsaFields } from './msaFields';
@@ -42,4 +44,11 @@ export interface IngestResult {
      * @nullable
      */
   mappingMethod?: IngestResultMappingMethod;
+  /** Which showroom, and through it which owner, a pulled deal belongs to. DMS pull only. */
+  tenant?: DmsTenant | null;
+  /**
+     * Facts the DMS supplies that the flat MSA payload has no room for — cubic capacity, motor kW, nominee, hypothecation, seating, invoice, and a `gaps` list naming what must be asked. DMS pull only.
+     * Deliberately loose for now. The authoritative shape is `DmsDealContext` in api-server/src/lib/dms/hero-adapter.ts, and it will be pinned down here when it is wired through /ingest/push into the applications columns that hold it. Declaring it loosely is better than leaving the response undeclared.
+     */
+  dealContext?: IngestResultDealContext;
 }

@@ -460,7 +460,17 @@ export const IngestDmsPullResponse = zod.object({
   "rawText": zod.string().nullish()
 }).describe('Stage 1 — what the document is and everything printed on it'),zod.null()]).optional().describe('Stage 1 output — the document as the model actually read it.'),
   "provenance": zod.record(zod.string(), zod.string().nullable()).optional().describe('MSA field name to the document label it came from, null if unmapped.'),
-  "mappingMethod": zod.union([zod.literal('llm'),zod.literal('rules'),zod.literal(null)]).nullish().describe('How stage 2 resolved — an LLM call, or the deterministic fallback.')
+  "mappingMethod": zod.union([zod.literal('llm'),zod.literal('rules'),zod.literal(null)]).nullish().describe('How stage 2 resolved — an LLM call, or the deterministic fallback.'),
+  "tenant": zod.union([zod.object({
+  "showroomId": zod.number().int(),
+  "showroomCode": zod.string(),
+  "showroomName": zod.string(),
+  "ownerId": zod.number().int(),
+  "ownerCode": zod.string(),
+  "ownerName": zod.string(),
+  "insuranceChannel": zod.union([zod.literal('BROKER'),zod.literal('DIRECT_AGENT'),zod.literal(null)]).nullish().describe('How this showroom reaches insurers for deals from this DMS account. Held per account rather than per showroom because the arrangement belongs to the legal entity — one outlet may go through a broker platform while another holds its own agency code.\n')
+}).describe('Resolved from the OEM\'s dealer code via showroom_dms_accounts. Null when that dealer code is not mapped to a showroom — a configuration gap, and reported as one rather than guessed at.\n'),zod.null()]).optional().describe('Which showroom, and through it which owner, a pulled deal belongs to. DMS pull only.\n'),
+  "dealContext": zod.record(zod.string(), zod.unknown()).optional().describe('Facts the DMS supplies that the flat MSA payload has no room for — cubic capacity, motor kW, nominee, hypothecation, seating, invoice, and a `gaps` list naming what must be asked. DMS pull only.\nDeliberately loose for now. The authoritative shape is `DmsDealContext` in api-server\/src\/lib\/dms\/hero-adapter.ts, and it will be pinned down here when it is wired through \/ingest\/push into the applications columns that hold it. Declaring it loosely is better than leaving the response undeclared.\n')
 }).describe('Extracted MSA fields from any ingest source')
 
 
@@ -521,7 +531,17 @@ export const IngestBrowserScrapeResponse = zod.object({
   "rawText": zod.string().nullish()
 }).describe('Stage 1 — what the document is and everything printed on it'),zod.null()]).optional().describe('Stage 1 output — the document as the model actually read it.'),
   "provenance": zod.record(zod.string(), zod.string().nullable()).optional().describe('MSA field name to the document label it came from, null if unmapped.'),
-  "mappingMethod": zod.union([zod.literal('llm'),zod.literal('rules'),zod.literal(null)]).nullish().describe('How stage 2 resolved — an LLM call, or the deterministic fallback.')
+  "mappingMethod": zod.union([zod.literal('llm'),zod.literal('rules'),zod.literal(null)]).nullish().describe('How stage 2 resolved — an LLM call, or the deterministic fallback.'),
+  "tenant": zod.union([zod.object({
+  "showroomId": zod.number().int(),
+  "showroomCode": zod.string(),
+  "showroomName": zod.string(),
+  "ownerId": zod.number().int(),
+  "ownerCode": zod.string(),
+  "ownerName": zod.string(),
+  "insuranceChannel": zod.union([zod.literal('BROKER'),zod.literal('DIRECT_AGENT'),zod.literal(null)]).nullish().describe('How this showroom reaches insurers for deals from this DMS account. Held per account rather than per showroom because the arrangement belongs to the legal entity — one outlet may go through a broker platform while another holds its own agency code.\n')
+}).describe('Resolved from the OEM\'s dealer code via showroom_dms_accounts. Null when that dealer code is not mapped to a showroom — a configuration gap, and reported as one rather than guessed at.\n'),zod.null()]).optional().describe('Which showroom, and through it which owner, a pulled deal belongs to. DMS pull only.\n'),
+  "dealContext": zod.record(zod.string(), zod.unknown()).optional().describe('Facts the DMS supplies that the flat MSA payload has no room for — cubic capacity, motor kW, nominee, hypothecation, seating, invoice, and a `gaps` list naming what must be asked. DMS pull only.\nDeliberately loose for now. The authoritative shape is `DmsDealContext` in api-server\/src\/lib\/dms\/hero-adapter.ts, and it will be pinned down here when it is wired through \/ingest\/push into the applications columns that hold it. Declaring it loosely is better than leaving the response undeclared.\n')
 }).describe('Extracted MSA fields from any ingest source')
 
 
@@ -580,7 +600,17 @@ export const IngestOcrResponse = zod.object({
   "rawText": zod.string().nullish()
 }).describe('Stage 1 — what the document is and everything printed on it'),zod.null()]).optional().describe('Stage 1 output — the document as the model actually read it.'),
   "provenance": zod.record(zod.string(), zod.string().nullable()).optional().describe('MSA field name to the document label it came from, null if unmapped.'),
-  "mappingMethod": zod.union([zod.literal('llm'),zod.literal('rules'),zod.literal(null)]).nullish().describe('How stage 2 resolved — an LLM call, or the deterministic fallback.')
+  "mappingMethod": zod.union([zod.literal('llm'),zod.literal('rules'),zod.literal(null)]).nullish().describe('How stage 2 resolved — an LLM call, or the deterministic fallback.'),
+  "tenant": zod.union([zod.object({
+  "showroomId": zod.number().int(),
+  "showroomCode": zod.string(),
+  "showroomName": zod.string(),
+  "ownerId": zod.number().int(),
+  "ownerCode": zod.string(),
+  "ownerName": zod.string(),
+  "insuranceChannel": zod.union([zod.literal('BROKER'),zod.literal('DIRECT_AGENT'),zod.literal(null)]).nullish().describe('How this showroom reaches insurers for deals from this DMS account. Held per account rather than per showroom because the arrangement belongs to the legal entity — one outlet may go through a broker platform while another holds its own agency code.\n')
+}).describe('Resolved from the OEM\'s dealer code via showroom_dms_accounts. Null when that dealer code is not mapped to a showroom — a configuration gap, and reported as one rather than guessed at.\n'),zod.null()]).optional().describe('Which showroom, and through it which owner, a pulled deal belongs to. DMS pull only.\n'),
+  "dealContext": zod.record(zod.string(), zod.unknown()).optional().describe('Facts the DMS supplies that the flat MSA payload has no room for — cubic capacity, motor kW, nominee, hypothecation, seating, invoice, and a `gaps` list naming what must be asked. DMS pull only.\nDeliberately loose for now. The authoritative shape is `DmsDealContext` in api-server\/src\/lib\/dms\/hero-adapter.ts, and it will be pinned down here when it is wired through \/ingest\/push into the applications columns that hold it. Declaring it loosely is better than leaving the response undeclared.\n')
 }).describe('Extracted MSA fields from any ingest source')
 
 

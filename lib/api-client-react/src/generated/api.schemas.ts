@@ -448,6 +448,12 @@ export const IngestResultMappingMethod = {
   rules: 'rules',
 } as const;
 
+/**
+ * Facts the DMS supplies that the flat MSA payload has no room for — cubic capacity, motor kW, nominee, hypothecation, seating, invoice, and a `gaps` list naming what must be asked. DMS pull only.
+ * Deliberately loose for now. The authoritative shape is `DmsDealContext` in api-server/src/lib/dms/hero-adapter.ts, and it will be pinned down here when it is wired through /ingest/push into the applications columns that hold it. Declaring it loosely is better than leaving the response undeclared.
+ */
+export type IngestResultDealContext = { [key: string]: unknown };
+
 export type OcrAttemptEngineId = typeof OcrAttemptEngineId[keyof typeof OcrAttemptEngineId];
 
 
@@ -522,6 +528,35 @@ export interface DocumentExtraction {
 }
 
 /**
+ * How this showroom reaches insurers for deals from this DMS account. Held per account rather than per showroom because the arrangement belongs to the legal entity — one outlet may go through a broker platform while another holds its own agency code.
+ * @nullable
+ */
+export type DmsTenantInsuranceChannel = typeof DmsTenantInsuranceChannel[keyof typeof DmsTenantInsuranceChannel] | null;
+
+
+export const DmsTenantInsuranceChannel = {
+  BROKER: 'BROKER',
+  DIRECT_AGENT: 'DIRECT_AGENT',
+} as const;
+
+/**
+ * Resolved from the OEM's dealer code via showroom_dms_accounts. Null when that dealer code is not mapped to a showroom — a configuration gap, and reported as one rather than guessed at.
+ */
+export interface DmsTenant {
+  showroomId: number;
+  showroomCode: string;
+  showroomName: string;
+  ownerId: number;
+  ownerCode: string;
+  ownerName: string;
+  /**
+     * How this showroom reaches insurers for deals from this DMS account. Held per account rather than per showroom because the arrangement belongs to the legal entity — one outlet may go through a broker platform while another holds its own agency code.
+     * @nullable
+     */
+  insuranceChannel?: DmsTenantInsuranceChannel;
+}
+
+/**
  * Extracted MSA fields from any ingest source
  */
 export interface IngestResult {
@@ -551,6 +586,13 @@ export interface IngestResult {
      * @nullable
      */
   mappingMethod?: IngestResultMappingMethod;
+  /** Which showroom, and through it which owner, a pulled deal belongs to. DMS pull only. */
+  tenant?: DmsTenant | null;
+  /**
+     * Facts the DMS supplies that the flat MSA payload has no room for — cubic capacity, motor kW, nominee, hypothecation, seating, invoice, and a `gaps` list naming what must be asked. DMS pull only.
+     * Deliberately loose for now. The authoritative shape is `DmsDealContext` in api-server/src/lib/dms/hero-adapter.ts, and it will be pinned down here when it is wired through /ingest/push into the applications columns that hold it. Declaring it loosely is better than leaving the response undeclared.
+     */
+  dealContext?: IngestResultDealContext;
 }
 
 /**
