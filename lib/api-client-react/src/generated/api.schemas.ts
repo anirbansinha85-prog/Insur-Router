@@ -596,6 +596,117 @@ export interface IngestResult {
 }
 
 /**
+ * What one sync of one DMS account did.
+ */
+export interface DmsSyncResult {
+  showroomId: number;
+  dealerCode: string;
+  /** Deals the DMS listed. */
+  seen: number;
+  added: number;
+  changed: number;
+  unchanged: number;
+  /** Mirrored deals the DMS no longer lists. Marked, never deleted — a deal vanishing is itself information. */
+  disappeared: number;
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+}
+
+/**
+ * How our record compares to the dealer's system for one deal. AHEAD means we did the work and their system does not know yet — the normal state under a read-only integration, and a task rather than an error. BEHIND means somebody worked outside DDMS. CONFLICT means two different policy numbers on one vehicle.
+ */
+export type ReconcileState = typeof ReconcileState[keyof typeof ReconcileState];
+
+
+export const ReconcileState = {
+  IN_SYNC: 'IN_SYNC',
+  AHEAD: 'AHEAD',
+  BEHIND: 'BEHIND',
+  CONFLICT: 'CONFLICT',
+  NOT_STARTED: 'NOT_STARTED',
+} as const;
+
+/**
+ * What the dealer's own system currently believes.
+ */
+export type WorklistRowDms = {
+  status: string;
+  /** @nullable */
+  policyNo?: string | null;
+  /** @nullable */
+  insurerCode?: string | null;
+  /** @nullable */
+  regNo?: string | null;
+};
+
+/**
+ * What we know, which may be more recent.
+ */
+export type WorklistRowDdms = {
+  /** @nullable */
+  applicationId?: number | null;
+  /** @nullable */
+  applicationStatus?: string | null;
+  /** @nullable */
+  policyNumber?: string | null;
+  /** True when the number came from a stub, not an insurer. */
+  policySimulated: boolean;
+  /** @nullable */
+  providerName?: string | null;
+};
+
+export interface WorklistRow {
+  dealId: string;
+  dealerCode: string;
+  showroomId: number;
+  /** @nullable */
+  showroomCode?: string | null;
+  /** @nullable */
+  customerName?: string | null;
+  /** @nullable */
+  modelDescription?: string | null;
+  /** @nullable */
+  chassisNo?: string | null;
+  /** @nullable */
+  bookingDate?: string | null;
+  /** What the dealer's own system currently believes. */
+  dms: WorklistRowDms;
+  /** What we know, which may be more recent. */
+  ddms: WorklistRowDdms;
+  reconcile: ReconcileState;
+  /**
+     * Plain-English statement of the difference.
+     * @nullable
+     */
+  reconcileNote?: string | null;
+  /**
+     * The one thing to do next, when there is one.
+     * @nullable
+     */
+  actionRequired?: string | null;
+  /** Days since the DMS status last moved. This is the number nobody has time to work out by hand, and the reason a mirror exists at all. */
+  daysInStatus: number;
+  lastSyncedAt: string;
+  disappearedFromDms: boolean;
+}
+
+export type WorklistSummaryByReconcile = {[key: string]: number};
+
+export type WorklistSummaryByDmsStatus = {[key: string]: number};
+
+export interface WorklistSummary {
+  total: number;
+  byReconcile: WorklistSummaryByReconcile;
+  byDmsStatus: WorklistSummaryByDmsStatus;
+  /** Rows with an action attached. What the console leads with. */
+  needsAction: number;
+  oldestDaysInStatus: number;
+  /** @nullable */
+  lastSyncedAt?: string | null;
+}
+
+/**
  * Identifies the deal to pull. Deliberately not keyed on a registration number: under the Motor Vehicles Act an RTO will not register a vehicle without live insurance, so a new vehicle has no registration number at the moment the policy is bought. The keys that do exist at that point are the dealer's own deal identifier and the chassis number of the allocated stock unit. Supply at least one — dealId wins if both are given, because it resolves a whole deal rather than just a vehicle.
  */
 export interface DmsPullInput {
@@ -790,4 +901,25 @@ export const ListApplicationsStatus = {
   completed: 'completed',
   failed: 'failed',
 } as const;
+
+export type SyncShowroomDms200 = {
+  results: DmsSyncResult[];
+};
+
+export type GetShowroomWorklistParams = {
+showroomId: number;
+/**
+ * Filter on the DMS status, e.g. AWAITING_INSURANCE
+ */
+status?: string;
+/**
+ * Include deals the DMS has stopped listing. Off by default.
+ */
+includeDisappeared?: boolean;
+};
+
+export type GetShowroomWorklist200 = {
+  summary: WorklistSummary;
+  rows: WorklistRow[];
+};
 

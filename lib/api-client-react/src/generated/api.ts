@@ -30,6 +30,8 @@ import type {
   ErrorResponse,
   ExecutionRequest,
   ExecutionResult,
+  GetShowroomWorklist200,
+  GetShowroomWorklistParams,
   HealthStatus,
   IngestPushInput,
   IngestPushResult,
@@ -43,6 +45,7 @@ import type {
   ProviderUpdate,
   RecentApplication,
   SubmissionLog,
+  SyncShowroomDms200,
   UpdateOcrEnginesInput,
   ValidationResult
 } from './api.schemas';
@@ -1180,6 +1183,165 @@ export function useGetPolicy<TData = Awaited<ReturnType<typeof getPolicy>>, TErr
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetPolicyQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSyncShowroomDmsUrl = (showroomId: number,) => {
+
+
+
+
+  return `/api/dms/showrooms/${showroomId}/sync`
+}
+
+/**
+ * Read-only. Walks every active DMS account on the showroom and upserts each deal. Only fetches a full record when the summary shows something moved, so a routine sync on a quiet day is one list call.
+ * @summary Pull a showroom's deals from its DMS into the local mirror
+ */
+export const syncShowroomDms = async (showroomId: number, options?: Parameters<typeof customFetch>[1]): Promise<SyncShowroomDms200> => {
+
+  return customFetch<SyncShowroomDms200>(getSyncShowroomDmsUrl(showroomId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getSyncShowroomDmsMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncShowroomDms>>, TError,{showroomId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof syncShowroomDms>>, TError,{showroomId: number}, TContext> => {
+
+const mutationKey = ['syncShowroomDms'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof syncShowroomDms>>, {showroomId: number}> = (props) => {
+          const {showroomId} = props ?? {};
+
+          return  syncShowroomDms(showroomId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SyncShowroomDmsMutationResult = NonNullable<Awaited<ReturnType<typeof syncShowroomDms>>>
+
+    export type SyncShowroomDmsMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Pull a showroom's deals from its DMS into the local mirror
+ */
+export const useSyncShowroomDms = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncShowroomDms>>, TError,{showroomId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof syncShowroomDms>>,
+        TError,
+        {showroomId: number},
+        TContext
+      > => {
+      return useMutation(getSyncShowroomDmsMutationOptions(options));
+    }
+
+export const getGetShowroomWorklistUrl = (params: GetShowroomWorklistParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/dms/worklist?${stringifiedParams}` : `/api/dms/worklist`
+}
+
+/**
+ * The owner's console. Each row carries the dealer system's view and ours side by side, plus how they differ and the single action that would close the gap. Reconciliation is computed on read, never stored, so it cannot go stale.
+ * Reads only the mirror and never calls the DMS, so the console still renders when the dealer's ERP is busy or down.
+ * `showroomId` is a query parameter rather than a path segment on purpose. Orval emits `<Operation>Params` for path parameters *and* for query parameters, so an operation carrying both produces the same exported name twice and the api-zod barrel fails to compile. `listApplications` already follows this query-only shape for the same reason — do not "tidy" it into /dms/showrooms/{id}/worklist without checking codegen.
+ * @summary Every mirrored deal with its DMS-versus-DDMS reconciliation
+ */
+export const getShowroomWorklist = async (params: GetShowroomWorklistParams, options?: Parameters<typeof customFetch>[1]): Promise<GetShowroomWorklist200> => {
+
+  return customFetch<GetShowroomWorklist200>(getGetShowroomWorklistUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetShowroomWorklistQueryKey = (params?: GetShowroomWorklistParams,) => {
+    return [
+    `/api/dms/worklist`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetShowroomWorklistQueryOptions = <TData = Awaited<ReturnType<typeof getShowroomWorklist>>, TError = ErrorType<ErrorResponse>>(params: GetShowroomWorklistParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getShowroomWorklist>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetShowroomWorklistQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getShowroomWorklist>>> = ({ signal }) => getShowroomWorklist(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getShowroomWorklist>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetShowroomWorklistQueryResult = NonNullable<Awaited<ReturnType<typeof getShowroomWorklist>>>
+export type GetShowroomWorklistQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Every mirrored deal with its DMS-versus-DDMS reconciliation
+ */
+
+export function useGetShowroomWorklist<TData = Awaited<ReturnType<typeof getShowroomWorklist>>, TError = ErrorType<ErrorResponse>>(
+ params: GetShowroomWorklistParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getShowroomWorklist>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetShowroomWorklistQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

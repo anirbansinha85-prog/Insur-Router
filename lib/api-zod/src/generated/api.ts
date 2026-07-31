@@ -404,6 +404,83 @@ export const GetPolicyResponse = zod.object({
 
 
 /**
+ * Read-only. Walks every active DMS account on the showroom and upserts each deal. Only fetches a full record when the summary shows something moved, so a routine sync on a quiet day is one list call.
+ * @summary Pull a showroom's deals from its DMS into the local mirror
+ */
+export const SyncShowroomDmsParams = zod.object({
+  "showroomId": zod.coerce.number().int()
+})
+
+export const SyncShowroomDmsResponse = zod.object({
+  "results": zod.array(zod.object({
+  "showroomId": zod.number().int(),
+  "dealerCode": zod.string(),
+  "seen": zod.number().int().describe('Deals the DMS listed.'),
+  "added": zod.number().int(),
+  "changed": zod.number().int(),
+  "unchanged": zod.number().int(),
+  "disappeared": zod.number().int().describe('Mirrored deals the DMS no longer lists. Marked, never deleted — a deal vanishing is itself information.\n'),
+  "startedAt": zod.string(),
+  "finishedAt": zod.string(),
+  "durationMs": zod.number().int()
+}).describe('What one sync of one DMS account did.'))
+})
+
+
+/**
+ * The owner's console. Each row carries the dealer system's view and ours side by side, plus how they differ and the single action that would close the gap. Reconciliation is computed on read, never stored, so it cannot go stale.
+ * Reads only the mirror and never calls the DMS, so the console still renders when the dealer's ERP is busy or down.
+ * `showroomId` is a query parameter rather than a path segment on purpose. Orval emits `<Operation>Params` for path parameters *and* for query parameters, so an operation carrying both produces the same exported name twice and the api-zod barrel fails to compile. `listApplications` already follows this query-only shape for the same reason — do not "tidy" it into /dms/showrooms/{id}/worklist without checking codegen.
+ * @summary Every mirrored deal with its DMS-versus-DDMS reconciliation
+ */
+export const GetShowroomWorklistQueryParams = zod.object({
+  "showroomId": zod.coerce.number().int(),
+  "status": zod.coerce.string().optional().describe('Filter on the DMS status, e.g. AWAITING_INSURANCE'),
+  "includeDisappeared": zod.coerce.boolean().optional().describe('Include deals the DMS has stopped listing. Off by default.')
+})
+
+export const GetShowroomWorklistResponse = zod.object({
+  "summary": zod.object({
+  "total": zod.number().int(),
+  "byReconcile": zod.record(zod.string(), zod.number().int()),
+  "byDmsStatus": zod.record(zod.string(), zod.number().int()),
+  "needsAction": zod.number().int().describe('Rows with an action attached. What the console leads with.'),
+  "oldestDaysInStatus": zod.number().int(),
+  "lastSyncedAt": zod.string().nullish()
+}),
+  "rows": zod.array(zod.object({
+  "dealId": zod.string(),
+  "dealerCode": zod.string(),
+  "showroomId": zod.number().int(),
+  "showroomCode": zod.string().nullish(),
+  "customerName": zod.string().nullish(),
+  "modelDescription": zod.string().nullish(),
+  "chassisNo": zod.string().nullish(),
+  "bookingDate": zod.string().nullish(),
+  "dms": zod.object({
+  "status": zod.string(),
+  "policyNo": zod.string().nullish(),
+  "insurerCode": zod.string().nullish(),
+  "regNo": zod.string().nullish()
+}).describe('What the dealer\'s own system currently believes.'),
+  "ddms": zod.object({
+  "applicationId": zod.number().int().nullish(),
+  "applicationStatus": zod.string().nullish(),
+  "policyNumber": zod.string().nullish(),
+  "policySimulated": zod.boolean().describe('True when the number came from a stub, not an insurer.'),
+  "providerName": zod.string().nullish()
+}).describe('What we know, which may be more recent.'),
+  "reconcile": zod.enum(['IN_SYNC', 'AHEAD', 'BEHIND', 'CONFLICT', 'NOT_STARTED']).describe('How our record compares to the dealer\'s system for one deal. AHEAD means we did the work and their system does not know yet — the normal state under a read-only integration, and a task rather than an error. BEHIND means somebody worked outside DDMS. CONFLICT means two different policy numbers on one vehicle.\n'),
+  "reconcileNote": zod.string().nullish().describe('Plain-English statement of the difference.'),
+  "actionRequired": zod.string().nullish().describe('The one thing to do next, when there is one.'),
+  "daysInStatus": zod.number().int().describe('Days since the DMS status last moved. This is the number nobody has time to work out by hand, and the reason a mirror exists at all.\n'),
+  "lastSyncedAt": zod.string(),
+  "disappearedFromDms": zod.boolean()
+}))
+})
+
+
+/**
  * @summary Pull deal, vehicle and customer data from the dealer's DMS
  */
 

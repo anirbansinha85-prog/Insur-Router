@@ -20,7 +20,7 @@
  */
 
 import { logger } from "../logger";
-import type { DmsDeal, DmsErrorBody, DmsStockLookup } from "./types";
+import type { DmsDeal, DmsDealSummary, DmsErrorBody, DmsStockLookup } from "./types";
 
 export class DmsError extends Error {
   constructor(
@@ -171,6 +171,26 @@ async function dmsGet<T>(path: string, opts: { notFoundIsNull?: boolean } = {}):
   }
 
   throw new DmsError(`DMS call failed: ${lastError}`, "unavailable", undefined, cfg.maxAttempts);
+}
+
+/**
+ * Deal summaries for one dealer code.
+ *
+ * The DMS returns a summary shape here rather than full records, which is the
+ * right call on their side — shipping complete customer records for rows
+ * nobody opens is needless PII exposure. It also gives a sync a cheap way to
+ * tell what moved before deciding which full records to pull.
+ */
+export async function dmsList(
+  dealerCode: string,
+  status?: string,
+): Promise<DmsDealSummary[]> {
+  const params = new URLSearchParams({ dealerCode });
+  if (status) params.set("status", status);
+  const body = await dmsGet<{ count: number; deals: DmsDealSummary[] }>(
+    `/dms/v1/deals?${params.toString()}`,
+  );
+  return body?.deals ?? [];
 }
 
 /** Full deal record. Null when the DMS has no such deal. */

@@ -141,6 +141,22 @@ export interface DmsDeal {
   insurance: DmsInsurance;
 }
 
+/**
+ * `GET /deals` — the worklist shape. Deliberately not the full record: the DMS
+ * withholds complete customer data from a list, which is correct of it.
+ */
+export interface DmsDealSummary {
+  dealId: string;
+  dealerCode: string;
+  status: string;
+  bookingDt: DmsDate;
+  custName: string;
+  modelDesc: string;
+  chassisNo: string;
+  policyNo: string | null;
+  regNo: string | null;
+}
+
 /** `GET /stock/:chassisNo` — a unit, with the deal it belongs to if allocated. */
 export type DmsStockLookup = DmsStockUnit & {
   model: DmsModel;
