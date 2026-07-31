@@ -470,23 +470,42 @@ export default function ApplicationDetail() {
         )}
 
         {/* ── Policy result ── */}
-        {app.policy && (
-          <div className="bg-green-50 border border-green-200 rounded-xl p-6 flex items-center justify-between shadow-sm">
-            <div className="flex gap-4 items-center text-green-900">
-              <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center shrink-0 text-green-600">
-                <CheckCircle2 className="w-6 h-6" />
+        {app.policy && (() => {
+          // A locally invented policy number carries the SIM- prefix. Both
+          // executors are still stubs, so this is the normal case today — and a
+          // green "Policy Issued Successfully" over a number no insurer ever
+          // saw is exactly the claim the executors were fixed to stop making.
+          // The prefix is the single source of truth for this: it travels with
+          // the value into exports and screenshots, where a flag would not.
+          const isSimulated = app.policy.policyNumber.startsWith("SIM-")
+          const tone = isSimulated
+            ? { box: "bg-amber-50 border-amber-200", text: "text-amber-900", ring: "bg-amber-100 text-amber-600", sub: "text-amber-800", meta: "text-amber-700", chip: "border-amber-200" }
+            : { box: "bg-green-50 border-green-200", text: "text-green-900", ring: "bg-green-100 text-green-600", sub: "text-green-800", meta: "text-green-700", chip: "border-green-200" }
+
+          return (
+          <div className={`${tone.box} border rounded-xl p-6 flex items-center justify-between shadow-sm`}>
+            <div className={`flex gap-4 items-center ${tone.text}`}>
+              <div className={`w-12 h-12 rounded-full ${tone.ring} flex items-center justify-center shrink-0`}>
+                {isSimulated ? <AlertCircle className="w-6 h-6" /> : <CheckCircle2 className="w-6 h-6" />}
               </div>
               <div>
-                <h4 className="font-bold text-lg">Policy Issued Successfully</h4>
-                <p className="text-sm text-green-800 mt-0.5">
+                <h4 className="font-bold text-lg">
+                  {isSimulated ? "Simulated policy — not issued" : "Policy Issued Successfully"}
+                </h4>
+                <p className={`text-sm ${tone.sub} mt-0.5`}>
                   Provider: <span className="font-semibold">{app.policy.providerName}</span> •
                   Number:{" "}
-                  <span className="font-mono bg-white px-1.5 py-0.5 rounded ml-1 border border-green-200">
+                  <span className={`font-mono bg-white px-1.5 py-0.5 rounded ml-1 border ${tone.chip}`}>
                     {app.policy.policyNumber}
                   </span>
                 </p>
-                {app.resolvedExecutionMode && (
-                  <p className="text-xs text-green-700 mt-1 flex items-center gap-1">
+                {isSimulated ? (
+                  <p className={`text-xs ${tone.meta} mt-1`}>
+                    No insurer was contacted and no policy exists. The number was
+                    generated locally by the {app.resolvedExecutionMode === "BROWSER" ? "browser" : "API"} executor stub.
+                  </p>
+                ) : app.resolvedExecutionMode && (
+                  <p className={`text-xs ${tone.meta} mt-1 flex items-center gap-1`}>
                     {getModeIcon(app.resolvedExecutionMode, "w-3 h-3")}
                     Submitted via {app.resolvedExecutionMode === "BROWSER" ? "Playwright browser automation" : "direct API"}
                   </p>
@@ -499,7 +518,8 @@ export default function ApplicationDetail() {
               </Button>
             )}
           </div>
-        )}
+          )
+        })()}
 
         <div className="grid grid-cols-3 gap-6">
           {/* ── Left: MSA Payload ── */}
