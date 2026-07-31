@@ -11,6 +11,21 @@
 
 import { logger } from "./logger";
 
+/**
+ * Prefix stamped on every locally-invented policy number, by both executors.
+ *
+ * `policies` has one text column for the number and no flag beside it, so the
+ * prefix is the only place the fact "this is not real" can travel with the
+ * value — into the database, a CSV export, or a screenshot. Remove it only
+ * when an insurer actually returns the number.
+ */
+export const SIMULATED_POLICY_PREFIX = "SIM";
+
+/** True when a policy number carries the simulated marker. */
+export function isSimulatedPolicyNumber(policyNumber: string): boolean {
+  return policyNumber.startsWith(`${SIMULATED_POLICY_PREFIX}-`);
+}
+
 export interface MsaPayload {
   vehicleDetails: {
     make: string;
@@ -51,6 +66,8 @@ export interface BrowserExecutionResult {
   policyNumber?: string;
   pdfUrl?: string;
   errorMessage?: string;
+  /** True when no portal form was filled and the policy number was invented locally. */
+  simulated?: boolean;
   logs: BrowserExecutionLog[];
 }
 
@@ -162,9 +179,17 @@ export async function executeWithBrowser(
 }
 
 /**
- * Generic stub — navigates to example.com and simulates each form-fill step
- * with real screenshots so the logs panel shows live browser snapshots.
- * Replace with real provider portal selectors per case.
+ * Generic stub — walks the step sequence against whatever page was loaded,
+ * screenshotting each one, so the logs panel shows live browser snapshots.
+ *
+ * It fills nothing. There is not a single `page.fill`, `page.click` or
+ * `page.selectOption` below, and every message says so. The payload values are
+ * still printed because they are useful for debugging the mapping — but they
+ * are described as what a real flow *would* enter, never as what was entered.
+ * A log line that reads "Filling vehicle details" when no field was touched
+ * makes a demo run indistinguishable from a real submission in the audit
+ * trail. Replace with real provider portal selectors per case, and drop the
+ * SIMULATED wording at the same time as the code stops being a simulation.
  */
 async function executeGenericStub(
   page: import("playwright").Page,
@@ -173,42 +198,50 @@ async function executeGenericStub(
   logs: BrowserExecutionLog[],
 ): Promise<BrowserExecutionResult> {
 
-  // ── Simulate: Vehicle details ─────────────────────────────────────────────
+  // ── Vehicle details: not filled ───────────────────────────────────────────
   await page.waitForTimeout(600);
   logs.push({
     step: "form_vehicle",
-    message: `Filling vehicle details — ${payload.vehicleDetails.make} ${payload.vehicleDetails.model} (${payload.vehicleDetails.engineNumber})`,
-    status: "info",
+    message:
+      `SIMULATED — no form field was filled. A real flow would enter vehicle ` +
+      `details: ${payload.vehicleDetails.make} ${payload.vehicleDetails.model} ` +
+      `(${payload.vehicleDetails.engineNumber})`,
+    status: "warning",
     screenshot: await snap(page),
   });
 
-  // ── Simulate: Owner KYC ───────────────────────────────────────────────────
+  // ── Owner KYC: not filled ─────────────────────────────────────────────────
   await page.waitForTimeout(500);
   logs.push({
     step: "form_kyc",
-    message: `Entering owner KYC — ${payload.ownerKyc.fullName}, ${payload.ownerKyc.idProofType}: ${payload.ownerKyc.idProofNumber}`,
-    status: "info",
+    message:
+      `SIMULATED — no form field was filled. A real flow would enter owner KYC: ` +
+      `${payload.ownerKyc.fullName}, ${payload.ownerKyc.idProofType}: ${payload.ownerKyc.idProofNumber}`,
+    status: "warning",
     screenshot: await snap(page),
   });
 
-  // ── Simulate: RTO details ─────────────────────────────────────────────────
+  // ── RTO details: not filled ───────────────────────────────────────────────
   await page.waitForTimeout(400);
   logs.push({
     step: "form_rto",
-    message: `RTO details — ${payload.rtoDetails.rtoCode}, ${payload.rtoDetails.registrationCity}, ${payload.rtoDetails.registrationState}`,
-    status: "info",
+    message:
+      `SIMULATED — no form field was filled. A real flow would enter RTO details: ` +
+      `${payload.rtoDetails.rtoCode}, ${payload.rtoDetails.registrationCity}, ` +
+      `${payload.rtoDetails.registrationState}`,
+    status: "warning",
     screenshot: await snap(page),
   });
 
-  // ── Simulate: Submit ──────────────────────────────────────────────────────
+  // ── Submit: nothing is submitted ──────────────────────────────────────────
   await page.waitForTimeout(500);
 
-  const policyNumber = `${providerCode}-BROWSER-${Date.now().toString(36).toUpperCase()}`;
+  const policyNumber = `${SIMULATED_POLICY_PREFIX}-${providerCode}-BROWSER-${Date.now().toString(36).toUpperCase()}`;
 
   logs.push({
     step: "form_submit",
-    message: `Form submitted. Waiting for policy confirmation…`,
-    status: "info",
+    message: `SIMULATED — no form was submitted. Nothing was sent to ${providerCode}.`,
+    status: "warning",
     screenshot: await snap(page),
   });
 
@@ -216,10 +249,12 @@ async function executeGenericStub(
 
   logs.push({
     step: "policy_issued",
-    message: `Policy issued via browser automation: ${policyNumber}`,
-    status: "success",
+    message:
+      `SIMULATED policy number ${policyNumber} generated locally. ` +
+      `No insurer was contacted and no policy exists.`,
+    status: "warning",
     screenshot: await snap(page),
   });
 
-  return { success: true, policyNumber, logs };
+  return { success: true, policyNumber, simulated: true, logs };
 }

@@ -514,6 +514,10 @@ router.post("/applications/:id/execute", async (req, res): Promise<void> => {
   let policyNumber: string | undefined;
   let pdfUrl: string | undefined;
   let errorMessage: string | undefined;
+  // True when no insurer was contacted. Both executors are still stubs, so
+  // this is currently always true on success — it is carried through to the
+  // response and the log metadata rather than assumed by the caller.
+  let simulated = false;
 
   if (resolvedMode === "API" && provider.apiEndpoint) {
     const result = await executeWithApi(
@@ -526,6 +530,7 @@ router.post("/applications/:id/execute", async (req, res): Promise<void> => {
     policyNumber = result.policyNumber;
     pdfUrl = result.pdfUrl;
     errorMessage = result.errorMessage;
+    simulated = result.simulated ?? false;
 
     for (const log of result.logs) {
       await db.insert(submissionLogsTable).values({
@@ -533,6 +538,7 @@ router.post("/applications/:id/execute", async (req, res): Promise<void> => {
         step: log.step as typeof submissionLogsTable.$inferInsert["step"],
         status: log.status,
         message: log.message,
+        metadata: result.simulated ? { simulated: true } : null,
       });
     }
   } else {
@@ -548,14 +554,19 @@ router.post("/applications/:id/execute", async (req, res): Promise<void> => {
     policyNumber = result.policyNumber;
     pdfUrl = result.pdfUrl;
     errorMessage = result.errorMessage;
+    simulated = result.simulated ?? false;
 
     for (const log of result.logs) {
+      const metadata: Record<string, unknown> = {};
+      if (log.screenshot) metadata.screenshot = log.screenshot;
+      if (result.simulated) metadata.simulated = true;
+
       await db.insert(submissionLogsTable).values({
         applicationId: app.id,
         step: log.step as typeof submissionLogsTable.$inferInsert["step"],
         status: log.status,
         message: log.message,
-        metadata: (log as any).screenshot ? { screenshot: (log as any).screenshot } : null,
+        metadata: Object.keys(metadata).length > 0 ? metadata : null,
       });
     }
   }
@@ -600,7 +611,9 @@ router.post("/applications/:id/execute", async (req, res): Promise<void> => {
       status: success ? "completed" : "failed",
       resolvedExecutionMode: resolvedMode,
       message: success
-        ? `Policy issued: ${policyNumber}`
+        ? simulated
+          ? `SIMULATED policy ${policyNumber} — no insurer was contacted and no policy exists`
+          : `Policy issued: ${policyNumber}`
         : `Submission failed: ${errorMessage}`,
       policy: policy ?? null,
     }),
