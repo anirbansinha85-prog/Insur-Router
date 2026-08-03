@@ -799,6 +799,102 @@ export interface WorklistSummary {
 }
 
 /**
+ * SLA_BREACHED and CLOCK_RUNNING apply only to manufacturer-generated leads, which carry a timed first-response mandate. NO_OWNER means the assigned executive has left and nobody has picked the lead up — worse than late, because late at least implies somebody is on it.
+ */
+export type LeadState = typeof LeadState[keyof typeof LeadState];
+
+
+export const LeadState = {
+  SLA_BREACHED: 'SLA_BREACHED',
+  CLOCK_RUNNING: 'CLOCK_RUNNING',
+  NO_OWNER: 'NO_OWNER',
+  UNCONTACTED: 'UNCONTACTED',
+  FOLLOW_UP_OVERDUE: 'FOLLOW_UP_OVERDUE',
+  ON_TRACK: 'ON_TRACK',
+  CONVERTED: 'CONVERTED',
+  LOST: 'LOST',
+} as const;
+
+/**
+ * What the dealer's CRM holds.
+ */
+export type LeadWorklistRowDms = {
+  source: string;
+  /** @nullable */
+  grade?: string | null;
+  stage: string;
+  /** @nullable */
+  enquiredAt?: string | null;
+  /** @nullable */
+  firstContactAt?: string | null;
+  /** @nullable */
+  nextFollowUpDate?: string | null;
+  /** @nullable */
+  assignedEmpCode?: string | null;
+  /** @nullable */
+  assignedEmpName?: string | null;
+  assignedEmpActive: boolean;
+  /** @nullable */
+  assignedEmpLeftOn?: string | null;
+  /** @nullable */
+  lostReason?: string | null;
+  /** @nullable */
+  convertedDealId?: string | null;
+};
+
+export type LeadWorklistRowDdms = {
+  /** @nullable */
+  reassignedToEmpCode: string | null;
+};
+
+export interface LeadWorklistRow {
+  enqId: string;
+  dealerCode: string;
+  showroomId: number;
+  /** @nullable */
+  customerName?: string | null;
+  /** @nullable */
+  customerMobile?: string | null;
+  /** @nullable */
+  modelInterest?: string | null;
+  /** What the dealer's CRM holds. */
+  dms: LeadWorklistRowDms;
+  ddms: LeadWorklistRowDdms;
+  state: LeadState;
+  /** @nullable */
+  note?: string | null;
+  /** @nullable */
+  actionRequired?: string | null;
+  /**
+     * Minutes to first contact, or minutes elapsed so far when nobody has made contact at all.
+     * @nullable
+     */
+  responseMinutes?: number | null;
+  /**
+     * Minutes left in the window. Negative once it has closed.
+     * @nullable
+     */
+  minutesToSla?: number | null;
+  followUpDaysOverdue: number;
+  lastSyncedAt: string;
+}
+
+export type LeadWorklistSummaryByState = {[key: string]: number};
+
+export interface LeadWorklistSummary {
+  total: number;
+  byState: LeadWorklistSummaryByState;
+  needsAction: number;
+  slaBreached: number;
+  /** Live leads with nobody active against them. */
+  orphaned: number;
+  /** The response mandate being measured against. */
+  slaMinutes: number;
+  /** @nullable */
+  lastSyncedAt?: string | null;
+}
+
+/**
  * What a job card needs from a human, ordered by what a service manager deals with first. Every state except ON_TRACK and CLOSED resolves to somebody picking up a phone — a workshop's backlog is mostly unmade calls. READY_UNCOLLECTED is the quiet one: the work is finished, the bay is occupied, and the customer has not been told.
  */
 export type ServiceState = typeof ServiceState[keyof typeof ServiceState];
@@ -1123,5 +1219,15 @@ includeDisappeared?: boolean;
 export type GetServiceWorklist200 = {
   summary: ServiceWorklistSummary;
   rows: ServiceWorklistRow[];
+};
+
+export type GetLeadWorklistParams = {
+showroomId: number;
+stage?: string;
+};
+
+export type GetLeadWorklist200 = {
+  summary: LeadWorklistSummary;
+  rows: LeadWorklistRow[];
 };
 

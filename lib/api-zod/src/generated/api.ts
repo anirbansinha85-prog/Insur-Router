@@ -606,6 +606,61 @@ export const GetServiceWorklistResponse = zod.object({
 
 
 /**
+ * The CRM mirror. Two things here appear on no screen the dealer has: how many minutes are left on a manufacturer-generated lead's response window — the industry mandate is thirty, and future lead allocation depends on it — and which live enquiries are assigned to somebody who has left.
+ * The second needs the enquiry mirror joined to the staff mirror. The dealer's CRM knows the assignment and their HR records know the leaving date; neither knows both.
+ * @summary Enquiries, the manufacturer response clock, and leads with no owner
+ */
+export const GetLeadWorklistQueryParams = zod.object({
+  "showroomId": zod.coerce.number().int(),
+  "stage": zod.coerce.string().optional()
+})
+
+export const GetLeadWorklistResponse = zod.object({
+  "summary": zod.object({
+  "total": zod.number().int(),
+  "byState": zod.record(zod.string(), zod.number().int()),
+  "needsAction": zod.number().int(),
+  "slaBreached": zod.number().int(),
+  "orphaned": zod.number().int().describe('Live leads with nobody active against them.'),
+  "slaMinutes": zod.number().int().describe('The response mandate being measured against.'),
+  "lastSyncedAt": zod.string().nullish()
+}),
+  "rows": zod.array(zod.object({
+  "enqId": zod.string(),
+  "dealerCode": zod.string(),
+  "showroomId": zod.number().int(),
+  "customerName": zod.string().nullish(),
+  "customerMobile": zod.string().nullish(),
+  "modelInterest": zod.string().nullish(),
+  "dms": zod.object({
+  "source": zod.string(),
+  "grade": zod.string().nullish(),
+  "stage": zod.string(),
+  "enquiredAt": zod.string().nullish(),
+  "firstContactAt": zod.string().nullish(),
+  "nextFollowUpDate": zod.string().nullish(),
+  "assignedEmpCode": zod.string().nullish(),
+  "assignedEmpName": zod.string().nullish(),
+  "assignedEmpActive": zod.boolean(),
+  "assignedEmpLeftOn": zod.string().nullish(),
+  "lostReason": zod.string().nullish(),
+  "convertedDealId": zod.string().nullish()
+}).describe('What the dealer\'s CRM holds.'),
+  "ddms": zod.object({
+  "reassignedToEmpCode": zod.string().nullable()
+}),
+  "state": zod.enum(['SLA_BREACHED', 'CLOCK_RUNNING', 'NO_OWNER', 'UNCONTACTED', 'FOLLOW_UP_OVERDUE', 'ON_TRACK', 'CONVERTED', 'LOST']).describe('SLA_BREACHED and CLOCK_RUNNING apply only to manufacturer-generated leads, which carry a timed first-response mandate. NO_OWNER means the assigned executive has left and nobody has picked the lead up — worse than late, because late at least implies somebody is on it.\n'),
+  "note": zod.string().nullish(),
+  "actionRequired": zod.string().nullish(),
+  "responseMinutes": zod.number().int().nullish().describe('Minutes to first contact, or minutes elapsed so far when nobody has made contact at all.\n'),
+  "minutesToSla": zod.number().int().nullish().describe('Minutes left in the window. Negative once it has closed.'),
+  "followUpDaysOverdue": zod.number().int(),
+  "lastSyncedAt": zod.string()
+}))
+})
+
+
+/**
  * @summary Pull deal, vehicle and customer data from the dealer's DMS
  */
 

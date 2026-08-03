@@ -19,12 +19,22 @@
 
 export {
   DmsError,
+  dmsEmployees,
+  dmsEnquiries,
   dmsJobCards,
   fetchDeal,
+  fetchEnquiry,
   fetchJobCard,
   fetchStockByChassis,
   isDmsConfigured,
 } from "./client";
+export { syncShowroomEnquiries, buildLeadWorklist, summariseLeads } from "./lead-worklist";
+export type {
+  EnquirySyncResult,
+  LeadState,
+  LeadWorklistRow,
+  LeadWorklistSummary,
+} from "./lead-worklist";
 export { adapterFor, adapterForDealer, listAdapters, oemForDealer, DEFAULT_OEM } from "./registry";
 export type { DmsAdapter, OemCode } from "./registry";
 export type { AdaptedDeal, DmsDealContext } from "./hero-adapter";

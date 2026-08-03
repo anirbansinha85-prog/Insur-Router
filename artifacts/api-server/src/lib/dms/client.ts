@@ -23,6 +23,9 @@ import { logger } from "../logger";
 import type {
   DmsDeal,
   DmsDealSummary,
+  DmsEmployee,
+  DmsEnquiry,
+  DmsEnquirySummary,
   DmsErrorBody,
   DmsJobCard,
   DmsJobCardSummary,
@@ -230,6 +233,33 @@ export function fetchJobCard(jcNo: string): Promise<DmsJobCard | null> {
   return dmsGet<DmsJobCard>(`/dms/v1/jobcards/${encodeURIComponent(jcNo)}`, {
     notFoundIsNull: true,
   });
+}
+
+/** Enquiries for a dealer. Summaries only, like the other lists. */
+export async function dmsEnquiries(
+  dealerCode: string,
+  stage?: string,
+): Promise<DmsEnquirySummary[]> {
+  const params = new URLSearchParams({ dealerCode });
+  if (stage) params.set("stage", stage);
+  const body = await dmsGet<{ count: number; enquiries: DmsEnquirySummary[] }>(
+    `/dms/v1/enquiries?${params.toString()}`,
+  );
+  return body?.enquiries ?? [];
+}
+
+export function fetchEnquiry(enqId: string): Promise<DmsEnquiry | null> {
+  return dmsGet<DmsEnquiry>(`/dms/v1/enquiries/${encodeURIComponent(enqId)}`, {
+    notFoundIsNull: true,
+  });
+}
+
+/** The dealer's staff master, including who has left. */
+export async function dmsEmployees(dealerCode: string): Promise<DmsEmployee[]> {
+  const body = await dmsGet<{ count: number; employees: DmsEmployee[] }>(
+    `/dms/v1/employees?dealerCode=${encodeURIComponent(dealerCode)}`,
+  );
+  return body?.employees ?? [];
 }
 
 /**

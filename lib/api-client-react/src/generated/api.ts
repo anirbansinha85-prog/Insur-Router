@@ -31,6 +31,8 @@ import type {
   ErrorResponse,
   ExecutionRequest,
   ExecutionResult,
+  GetLeadWorklist200,
+  GetLeadWorklistParams,
   GetServiceWorklist200,
   GetServiceWorklistParams,
   GetShowroomPanel200,
@@ -1589,6 +1591,92 @@ export function useGetServiceWorklist<TData = Awaited<ReturnType<typeof getServi
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetServiceWorklistQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetLeadWorklistUrl = (params: GetLeadWorklistParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/dms/lead-worklist?${stringifiedParams}` : `/api/dms/lead-worklist`
+}
+
+/**
+ * The CRM mirror. Two things here appear on no screen the dealer has: how many minutes are left on a manufacturer-generated lead's response window — the industry mandate is thirty, and future lead allocation depends on it — and which live enquiries are assigned to somebody who has left.
+ * The second needs the enquiry mirror joined to the staff mirror. The dealer's CRM knows the assignment and their HR records know the leaving date; neither knows both.
+ * @summary Enquiries, the manufacturer response clock, and leads with no owner
+ */
+export const getLeadWorklist = async (params: GetLeadWorklistParams, options?: Parameters<typeof customFetch>[1]): Promise<GetLeadWorklist200> => {
+
+  return customFetch<GetLeadWorklist200>(getGetLeadWorklistUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLeadWorklistQueryKey = (params?: GetLeadWorklistParams,) => {
+    return [
+    `/api/dms/lead-worklist`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetLeadWorklistQueryOptions = <TData = Awaited<ReturnType<typeof getLeadWorklist>>, TError = ErrorType<ErrorResponse>>(params: GetLeadWorklistParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLeadWorklist>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLeadWorklistQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLeadWorklist>>> = ({ signal }) => getLeadWorklist(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLeadWorklist>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLeadWorklistQueryResult = NonNullable<Awaited<ReturnType<typeof getLeadWorklist>>>
+export type GetLeadWorklistQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Enquiries, the manufacturer response clock, and leads with no owner
+ */
+
+export function useGetLeadWorklist<TData = Awaited<ReturnType<typeof getLeadWorklist>>, TError = ErrorType<ErrorResponse>>(
+ params: GetLeadWorklistParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLeadWorklist>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLeadWorklistQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter"
-import { LayoutDashboard, FileText, Building2, Bell, Search, Settings, ListChecks, Wrench } from "lucide-react"
+import { LayoutDashboard, FileText, Building2, Bell, Search, Settings, ListChecks, Wrench, Users } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export function Shell({ children }: { children: React.ReactNode }) {
@@ -10,6 +10,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
     // The owner's view: every deal in the dealer's system, and how our record
     // of it differs. Sits above Applications deliberately — the worklist is
     // where work is found, the application list is where it is worked.
+    // First in the list because it is first in the business: a lead nobody
+    // answers never becomes a deal to insure or a bike to service.
+    { href: "/leads", label: "Enquiries", icon: Users },
     { href: "/worklist", label: "Worklist", icon: ListChecks },
     // The same question asked of a different module: what is stuck, and who has
     // not been told. Separate route rather than a tab because a service manager

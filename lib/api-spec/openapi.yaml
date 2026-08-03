@@ -614,6 +614,53 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /dms/lead-worklist:
+    get:
+      operationId: getLeadWorklist
+      tags: [dms]
+      summary: Enquiries, the manufacturer response clock, and leads with no owner
+      description: >
+        The CRM mirror. Two things here appear on no screen the dealer has: how
+        many minutes are left on a manufacturer-generated lead's response window
+        — the industry mandate is thirty, and future lead allocation depends on
+        it — and which live enquiries are assigned to somebody who has left.
+
+        The second needs the enquiry mirror joined to the staff mirror. The
+        dealer's CRM knows the assignment and their HR records know the leaving
+        date; neither knows both.
+      parameters:
+        - name: showroomId
+          in: query
+          required: true
+          schema:
+            type: integer
+        - name: stage
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Enquiries plus a summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  summary:
+                    $ref: "#/components/schemas/LeadWorklistSummary"
+                  rows:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/LeadWorklistRow"
+                required: [summary, rows]
+        "404":
+          description: No such showroom
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   # ── Ingest ──────────────────────────────────────────────────────────────────
   /ingest/dms-pull:
     post:
@@ -1610,6 +1657,84 @@ components:
         oldestDaysInStatus: { type: integer }
         lastSyncedAt: { type: ["string", "null"] }
       required: [total, byReconcile, byDmsStatus, needsAction, oldestDaysInStatus]
+
+    LeadState:
+      type: string
+      enum:
+        [SLA_BREACHED, CLOCK_RUNNING, NO_OWNER, UNCONTACTED, FOLLOW_UP_OVERDUE,
+         ON_TRACK, CONVERTED, LOST]
+      description: >
+        SLA_BREACHED and CLOCK_RUNNING apply only to manufacturer-generated
+        leads, which carry a timed first-response mandate. NO_OWNER means the
+        assigned executive has left and nobody has picked the lead up — worse
+        than late, because late at least implies somebody is on it.
+
+    LeadWorklistRow:
+      type: object
+      properties:
+        enqId: { type: string }
+        dealerCode: { type: string }
+        showroomId: { type: integer }
+        customerName: { type: ["string", "null"] }
+        customerMobile: { type: ["string", "null"] }
+        modelInterest: { type: ["string", "null"] }
+        dms:
+          type: object
+          description: What the dealer's CRM holds.
+          properties:
+            source: { type: string }
+            grade: { type: ["string", "null"] }
+            stage: { type: string }
+            enquiredAt: { type: ["string", "null"] }
+            firstContactAt: { type: ["string", "null"] }
+            nextFollowUpDate: { type: ["string", "null"] }
+            assignedEmpCode: { type: ["string", "null"] }
+            assignedEmpName: { type: ["string", "null"] }
+            assignedEmpActive: { type: boolean }
+            assignedEmpLeftOn: { type: ["string", "null"] }
+            lostReason: { type: ["string", "null"] }
+            convertedDealId: { type: ["string", "null"] }
+          required: [source, stage, assignedEmpActive]
+        ddms:
+          type: object
+          properties:
+            reassignedToEmpCode: { type: ["string", "null"] }
+          required: [reassignedToEmpCode]
+        state:
+          $ref: "#/components/schemas/LeadState"
+        note: { type: ["string", "null"] }
+        actionRequired: { type: ["string", "null"] }
+        responseMinutes:
+          type: ["integer", "null"]
+          description: >
+            Minutes to first contact, or minutes elapsed so far when nobody has
+            made contact at all.
+        minutesToSla:
+          type: ["integer", "null"]
+          description: Minutes left in the window. Negative once it has closed.
+        followUpDaysOverdue: { type: integer }
+        lastSyncedAt: { type: string }
+      required:
+        [enqId, dealerCode, showroomId, dms, ddms, state, followUpDaysOverdue,
+         lastSyncedAt]
+
+    LeadWorklistSummary:
+      type: object
+      properties:
+        total: { type: integer }
+        byState:
+          type: object
+          additionalProperties: { type: integer }
+        needsAction: { type: integer }
+        slaBreached: { type: integer }
+        orphaned:
+          type: integer
+          description: Live leads with nobody active against them.
+        slaMinutes:
+          type: integer
+          description: The response mandate being measured against.
+        lastSyncedAt: { type: ["string", "null"] }
+      required: [total, byState, needsAction, slaBreached, orphaned, slaMinutes]
 
     ServiceState:
       type: string

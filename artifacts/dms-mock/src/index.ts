@@ -26,8 +26,10 @@ import { buildServiceSchedule, formatDmsDate } from "./service-schedule.ts";
 import portal from "./portal/routes.ts";
 import {
   dealIdsModifiedSince,
+  getEnquiry,
   getJobCard,
   listEmployees,
+  listEnquiries,
   listJobCards,
   openStore,
   parseDmsTimestamp,
@@ -268,6 +270,69 @@ app.get("/dms/v1/jobcards/:jcNo", (req, res) => {
     return;
   }
   res.json(jc);
+});
+
+/**
+ * Enquiry list.
+ *
+ * `source=OEM_PORTAL` is the queue with a contract behind it: the manufacturer
+ * generates the lead, pushes it down, and measures how long the dealer took to
+ * respond. `firstContactAt` is therefore the field that matters most, and null
+ * is its most important value.
+ */
+app.get("/dms/v1/enquiries", (req, res) => {
+  const { dealerCode, stage, source, modifiedSince, uncontacted } = req.query as Record<string, string | undefined>;
+
+  let since: Date | undefined;
+  if (modifiedSince) {
+    const parsed = parseDmsTimestamp(modifiedSince);
+    if (!parsed) {
+      res.status(400).json({
+        errCode: "VALIDATION",
+        errDesc: "modifiedSince must be DD-MM-YYYY or DD-MM-YYYY HH:mm:ss",
+      });
+      return;
+    }
+    since = parsed;
+  }
+
+  const enquiries = listEnquiries({
+    dealerCode,
+    stage,
+    source,
+    modifiedSince: since,
+    uncontactedOnly: uncontacted === "Y",
+  });
+
+  res.json({
+    count: enquiries.length,
+    enquiries: enquiries.map((e) => ({
+      enqId: e.enqId,
+      dealerCode: e.dealerCode,
+      enqDt: e.enqDt,
+      source: e.source,
+      grade: e.grade,
+      stage: e.stage,
+      custName: e.custName,
+      mobileNo: e.mobileNo,
+      modelCodeInterest: e.modelCodeInterest,
+      assignedEmpCode: e.assignedEmpCode,
+      firstContactAt: e.firstContactAt,
+      lastContactDt: e.lastContactDt,
+      nextFollowUpDt: e.nextFollowUpDt,
+      convertedDealId: e.convertedDealId,
+      modifiedAt: e.modifiedAt,
+    })),
+  });
+});
+
+app.get("/dms/v1/enquiries/:enqId", (req, res) => {
+  const enquiry = getEnquiry(req.params.enqId);
+  if (!enquiry) {
+    res.status(404).json({ errCode: "ENQUIRY_NOT_FOUND", errDesc: req.params.enqId });
+    return;
+  }
+  res.json(enquiry);
 });
 
 /**

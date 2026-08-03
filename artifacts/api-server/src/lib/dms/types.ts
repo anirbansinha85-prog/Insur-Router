@@ -163,6 +163,58 @@ export type DmsStockLookup = DmsStockUnit & {
   dealId: string | null;
 };
 
+// ── CRM ─────────────────────────────────────────────────────────────────────
+
+export interface DmsEnquirySummary {
+  enqId: string;
+  dealerCode: string;
+  /** `DD-MM-YYYY HH:mm:ss`. Timestamped because the OEM SLA is in minutes. */
+  enqDt: string;
+  source: string;
+  grade: string;
+  stage: string;
+  custName: string;
+  mobileNo: string;
+  modelCodeInterest: string;
+  assignedEmpCode: string;
+  /** Null means nobody has made contact at all. */
+  firstContactAt: string | null;
+  lastContactDt: DmsDate | null;
+  nextFollowUpDt: DmsDate | null;
+  convertedDealId: string | null;
+  modifiedAt: string;
+}
+
+export interface DmsEnquiry extends DmsEnquirySummary {
+  emailId: string | null;
+  cityDesc: string | null;
+  lostReasonDesc: string | null;
+  followUps: Array<{
+    fuId: string;
+    dueDt: DmsDate;
+    doneDt: DmsDate | null;
+    outcomeDesc: string | null;
+    empCode: string;
+  }>;
+  testRides: Array<{
+    trId: string;
+    modelCode: string;
+    scheduledDt: string;
+    doneFlg: "Y" | "N";
+  }>;
+}
+
+export interface DmsEmployee {
+  empCode: string;
+  empName: string;
+  dealerCode: string;
+  role: string;
+  doj: DmsDate;
+  dol: DmsDate | null;
+  activeFlg: "Y" | "N";
+  mobileNo: string | null;
+}
+
 // ── Workshop ────────────────────────────────────────────────────────────────
 
 export interface DmsJobCardSummary {

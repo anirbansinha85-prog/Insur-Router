@@ -35,9 +35,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DEALERS, DEALS, FREE_STOCK } from "./deals.ts";
 import { EMPLOYEES, JOB_CARD_SEEDS, PARTS } from "./workshop.ts";
+import { ENQUIRY_SEEDS } from "./crm.ts";
 import type {
   DmsDeal,
   DmsEmployee,
+  DmsEnquiry,
   DmsJobCard,
   DmsJobCardStatus,
 } from "./types.ts";
@@ -192,6 +194,49 @@ create table if not exists jc_psf (
   complaint_flg      text,
   remarks_desc       text
 );
+
+create table if not exists enquiries (
+  enq_id              text primary key,
+  dealer_code         text not null,
+  enq_dt              text not null,
+  source              text not null,
+  grade               text not null,
+  stage               text not null,
+  cust_name           text not null,
+  mobile_no           text not null,
+  email_id            text,
+  city_desc           text,
+  model_code_interest text not null,
+  assigned_emp_code   text not null,
+  first_contact_at    text,
+  last_contact_dt     text,
+  next_follow_up_dt   text,
+  lost_reason_desc    text,
+  converted_deal_id   text,
+  modified_at         text not null,
+  enq_iso             text not null,
+  first_contact_iso   text,
+  next_follow_up_iso  text,
+  modified_iso        text not null
+);
+create index if not exists enquiries_dealer_stage on enquiries (dealer_code, stage);
+
+create table if not exists enquiry_followups (
+  fu_id        text primary key,
+  enq_id       text not null,
+  due_dt       text not null,
+  done_dt      text,
+  outcome_desc text,
+  emp_code     text not null
+);
+
+create table if not exists test_rides (
+  tr_id        text primary key,
+  enq_id       text not null,
+  model_code   text not null,
+  scheduled_dt text not null,
+  done_flg     text not null
+);
 `;
 
 export interface OpenOptions {
@@ -211,7 +256,10 @@ export function openStore(opts: OpenOptions = {}): void {
   db.exec(SCHEMA);
 
   if (opts.reset) {
-    for (const t of ["deals", "employees", "part_master", "job_cards", "jc_labour", "jc_parts", "jc_psf"]) {
+    for (const t of [
+      "deals", "employees", "part_master", "job_cards", "jc_labour", "jc_parts",
+      "jc_psf", "enquiries", "enquiry_followups", "test_rides",
+    ]) {
       db.exec(`delete from ${t}`);
     }
   }
@@ -246,6 +294,72 @@ function seedIfEmpty(): void {
   }
 
   if (count("job_cards") === 0) seedJobCards();
+  if (count("enquiries") === 0) seedEnquiries();
+}
+
+function minutesAgo(n: number): Date {
+  return new Date(Date.now() - n * 60_000);
+}
+
+/**
+ * Enquiries, resolved against now to the minute.
+ *
+ * Days would not do here. An OEM lead is judged on a thirty-minute response
+ * window, so a fixture that only knows what day it is cannot demonstrate the
+ * thing the module exists to show.
+ */
+function seedEnquiries(): void {
+  const insEnq = db.prepare(
+    `insert into enquiries (
+       enq_id, dealer_code, enq_dt, source, grade, stage, cust_name, mobile_no,
+       email_id, city_desc, model_code_interest, assigned_emp_code,
+       first_contact_at, last_contact_dt, next_follow_up_dt, lost_reason_desc,
+       converted_deal_id, modified_at,
+       enq_iso, first_contact_iso, next_follow_up_iso, modified_iso
+     ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  const insFu = db.prepare(
+    `insert into enquiry_followups (fu_id, enq_id, due_dt, done_dt, outcome_desc, emp_code) values (?, ?, ?, ?, ?, ?)`,
+  );
+  const insTr = db.prepare(
+    `insert into test_rides (tr_id, enq_id, model_code, scheduled_dt, done_flg) values (?, ?, ?, ?, ?)`,
+  );
+
+  for (const s of ENQUIRY_SEEDS) {
+    const arrived = minutesAgo(s.arrivedMinutesAgo);
+    const firstContact =
+      s.firstContactAfterMinutes === null
+        ? null
+        : new Date(arrived.getTime() + s.firstContactAfterMinutes * 60_000);
+    const nextFollowUp =
+      s.nextFollowUpInDays === null ? null : daysAgo(-s.nextFollowUpInDays);
+    const modified = minutesAgo(s.modifiedMinutesAgo);
+
+    insEnq.run(
+      s.enqId, s.dealerCode, dmsTimestamp(arrived), s.source, s.grade, s.stage,
+      s.custName, s.mobileNo, s.emailId, s.cityDesc, s.modelCodeInterest,
+      s.assignedEmpCode,
+      firstContact ? dmsTimestamp(firstContact) : null,
+      s.lastContactDaysAgo === null ? null : dmsDate(daysAgo(s.lastContactDaysAgo)),
+      nextFollowUp ? dmsDate(nextFollowUp) : null,
+      s.lostReasonDesc, s.convertedDealId, dmsTimestamp(modified),
+      isoStampOf(arrived),
+      firstContact ? isoStampOf(firstContact) : null,
+      nextFollowUp ? isoOf(nextFollowUp) : null,
+      isoStampOf(modified),
+    );
+
+    for (const f of s.followUpSeeds) {
+      insFu.run(
+        f.fuId, s.enqId, dmsDate(daysAgo(-f.dueInDays)),
+        f.doneDaysAgo === null ? null : dmsDate(daysAgo(f.doneDaysAgo)),
+        f.outcomeDesc, f.empCode,
+      );
+    }
+    for (const t of s.testRideSeeds) {
+      insTr.run(t.trId, s.enqId, t.modelCode, dmsTimestamp(minutesAgo(t.scheduledMinutesAgo)), t.doneFlg);
+    }
+  }
 }
 
 /**
@@ -496,6 +610,93 @@ export function listEmployees(dealerCode?: string, activeOnly?: boolean): DmsEmp
     activeFlg: r.active_flg as "Y" | "N",
     mobileNo: r.mobile_no,
   }));
+}
+
+// ── CRM ─────────────────────────────────────────────────────────────────────
+
+interface EnquiryRow {
+  enq_id: string; dealer_code: string; enq_dt: string; source: string; grade: string;
+  stage: string; cust_name: string; mobile_no: string; email_id: string | null;
+  city_desc: string | null; model_code_interest: string; assigned_emp_code: string;
+  first_contact_at: string | null; last_contact_dt: string | null;
+  next_follow_up_dt: string | null; lost_reason_desc: string | null;
+  converted_deal_id: string | null; modified_at: string;
+}
+
+function toEnquiry(r: EnquiryRow, withLines: boolean): DmsEnquiry {
+  const e: DmsEnquiry = {
+    enqId: r.enq_id,
+    dealerCode: r.dealer_code,
+    enqDt: r.enq_dt,
+    source: r.source as DmsEnquiry["source"],
+    grade: r.grade as DmsEnquiry["grade"],
+    stage: r.stage as DmsEnquiry["stage"],
+    custName: r.cust_name,
+    mobileNo: r.mobile_no,
+    emailId: r.email_id,
+    cityDesc: r.city_desc,
+    modelCodeInterest: r.model_code_interest,
+    assignedEmpCode: r.assigned_emp_code,
+    firstContactAt: r.first_contact_at,
+    lastContactDt: r.last_contact_dt,
+    nextFollowUpDt: r.next_follow_up_dt,
+    lostReasonDesc: r.lost_reason_desc,
+    convertedDealId: r.converted_deal_id,
+    followUps: [],
+    testRides: [],
+    modifiedAt: r.modified_at,
+  };
+
+  if (!withLines) return e;
+
+  e.followUps = db
+    .prepare(`select fu_id, due_dt, done_dt, outcome_desc, emp_code from enquiry_followups where enq_id = ? order by due_dt`)
+    .all(r.enq_id)
+    .map((f) => {
+      const row = f as { fu_id: string; due_dt: string; done_dt: string | null; outcome_desc: string | null; emp_code: string };
+      return { fuId: row.fu_id, dueDt: row.due_dt, doneDt: row.done_dt, outcomeDesc: row.outcome_desc, empCode: row.emp_code };
+    });
+
+  e.testRides = db
+    .prepare(`select tr_id, model_code, scheduled_dt, done_flg from test_rides where enq_id = ?`)
+    .all(r.enq_id)
+    .map((t) => {
+      const row = t as { tr_id: string; model_code: string; scheduled_dt: string; done_flg: string };
+      return { trId: row.tr_id, modelCode: row.model_code, scheduledDt: row.scheduled_dt, doneFlg: row.done_flg as "Y" | "N" };
+    });
+
+  return e;
+}
+
+export interface EnquiryFilter {
+  dealerCode?: string;
+  stage?: string;
+  source?: string;
+  modifiedSince?: Date;
+  /** Only enquiries nobody has yet made contact with. */
+  uncontactedOnly?: boolean;
+}
+
+export function listEnquiries(filter: EnquiryFilter = {}): DmsEnquiry[] {
+  const where: string[] = [];
+  const args: string[] = [];
+
+  if (filter.dealerCode) { where.push("dealer_code = ?"); args.push(filter.dealerCode); }
+  if (filter.stage) { where.push("stage = ?"); args.push(filter.stage); }
+  if (filter.source) { where.push("source = ?"); args.push(filter.source); }
+  if (filter.uncontactedOnly) where.push("first_contact_at is null");
+  if (filter.modifiedSince) { where.push("modified_iso >= ?"); args.push(isoStampOf(filter.modifiedSince)); }
+
+  const rows = db
+    .prepare(`select * from enquiries${where.length ? ` where ${where.join(" and ")}` : ""} order by enq_iso desc`)
+    .all(...args) as unknown as EnquiryRow[];
+
+  return rows.map((r) => toEnquiry(r, false));
+}
+
+export function getEnquiry(enqId: string): DmsEnquiry | null {
+  const row = db.prepare(`select * from enquiries where enq_id = ?`).get(enqId) as EnquiryRow | undefined;
+  return row ? toEnquiry(row, true) : null;
 }
 
 /** Reference data the API still serves straight from the fixtures. */

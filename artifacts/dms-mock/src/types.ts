@@ -255,6 +255,88 @@ export interface DmsDeal {
   insurance: DmsInsurance;
 }
 
+// ── CRM ─────────────────────────────────────────────────────────────────────
+// Where a sale starts, and where most of them quietly stop.
+
+/**
+ * Where the enquiry came from.
+ *
+ * `OEM_PORTAL` is the one that behaves differently from every other source. The
+ * manufacturer generates the lead on its own website or campaign and pushes it
+ * to the dealer, then **measures how long the dealer took to respond** — 30
+ * minutes is the common mandate — and allocates future leads accordingly. A
+ * walk-in nobody greets is a lost sale; an OEM lead nobody rings is a lost sale
+ * *and* a worse allocation next quarter.
+ */
+export type DmsEnquirySource =
+  | "WALKIN"
+  | "PHONE"
+  | "WEB"
+  | "OEM_PORTAL"
+  | "REFERRAL"
+  | "CAMPAIGN"
+  | "EXCHANGE";
+
+/** Hot/warm/cold. Universal in Indian dealer CRM, and set by the executive. */
+export type DmsEnquiryGrade = "HOT" | "WARM" | "COLD";
+
+export type DmsEnquiryStage =
+  | "NEW"
+  | "CONTACTED"
+  | "TEST_RIDE"
+  | "QUOTED"
+  | "NEGOTIATION"
+  | "BOOKED"
+  | "LOST";
+
+export interface DmsEnquiryFollowUp {
+  fuId: string;
+  dueDt: DmsDate;
+  doneDt: DmsDate | null;
+  outcomeDesc: string | null;
+  empCode: string;
+}
+
+export interface DmsTestRide {
+  trId: string;
+  modelCode: string;
+  scheduledDt: DmsTimestamp;
+  doneFlg: "Y" | "N";
+}
+
+export interface DmsEnquiry {
+  enqId: string;
+  dealerCode: string;
+  /** When the enquiry arrived. Timestamped, because the SLA is in minutes. */
+  enqDt: DmsTimestamp;
+  source: DmsEnquirySource;
+  grade: DmsEnquiryGrade;
+  stage: DmsEnquiryStage;
+  custName: string;
+  mobileNo: string;
+  emailId: string | null;
+  cityDesc: string | null;
+  modelCodeInterest: string;
+  /**
+   * The executive who owns it. A DMS keeps this pointing at whoever was
+   * assigned, whether or not that person still works here — which is how a lead
+   * ends up with nobody actually looking at it.
+   */
+  assignedEmpCode: string;
+  /**
+   * First outbound contact. **Null is the interesting value**: on an OEM lead
+   * it means the response clock is still running, or has already been missed.
+   */
+  firstContactAt: DmsTimestamp | null;
+  lastContactDt: DmsDate | null;
+  nextFollowUpDt: DmsDate | null;
+  lostReasonDesc: string | null;
+  convertedDealId: string | null;
+  followUps: DmsEnquiryFollowUp[];
+  testRides: DmsTestRide[];
+  modifiedAt: DmsTimestamp;
+}
+
 // ── Workshop ────────────────────────────────────────────────────────────────
 // The service side of the dealership. Structurally the same problem as the
 // sales side: work sits still in a named state, and the state says nothing

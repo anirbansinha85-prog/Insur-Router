@@ -27,13 +27,16 @@ import {
 } from "@workspace/db";
 import {
   DmsError,
+  buildLeadWorklist,
   buildServiceWorklist,
   buildWorklist,
   isDmsConfigured,
   panelForShowroom,
   summarise,
+  summariseLeads,
   summariseService,
   syncShowroom,
+  syncShowroomEnquiries,
   syncShowroomJobCards,
 } from "../lib/dms";
 import { logger } from "../lib/logger";
@@ -126,6 +129,7 @@ router.post("/dms/showrooms/:showroomId/sync", async (req, res): Promise<void> =
     // this minute and half from yesterday, with nothing on screen saying which.
     const results = await syncShowroom(showroomId);
     const jobCardResults = await syncShowroomJobCards(showroomId);
+    const enquiryResults = await syncShowroomEnquiries(showroomId);
 
     if (results.length === 0) {
       // The showroom exists but has no active DMS account, which is a
@@ -138,7 +142,7 @@ router.post("/dms/showrooms/:showroomId/sync", async (req, res): Promise<void> =
       return;
     }
 
-    res.json({ results, jobCardResults });
+    res.json({ results, jobCardResults, enquiryResults });
   } catch (err) {
     if (err instanceof DmsError) {
       const status = err.kind === "bad_response" ? 502 : 503;
@@ -217,6 +221,35 @@ router.get("/dms/service-worklist", async (req, res): Promise<void> => {
   });
 
   res.json({ summary: summariseService(rows), rows });
+});
+
+/**
+ * The lead worklist.
+ *
+ * Two things here exist nowhere in the dealer's own screens: how many minutes
+ * are left on a manufacturer lead's response window, and which live leads are
+ * assigned to somebody who has left. The second needs the enquiry mirror and
+ * the staff mirror joined, and their CRM and HR screens each hold only one
+ * side.
+ */
+router.get("/dms/lead-worklist", async (req, res): Promise<void> => {
+  const showroomId = parseShowroomId(String(req.query.showroomId ?? ""));
+  if (showroomId === null) {
+    res.status(400).json({ error: "showroomId query parameter is required and must be a positive integer" });
+    return;
+  }
+
+  if (!(await showroomExists(showroomId))) {
+    res.status(404).json({ error: `No showroom ${showroomId}` });
+    return;
+  }
+
+  const rows = await buildLeadWorklist({
+    showroomId,
+    stage: typeof req.query.stage === "string" ? req.query.stage : undefined,
+  });
+
+  res.json({ summary: summariseLeads(rows), rows });
 });
 
 export default router;
