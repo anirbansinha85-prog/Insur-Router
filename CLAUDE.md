@@ -4,14 +4,27 @@ Guidance for Claude Code when working in this repository.
 
 ## What this is
 
-A pnpm workspace holding **two products that share one database**, plus a mobile
-capture app:
+A pnpm workspace holding **three products that share one database**, plus a
+mobile capture app:
 
 | Product | Path served | Package | What it does |
 |---|---|---|---|
+| **DDMS** | `/ddms` | `@workspace/ddms` | Owner-facing control panel across every showroom. Mirrors the dealer's own DMS read-only and shows what that system cannot: enquiries against the manufacturer's response clock, deals against our insurance record, job cards against the promise made to the customer. |
 | **InsurRouter** | `/` | `@workspace/insur-router` | Agent-facing dashboard. Fill the MSA payload, pick an insurer, validate, submit. Routes to the provider's REST API or falls back to Playwright browser automation. |
 | **VeloDocs** | `/doc-ingest` | `@workspace/doc-ingest` | Document ingestion. Pulls vehicle/owner data from a dealer DMS, a scraped portal, or OCR of an RC book, lets a human correct low-confidence fields, then pushes a draft into InsurRouter. |
 | **RC Capture** | `/rc-capture` | `@workspace/rc-capture` | Expo mobile app. Camera capture → OCR review → push to InsurRouter. |
+
+**Each product is complete on its own and none contains another.** DDMS is the
+owner's umbrella and links out to the other two rather than embedding them;
+InsurRouter is a working insurance product with no DDMS screens in it. The three
+DDMS screens briefly lived inside InsurRouter — that was a shortcut taken
+because InsurRouter already had the API proxy and the components, and it is not
+a precedent. New cross-product work gets its own artifact.
+
+They still share **one API process** today, with DDMS's routes isolated in
+`api-server/src/routes/dms.ts`. Splitting that into separate services is
+mechanical when deployment calls for it; nothing above the route layer assumes
+one process.
 
 Both web products are served by **one Express API** (`@workspace/api-server`) on
 `/api`. VeloDocs does not call InsurRouter over HTTP — `POST /api/ingest/push`
@@ -42,6 +55,7 @@ for — `showroomId` still arrives in the request rather than from a session.
 
 ```
 artifacts/            deployable apps
+  ddms/               React 19 + Vite — owner control panel, its own service
   api-server/         Express 5 API — the only backend
     src/routes/       health, providers, applications, dashboard, dms, ingest
     src/lib/          api-executor.ts, browser-executor.ts, auth.ts, logger.ts
@@ -355,12 +369,21 @@ creates its `/api` proxy. Generate one with
 pnpm --filter @workspace/api-server run build
 $env:PORT=8080; node --env-file=.env --enable-source-maps artifacts/api-server/dist/index.mjs
 
+# DDMS         → http://localhost:31280/ddms/
+$env:PORT=31280; $env:BASE_PATH="/ddms/";       pnpm --filter @workspace/ddms run dev
+
 # InsurRouter  → http://localhost:24791/
 $env:PORT=24791; $env:BASE_PATH="/";            pnpm --filter @workspace/insur-router run dev
 
 # VeloDocs     → http://localhost:18815/doc-ingest/
 $env:PORT=18815; $env:BASE_PATH="/doc-ingest/"; pnpm --filter @workspace/doc-ingest run dev
+
+# Mock OEM DMS → http://localhost:9090/portal  (its own SQLite file)
+$env:DMS_PORT=9090; node artifacts/dms-mock/src/index.ts
 ```
+
+DDMS needs the API and the mock DMS running to show anything. It reads only the
+mirror, so it renders when the mock is down — just with a stale `lastSyncedAt`.
 
 Run the API and a frontend in separate terminals. The Vite dev servers proxy
 `/api` → `localhost:${API_PORT ?? 8080}`; on Replit the platform router does this
@@ -401,16 +424,20 @@ assignment (`VAR=x cmd`) and depends on `$REPLIT_EXPO_DEV_DOMAIN`,
 
 ### Frontend pages
 
-InsurRouter (`artifacts/insur-router/src/pages/`), routed by Wouter under
-`BASE_URL`: `Dashboard` (`/`), `Worklist` (`/worklist`), `ApplicationsList`,
-`ApplicationNew`, `ApplicationDetail` (renders the log timeline incl. inline
-browser screenshots), `ProvidersList`, `ProviderEdit`. Wrapped in
-`components/layout/Shell.tsx`.
+DDMS (`artifacts/ddms/src/pages/`): `Leads` (`/`), `Worklist` (`/worklist`),
+`ServiceWorklist` (`/service`). Its own `Shell` — an owner looking across
+showrooms, not an agent working one application — with outbound links to the
+other two products rather than embedded copies of them.
 
-`Worklist` is the owner-facing DDMS console: every mirrored deal with the
-dealer's system and ours side by side, the difference classified, and the
-insurer panel with quota. Note `Select` in this app is a **native** select
-(`NativeSelect`), not the Radix composite VeloDocs uses.
+InsurRouter (`artifacts/insur-router/src/pages/`), routed by Wouter under
+`BASE_URL`: `Dashboard` (`/`), `ApplicationsList`, `ApplicationNew`,
+`ApplicationDetail` (renders the log timeline incl. inline browser screenshots),
+`ProvidersList`, `ProviderEdit`. Wrapped in `components/layout/Shell.tsx`.
+
+Note `Select` in DDMS and InsurRouter is a **native** select (`NativeSelect`),
+not the Radix composite VeloDocs uses. DDMS carries its own copy of the handful
+of UI primitives it needs; there is no shared UI package yet, and extracting one
+is only worth doing when a third consumer appears.
 
 VeloDocs (`artifacts/doc-ingest/src/`) is a single `Workspace` page composing
 four components, one per ingest source plus review: `dms-pull`, `browser-scrape`,

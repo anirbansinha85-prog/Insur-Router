@@ -1,23 +1,17 @@
 import { Link, useLocation } from "wouter"
-import { LayoutDashboard, FileText, Building2, Bell, Search, Settings, ListChecks, Wrench, Users } from "lucide-react"
+import { LayoutDashboard, FileText, Building2, Bell, Search, Settings } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const [location] = useLocation()
 
+  // InsurRouter is the insurance product and nothing else. The DDMS screens
+  // that briefly lived here — enquiries, deals, workshop — now live in
+  // artifacts/ddms as their own service. They were put here originally because
+  // this app already had the API proxy and the components, which is a reason to
+  // save a day's work, not a reason to decide an architecture.
   const nav = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
-    // The owner's view: every deal in the dealer's system, and how our record
-    // of it differs. Sits above Applications deliberately — the worklist is
-    // where work is found, the application list is where it is worked.
-    // First in the list because it is first in the business: a lead nobody
-    // answers never becomes a deal to insure or a bike to service.
-    { href: "/leads", label: "Enquiries", icon: Users },
-    { href: "/worklist", label: "Worklist", icon: ListChecks },
-    // The same question asked of a different module: what is stuck, and who has
-    // not been told. Separate route rather than a tab because a service manager
-    // and a sales manager are different people opening different screens.
-    { href: "/service", label: "Workshop", icon: Wrench },
     { href: "/applications", label: "Applications", icon: FileText },
     { href: "/providers", label: "Providers", icon: Building2 },
   ]

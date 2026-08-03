@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/ddms/"
+title = "DDMS"
+version = "1.0.0"
+id = "artifacts/ddms"
+router = "path"
+
+# Served under /ddms/ rather than / because InsurRouter currently owns the root
+# and VeloDocs deep-links to it as `${origin}/applications/:id`. Which product
+# is the front door is a deployment decision, not an architectural one — when
+# DDMS takes the root, that link moves with it.
+[[services]]
+name = "web"
+paths = [ "/ddms" ]
+localPort = 31280
+
+[services.development]
+run = "pnpm --filter @workspace/ddms run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/ddms", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/ddms/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "31280"
+BASE_PATH = "/ddms/"
