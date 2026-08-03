@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter"
-import { LayoutDashboard, FileText, Building2, Bell, Search, Settings } from "lucide-react"
+import { LayoutDashboard, FileText, Building2, Bell, Search, Settings, ListChecks } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export function Shell({ children }: { children: React.ReactNode }) {
@@ -7,6 +7,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
   const nav = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
+    // The owner's view: every deal in the dealer's system, and how our record
+    // of it differs. Sits above Applications deliberately — the worklist is
+    // where work is found, the application list is where it is worked.
+    { href: "/worklist", label: "Worklist", icon: ListChecks },
     { href: "/applications", label: "Applications", icon: FileText },
     { href: "/providers", label: "Providers", icon: Building2 },
   ]

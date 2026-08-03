@@ -9,7 +9,7 @@ import * as zod from 'zod';
 
 
 /**
- * Returns server health status
+ * Returns server health status. Deliberately unauthenticated: a platform that cannot probe liveness will restart a healthy service, and the response carries nothing worth protecting.
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
@@ -404,6 +404,29 @@ export const GetPolicyResponse = zod.object({
 
 
 /**
+ * Drives the showroom picker on the owner console. Returns inactive showrooms too, marked as such, because an owner who has parked an outlet still needs to see it exists — silently hiding it looks like data loss.
+ * @summary Showrooms the owner holds, with their DMS accounts
+ */
+export const ListShowroomsResponseItem = zod.object({
+  "id": zod.number().int(),
+  "code": zod.string(),
+  "name": zod.string(),
+  "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "ownerId": zod.number().int(),
+  "ownerName": zod.string(),
+  "dmsAccounts": zod.array(zod.object({
+  "oemCode": zod.string(),
+  "dealerCode": zod.string(),
+  "insuranceChannel": zod.string().nullish(),
+  "isActive": zod.boolean()
+})).describe('The OEM dealer codes this showroom holds. Empty means nothing to sync — the showroom exists but is not wired to a DMS, which is a configuration gap the console should say out loud.\n')
+}).describe('One outlet, with enough of its owner and DMS wiring to pick it.')
+export const ListShowroomsResponse = zod.array(ListShowroomsResponseItem)
+
+
+/**
  * Read-only. Walks every active DMS account on the showroom and upserts each deal. Only fetches a full record when the summary shows something moved, so a routine sync on a quiet day is one list call.
  * @summary Pull a showroom's deals from its DMS into the local mirror
  */
@@ -424,6 +447,41 @@ export const SyncShowroomDmsResponse = zod.object({
   "finishedAt": zod.string(),
   "durationMs": zod.number().int()
 }).describe('What one sync of one DMS account did.'))
+})
+
+
+/**
+ * Joins the global `providers` list (how we reach an insurer) to the dealer's own arrangement with them (quota, payout, turnaround). Quota and eligibility are computed by the shared quoting module, so the rules are identical to the ones the dealer portal applies.
+ * @summary The insurers this showroom can actually place business with
+ */
+export const GetShowroomPanelParams = zod.object({
+  "showroomId": zod.coerce.number().int()
+})
+
+export const GetShowroomPanelResponse = zod.object({
+  "entries": zod.array(zod.object({
+  "insurerCode": zod.string(),
+  "insurerName": zod.string(),
+  "shortName": zod.string(),
+  "providerId": zod.number().int().describe('The providers row, so a caller can execute against it.'),
+  "dealerCode": zod.string().describe('Which DMS account\'s arrangement this is. A showroom holding two brands has two panels and both appear — a deal from one brand cannot be placed on the other brand\'s panel.\n'),
+  "route": zod.enum(['BROKER', 'DIRECT_AGENT']).describe('Taken from the DMS account\'s insuranceChannel, never stored on the panel row, so the two cannot disagree.\n'),
+  "integration": zod.enum(['API', 'PORTAL']).describe('What this dealer can reach. Not the same as the provider\'s own execution mode: a broker platform can front an insurer through a web portal even where that insurer publishes an API.\n'),
+  "odBaseRate": zod.number(),
+  "quotaPolicies": zod.number().int(),
+  "quotaConsumed": zod.number().int(),
+  "payoutRate": zod.number(),
+  "slaMinutes": zod.number().int(),
+  "isEnabled": zod.boolean(),
+  "quota": zod.object({
+  "remaining": zod.number().int(),
+  "utilisation": zod.number(),
+  "exhausted": zod.boolean(),
+  "tight": zod.boolean().describe('Near the limit — worth warning about, still selectable.')
+}),
+  "eligible": zod.boolean(),
+  "reasons": zod.array(zod.string()).describe('Why an insurer is excluded, as a list rather than a boolean. A dealer who cannot see the reason will not trust the recommendation, and an unexplained recommendation is worse than none.\n')
+}).describe('One insurer on one outlet\'s panel. `providers` says how to reach an insurer; this says what this dealer\'s arrangement with them is. Neither is derivable from the other.\n'))
 })
 
 

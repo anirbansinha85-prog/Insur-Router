@@ -8,6 +8,8 @@ import {
   timestamp,
   date,
   jsonb,
+  unique,
+  index,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -210,7 +212,28 @@ export const applicationsTable = pgTable("applications", {
     .notNull()
     .defaultNow()
     .$onUpdate(() => new Date()),
-}).enableRLS();
+},
+  (t) => [
+    /**
+     * One application per DMS deal.
+     *
+     * Without this a deal pulled twice — a double-click, a retried request, two
+     * staff working the same worklist — creates two drafts, and two drafts that
+     * both reach execution mean **two policies on one vehicle**. That is not a
+     * tidy-up item: it is a duplicate premium the customer paid and a
+     * cancellation somebody has to chase.
+     *
+     * Postgres treats NULLs as distinct in a unique constraint, and that
+     * behaviour is load-bearing here. Applications created by hand, by OCR or by
+     * a portal scrape have no deal to point at and leave both columns null;
+     * without NULLS DISTINCT they would all collide with each other. Do not
+     * "fix" this by adding NULLS NOT DISTINCT.
+     */
+    unique("applications_dms_deal_unique").on(t.dmsDealerCode, t.dmsDealId),
+    /** Every owner-scoped query filters on this; once auth lands, all of them do. */
+    index("applications_showroom_idx").on(t.showroomId),
+  ],
+).enableRLS();
 
 export const insertApplicationSchema = createInsertSchema(
   applicationsTable,

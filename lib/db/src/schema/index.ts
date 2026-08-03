@@ -2,6 +2,7 @@ export * from "./owners";
 export * from "./showrooms";
 export * from "./dms_deals";
 export * from "./providers";
+export * from "./insurer_panel";
 export * from "./applications";
 export * from "./submission_logs";
 export * from "./policies";

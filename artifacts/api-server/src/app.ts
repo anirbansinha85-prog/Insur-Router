@@ -3,8 +3,16 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import {
+  allowedOrigins,
+  requireServiceKeyConfigured,
+  serviceKeyAuth,
+} from "./lib/auth";
 
 const app: Express = express();
+
+// Fail at import time, not on the first unauthenticated request.
+const serviceKey = requireServiceKeyConfigured();
 
 app.use(
   pinoHttp({
@@ -25,10 +33,14 @@ app.use(
     },
   }),
 );
-app.use(cors());
+app.use(cors({ origin: allowedOrigins(), credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.use("/api", router);
+// Auth sits between the mount and the routes so every current and future route
+// is covered by default. A route that should be public opts out by name in
+// lib/auth.ts, which keeps the exemptions in one readable list rather than
+// scattered across the routers.
+app.use("/api", serviceKeyAuth(serviceKey), router);
 
 export default app;

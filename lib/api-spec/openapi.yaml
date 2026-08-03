@@ -18,6 +18,14 @@ tags:
     description: Dashboard analytics and summaries
   - name: ingest
     description: Document ingestion and MSA payload extraction (VeloDocs)
+  - name: dms
+    description: DDMS — DMS mirror, owner worklist and reconciliation
+
+# Every operation requires the service key except /healthz, which overrides this
+# with `security: []`. The key identifies a calling *process*, not a user, so it
+# cannot enforce owner scoping — see lib/auth.ts in the api-server.
+security:
+  - serviceKey: []
 
 paths:
   /healthz:
@@ -25,7 +33,11 @@ paths:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
+      description: >
+        Returns server health status. Deliberately unauthenticated: a platform
+        that cannot probe liveness will restart a healthy service, and the
+        response carries nothing worth protecting.
+      security: []
       responses:
         "200":
           description: Healthy
@@ -385,6 +397,25 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 
   # ── DDMS: mirror, worklist, reconciliation ──────────────────────────────────
+  /dms/showrooms:
+    get:
+      operationId: listShowrooms
+      tags: [dms]
+      summary: Showrooms the owner holds, with their DMS accounts
+      description: >
+        Drives the showroom picker on the owner console. Returns inactive
+        showrooms too, marked as such, because an owner who has parked an outlet
+        still needs to see it exists — silently hiding it looks like data loss.
+      responses:
+        "200":
+          description: Showrooms, ordered by owner then code
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ShowroomSummary"
+
   /dms/showrooms/{showroomId}/sync:
     post:
       operationId: syncShowroomDms
@@ -421,6 +452,42 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "503":
           description: DMS unreachable or not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /dms/showrooms/{showroomId}/panel:
+    get:
+      operationId: getShowroomPanel
+      tags: [dms]
+      summary: The insurers this showroom can actually place business with
+      description: >
+        Joins the global `providers` list (how we reach an insurer) to the
+        dealer's own arrangement with them (quota, payout, turnaround). Quota
+        and eligibility are computed by the shared quoting module, so the rules
+        are identical to the ones the dealer portal applies.
+      parameters:
+        - name: showroomId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Panel entries, by dealer code then insurer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PanelEntry"
+                required: [entries]
+        "404":
+          description: No such showroom
           content:
             application/json:
               schema:
@@ -626,6 +693,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: This DMS deal already has an application
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DuplicateDealError"
 
   # ── Dashboard ───────────────────────────────────────────────────────────────
   /dashboard/stats:
@@ -657,6 +730,23 @@ paths:
                   $ref: "#/components/schemas/RecentApplication"
 
 components:
+  securitySchemes:
+    serviceKey:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: >
+        Shared secret proving the caller is one of our own processes. The
+        api-server also accepts it as `Authorization: Bearer <key>`; both are
+        the same credential.
+
+        The two web frontends never hold it — each Vite dev server injects the
+        header into its `/api` proxy, so it stays in Node and out of the bundle.
+
+        It authenticates a process, not a person. Which showroom is asking still
+        arrives in the request rather than being derived from a session, so this
+        does not yet enforce the owner scoping the schema is shaped for.
+
   schemas:
     HealthStatus:
       type: object
@@ -673,6 +763,25 @@ components:
           type: string
       required:
         - error
+
+    DuplicateDealError:
+      type: object
+      description: >
+        This DMS deal already has an application. The existing id is returned
+        rather than only an error, because the caller almost always wants to
+        open that draft — creating a second one would eventually mean two
+        policies on one vehicle.
+      properties:
+        error:
+          type: string
+        applicationId:
+          type: number
+          nullable: true
+        status:
+          type: string
+      required:
+        - error
+        - applicationId
 
     # ── Provider schemas ────────────────────────────────────────────────────
     Provider:
@@ -1249,6 +1358,95 @@ components:
       required:
         - fields
         - confidence
+
+    ShowroomSummary:
+      type: object
+      description: One outlet, with enough of its owner and DMS wiring to pick it.
+      properties:
+        id: { type: integer }
+        code: { type: string }
+        name: { type: string }
+        city: { type: ["string", "null"] }
+        state: { type: ["string", "null"] }
+        isActive: { type: boolean }
+        ownerId: { type: integer }
+        ownerName: { type: string }
+        dmsAccounts:
+          type: array
+          description: >
+            The OEM dealer codes this showroom holds. Empty means nothing to
+            sync — the showroom exists but is not wired to a DMS, which is a
+            configuration gap the console should say out loud.
+          items:
+            type: object
+            properties:
+              oemCode: { type: string }
+              dealerCode: { type: string }
+              insuranceChannel: { type: ["string", "null"] }
+              isActive: { type: boolean }
+            required: [oemCode, dealerCode, isActive]
+      required: [id, code, name, isActive, ownerId, ownerName, dmsAccounts]
+
+    PanelEntry:
+      type: object
+      description: >
+        One insurer on one outlet's panel. `providers` says how to reach an
+        insurer; this says what this dealer's arrangement with them is. Neither
+        is derivable from the other.
+      properties:
+        insurerCode: { type: string }
+        insurerName: { type: string }
+        shortName: { type: string }
+        providerId:
+          type: integer
+          description: The providers row, so a caller can execute against it.
+        dealerCode:
+          type: string
+          description: >
+            Which DMS account's arrangement this is. A showroom holding two
+            brands has two panels and both appear — a deal from one brand
+            cannot be placed on the other brand's panel.
+        route:
+          type: string
+          enum: [BROKER, DIRECT_AGENT]
+          description: >
+            Taken from the DMS account's insuranceChannel, never stored on the
+            panel row, so the two cannot disagree.
+        integration:
+          type: string
+          enum: [API, PORTAL]
+          description: >
+            What this dealer can reach. Not the same as the provider's own
+            execution mode: a broker platform can front an insurer through a
+            web portal even where that insurer publishes an API.
+        odBaseRate: { type: number }
+        quotaPolicies: { type: integer }
+        quotaConsumed: { type: integer }
+        payoutRate: { type: number }
+        slaMinutes: { type: integer }
+        isEnabled: { type: boolean }
+        quota:
+          type: object
+          properties:
+            remaining: { type: integer }
+            utilisation: { type: number }
+            exhausted: { type: boolean }
+            tight:
+              type: boolean
+              description: Near the limit — worth warning about, still selectable.
+          required: [remaining, utilisation, exhausted, tight]
+        eligible: { type: boolean }
+        reasons:
+          type: array
+          description: >
+            Why an insurer is excluded, as a list rather than a boolean. A
+            dealer who cannot see the reason will not trust the recommendation,
+            and an unexplained recommendation is worse than none.
+          items: { type: string }
+      required:
+        [insurerCode, insurerName, shortName, providerId, dealerCode, route,
+         integration, odBaseRate, quotaPolicies, quotaConsumed, payoutRate,
+         slaMinutes, isEnabled, quota, eligible, reasons]
 
     DmsSyncResult:
       type: object

@@ -11,6 +11,20 @@
  * confidential, filed per insurer, and vary by model and zone. They exist to
  * make quotes differ plausibly, which is the point being demonstrated: TP is
  * identical everywhere by law, so OD is the only thing that varies.
+ *
+ * ── The same numbers also live in scripts/src/seed-owners.ts ────────────────
+ * That copy seeds `insurer_panel_entries`, which is where the *real* server
+ * reads a panel from. **Change both together.**
+ *
+ * They are not shared from one file on purpose. This is a mock of somebody
+ * else's system and holds its data in memory by design; importing the real
+ * seed would couple the fake OEM to our database, and sharing a fixture across
+ * the package boundary hits the .ts-specifier conflict documented in
+ * lib/quoting/package.json. Two small copies with a pointer beat either.
+ *
+ * Strictly, a real OEM's DMS would not know a dealer's quota or payout at all —
+ * that is the dealer's private commercial data. It sits here because this file
+ * predates the panel being a real table, and the mock portal still reads it.
  */
 
 import { findInsurer, type PanelEntry } from "@workspace/quoting/panel";

@@ -19,7 +19,7 @@ import { Router, type IRouter } from "express";
 import { URL } from "url";
 import dns from "dns/promises";
 import net from "net";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   IngestDmsPullBody,
   IngestBrowserScrapeBody,
@@ -701,6 +701,20 @@ function normaliseRelationship(
   return (RELATIONSHIP_SYNONYMS[key] ?? "OTHER") as NomineeRelationship;
 }
 
+/**
+ * Postgres `unique_violation` from the one-application-per-deal constraint.
+ *
+ * The lookup before the insert catches every ordinary duplicate; this catches
+ * the one it cannot — two requests for the same deal arriving close enough
+ * together that both lookups miss. Rare, and precisely the case where a silent
+ * second policy would be most expensive.
+ */
+function isDuplicateDealError(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const e = err as { code?: string; constraint?: string };
+  return e.code === "23505" && e.constraint === "applications_dms_deal_unique";
+}
+
 router.post("/ingest/push", async (req, res): Promise<void> => {
   const parsed = IngestPushBody.safeParse(req.body);
   if (!parsed.success) {
@@ -727,6 +741,40 @@ router.post("/ingest/push", async (req, res): Promise<void> => {
     "Ingest push to InsurRouter",
   );
 
+  // One application per deal. A worklist invites exactly the duplicate this
+  // guards against — two people working the same list, or one person clicking
+  // twice on a slow connection — and two drafts that both reach execution mean
+  // two policies on one vehicle. Answering with the row that already exists is
+  // more useful than an error: the caller wants to reach that draft.
+  //
+  // Checked *before* validation on purpose. Validating first tells someone to
+  // go and find a missing email address for a deal that was already ingested —
+  // work that was never needed, on a draft they should have been sent to.
+  if (ctx?.dealerCode && ctx?.dealId) {
+    const [existing] = await db
+      .select({ id: applicationsTable.id, status: applicationsTable.status })
+      .from(applicationsTable)
+      .where(
+        and(
+          eq(applicationsTable.dmsDealerCode, ctx.dealerCode),
+          eq(applicationsTable.dmsDealId, ctx.dealId),
+        ),
+      );
+
+    if (existing) {
+      logger.info(
+        { dealId: ctx.dealId, applicationId: existing.id },
+        "Ingest push rejected — this deal already has an application",
+      );
+      res.status(409).json({
+        error: `Deal ${ctx.dealId} already has application #${existing.id} (${existing.status}).`,
+        applicationId: existing.id,
+        status: existing.status,
+      });
+      return;
+    }
+  }
+
   // Validate required MSA fields before creating the draft
   const validation = validateMsaFields(fields as unknown as MsaFields);
   if (validation.errors.length > 0) {
@@ -741,7 +789,7 @@ router.post("/ingest/push", async (req, res): Promise<void> => {
 
   // Insert directly into the shared database — same table that InsurRouter reads
   // executionMode omitted — schema default "AUTO" applies
-  const [app] = await db
+  const inserted = await db
     .insert(applicationsTable)
     .values({
       vehicleMake: fields.vehicleMake,
@@ -803,8 +851,34 @@ router.post("/ingest/push", async (req, res): Promise<void> => {
         ? (parsed.data.document as unknown as Record<string, unknown>)
         : null,
     })
-    .returning();
+    .returning()
+    .catch(async (err: unknown) => {
+      if (!isDuplicateDealError(err)) throw err;
+      const [winner] = await db
+        .select({ id: applicationsTable.id })
+        .from(applicationsTable)
+        .where(
+          and(
+            eq(applicationsTable.dmsDealerCode, ctx!.dealerCode),
+            eq(applicationsTable.dmsDealId, ctx!.dealId),
+          ),
+        );
+      return { conflictWith: winner?.id ?? null } as const;
+    });
 
+  if ("conflictWith" in inserted) {
+    logger.warn(
+      { dealId: ctx?.dealId, applicationId: inserted.conflictWith },
+      "Ingest push lost a race — the same deal was pushed twice at once",
+    );
+    res.status(409).json({
+      error: `Deal ${ctx?.dealId} already has application #${inserted.conflictWith}.`,
+      applicationId: inserted.conflictWith,
+    });
+    return;
+  }
+
+  const [app] = inserted;
   const doc = parsed.data.document;
   await db.insert(submissionLogsTable).values({
     applicationId: app.id,

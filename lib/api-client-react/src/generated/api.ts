@@ -27,9 +27,11 @@ import type {
   BrowserScrapeInput,
   DashboardStats,
   DmsPullInput,
+  DuplicateDealError,
   ErrorResponse,
   ExecutionRequest,
   ExecutionResult,
+  GetShowroomPanel200,
   GetShowroomWorklist200,
   GetShowroomWorklistParams,
   HealthStatus,
@@ -44,6 +46,7 @@ import type {
   ProviderInput,
   ProviderUpdate,
   RecentApplication,
+  ShowroomSummary,
   SubmissionLog,
   SyncShowroomDms200,
   UpdateOcrEnginesInput,
@@ -86,7 +89,7 @@ export const getHealthCheckUrl = () => {
 }
 
 /**
- * Returns server health status
+ * Returns server health status. Deliberately unauthenticated: a platform that cannot probe liveness will restart a healthy service, and the response carries nothing worth protecting.
  * @summary Health check
  */
 export const healthCheck = async ( options?: Parameters<typeof customFetch>[1]): Promise<HealthStatus> => {
@@ -1195,6 +1198,84 @@ export function useGetPolicy<TData = Awaited<ReturnType<typeof getPolicy>>, TErr
 
 
 
+export const getListShowroomsUrl = () => {
+
+
+
+
+  return `/api/dms/showrooms`
+}
+
+/**
+ * Drives the showroom picker on the owner console. Returns inactive showrooms too, marked as such, because an owner who has parked an outlet still needs to see it exists — silently hiding it looks like data loss.
+ * @summary Showrooms the owner holds, with their DMS accounts
+ */
+export const listShowrooms = async ( options?: Parameters<typeof customFetch>[1]): Promise<ShowroomSummary[]> => {
+
+  return customFetch<ShowroomSummary[]>(getListShowroomsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListShowroomsQueryKey = () => {
+    return [
+    `/api/dms/showrooms`
+    ] as const;
+    }
+
+
+export const getListShowroomsQueryOptions = <TData = Awaited<ReturnType<typeof listShowrooms>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listShowrooms>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListShowroomsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listShowrooms>>> = ({ signal }) => listShowrooms({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listShowrooms>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListShowroomsQueryResult = NonNullable<Awaited<ReturnType<typeof listShowrooms>>>
+export type ListShowroomsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Showrooms the owner holds, with their DMS accounts
+ */
+
+export function useListShowrooms<TData = Awaited<ReturnType<typeof listShowrooms>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listShowrooms>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListShowroomsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getSyncShowroomDmsUrl = (showroomId: number,) => {
 
 
@@ -1266,6 +1347,84 @@ export const useSyncShowroomDms = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getSyncShowroomDmsMutationOptions(options));
     }
+
+export const getGetShowroomPanelUrl = (showroomId: number,) => {
+
+
+
+
+  return `/api/dms/showrooms/${showroomId}/panel`
+}
+
+/**
+ * Joins the global `providers` list (how we reach an insurer) to the dealer's own arrangement with them (quota, payout, turnaround). Quota and eligibility are computed by the shared quoting module, so the rules are identical to the ones the dealer portal applies.
+ * @summary The insurers this showroom can actually place business with
+ */
+export const getShowroomPanel = async (showroomId: number, options?: Parameters<typeof customFetch>[1]): Promise<GetShowroomPanel200> => {
+
+  return customFetch<GetShowroomPanel200>(getGetShowroomPanelUrl(showroomId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetShowroomPanelQueryKey = (showroomId: number,) => {
+    return [
+    `/api/dms/showrooms/${showroomId}/panel`
+    ] as const;
+    }
+
+
+export const getGetShowroomPanelQueryOptions = <TData = Awaited<ReturnType<typeof getShowroomPanel>>, TError = ErrorType<ErrorResponse>>(showroomId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getShowroomPanel>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetShowroomPanelQueryKey(showroomId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getShowroomPanel>>> = ({ signal }) => getShowroomPanel(showroomId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: showroomId !== null && showroomId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getShowroomPanel>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetShowroomPanelQueryResult = NonNullable<Awaited<ReturnType<typeof getShowroomPanel>>>
+export type GetShowroomPanelQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary The insurers this showroom can actually place business with
+ */
+
+export function useGetShowroomPanel<TData = Awaited<ReturnType<typeof getShowroomPanel>>, TError = ErrorType<ErrorResponse>>(
+ showroomId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getShowroomPanel>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetShowroomPanelQueryOptions(showroomId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetShowroomWorklistUrl = (params: GetShowroomWorklistParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -1741,7 +1900,7 @@ export const ingestPush = async (ingestPushInput: IngestPushInput, options?: Par
 
 
 
-export const getIngestPushMutationOptions = <TError = ErrorType<ErrorResponse>,
+export const getIngestPushMutationOptions = <TError = ErrorType<ErrorResponse | DuplicateDealError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ingestPush>>, TError,{data: BodyType<IngestPushInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof ingestPush>>, TError,{data: BodyType<IngestPushInput>}, TContext> => {
 
@@ -1770,12 +1929,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type IngestPushMutationResult = NonNullable<Awaited<ReturnType<typeof ingestPush>>>
     export type IngestPushMutationBody = BodyType<IngestPushInput>
-    export type IngestPushMutationError = ErrorType<ErrorResponse>
+    export type IngestPushMutationError = ErrorType<ErrorResponse | DuplicateDealError>
 
     /**
  * @summary Push corrected MSA payload to InsurRouter as a draft application
  */
-export const useIngestPush = <TError = ErrorType<ErrorResponse>,
+export const useIngestPush = <TError = ErrorType<ErrorResponse | DuplicateDealError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ingestPush>>, TError,{data: BodyType<IngestPushInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof ingestPush>>,

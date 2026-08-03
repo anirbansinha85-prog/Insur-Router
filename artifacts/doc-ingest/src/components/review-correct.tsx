@@ -18,10 +18,21 @@ interface ServerValidationError {
   invalidFields: string[]
 }
 
+/**
+ * The API's 409 when this deal already has an application. It carries the
+ * existing id, so the honest response is to point at that draft rather than
+ * report a failure — the work is done, it just was not done by this tab.
+ */
+interface DuplicateDeal {
+  error: string
+  applicationId: number | null
+}
+
 export function ReviewCorrect({ result, onReset }: ReviewCorrectProps) {
   const [formData, setFormData] = useState<MsaFields>(result.fields)
   const [successAppId, setSuccessAppId] = useState<number | null>(null)
   const [serverErrors, setServerErrors] = useState<ServerValidationError | null>(null)
+  const [duplicate, setDuplicate] = useState<DuplicateDeal | null>(null)
   
   const { mutate: pushToRouter, isPending: isPushing } = useIngestPush()
 
@@ -49,6 +60,7 @@ export function ReviewCorrect({ result, onReset }: ReviewCorrectProps) {
 
   const handlePush = () => {
     setServerErrors(null)
+    setDuplicate(null)
     pushToRouter(
       // Everything the source produced travels with the payload:
       //   document     — audit trail of what the OCR actually read
@@ -79,6 +91,12 @@ export function ReviewCorrect({ result, onReset }: ReviewCorrectProps) {
             Array.isArray((data as ServerValidationError).errors)
           ) {
             setServerErrors(data as ServerValidationError)
+            return
+          }
+          // 409 — this deal already has a draft. Not a failure to recover from;
+          // the reviewer needs to be sent to the row that already exists.
+          if (data && typeof data === 'object' && 'applicationId' in data) {
+            setDuplicate(data as DuplicateDeal)
           }
         }
       }
@@ -173,6 +191,38 @@ export function ReviewCorrect({ result, onReset }: ReviewCorrectProps) {
             not found on the document
           </p>
         )}
+      </div>
+    )
+  }
+
+  if (duplicate) {
+    const targetUrl = duplicate.applicationId
+      ? `${window.location.origin}/applications/${duplicate.applicationId}`
+      : null
+    return (
+      <div className="flex flex-col items-center justify-center p-12 text-center border border-amber/40 rounded-lg bg-amber/5 shadow-sm">
+        <div className="h-16 w-16 rounded-full bg-amber/20 flex items-center justify-center mb-6">
+          <AlertTriangle className="h-8 w-8 text-amber" />
+        </div>
+        <h2 className="text-2xl font-display font-bold text-amber-foreground mb-2">
+          Already ingested
+        </h2>
+        <p className="text-muted-foreground mb-2 text-lg">{duplicate.error}</p>
+        <p className="text-muted-foreground/80 mb-8 text-sm max-w-md">
+          Nothing was created. One deal gets one application — a second draft
+          could become a second policy on the same vehicle.
+        </p>
+
+        <div className="flex gap-4">
+          <Button variant="outline" onClick={onReset} className="bg-white">
+            Start New Ingestion
+          </Button>
+          {targetUrl && (
+            <Button onClick={() => window.open(targetUrl, '_blank')} className="gap-2">
+              Open the existing draft ↗
+            </Button>
+          )}
+        </div>
       </div>
     )
   }

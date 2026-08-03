@@ -17,13 +17,35 @@ Both web products are served by **one Express API** (`@workspace/api-server`) on
 `/api`. VeloDocs does not call InsurRouter over HTTP — `POST /api/ingest/push`
 inserts straight into the shared `applications` table.
 
+## API authentication
+
+Every `/api` route except `/api/healthz` requires a shared service key, sent as
+either `Authorization: Bearer <key>` or `x-api-key: <key>`. **The api-server
+throws at startup if `API_SERVICE_KEY` is missing or shorter than 32
+characters** — a server that quietly runs unauthenticated is the failure this
+prevents. Exemptions are named in one list in `api-server/src/lib/auth.ts`.
+
+Browsers never hold the key: each Vite dev server reads it from the
+workspace-root `.env` via `loadEnv` and injects the header into its `/api`
+proxy, so it stays in Node and out of the bundle. Anything served to a browser
+in production needs the same injection at the reverse proxy.
+
+`cors()` is no longer argument-less (which reflected every origin on the
+internet); origins come from `CORS_ORIGINS`, defaulting to the three local dev
+servers.
+
+**This authenticates a process, not a person.** It cannot say *which* showroom
+is asking, so it does not yet enforce the owner scoping the schema is shaped
+for — `showroomId` still arrives in the request rather than from a session.
+
 ## Workspace layout
 
 ```
 artifacts/            deployable apps
   api-server/         Express 5 API — the only backend
-    src/routes/       health, providers, applications, dashboard, ingest
-    src/lib/          api-executor.ts, browser-executor.ts, logger.ts
+    src/routes/       health, providers, applications, dashboard, dms, ingest
+    src/lib/          api-executor.ts, browser-executor.ts, auth.ts, logger.ts
+    src/lib/dms/      client, adapters, mirror sync, worklist, panel, scheduler
   insur-router/       React 19 + Vite — InsurRouter frontend
   doc-ingest/         React 19 + Vite — VeloDocs frontend
   rc-capture/         Expo mobile app
@@ -50,11 +72,40 @@ pnpm run typecheck:libs                         # before checking leaf packages
 
 ## Data model
 
-Four tables, all in `lib/db/src/schema/`:
+Ten tables, all in `lib/db/src/schema/`.
+
+**The owner tier** — who the data belongs to:
+
+- **owners** — one dealership group.
+- **showrooms** — one physical outlet. **A showroom is not a dealer code**: one
+  owner may hold two brands at one address, one brand may be sold from three
+  outlets, and a service centre has no dealer code at all. `legalName`/`gstin`
+  live here because a group routinely spans legal entities.
+- **showroom_dms_accounts** — the link to an OEM's system, one row per
+  (showroom, OEM). `dealerCode` is globally unique, which is what lets a DMS
+  pull resolve straight back to an owner without the caller saying who they are.
+  `insuranceChannel` (BROKER / DIRECT_AGENT) lives here, not on the showroom.
+
+**The DDMS layer** — what we pulled and what we can do with it:
+
+- **dms_deals** — a read-only mirror of the dealer's DMS: raw payload, a hash to
+  tell "changed" from "unchanged" cheaply, projected columns the worklist sorts
+  on, and `statusSince` / `lastSyncedAt` / `disappearedAt`. Reconciliation is
+  **not** stored here; it is derived on read, because a stale "in sync" flag is
+  worse than none.
+- **insurer_panel_entries** — one insurer on one outlet's panel: quota, payout,
+  turnaround, integration surface. Hangs off the *DMS account*, not the
+  showroom. `route` is deliberately absent — it is the account's
+  `insuranceChannel`, and storing it twice would let the two disagree.
+
+**The application pipeline:**
 
 - **providers** — insurers. `code` is unique and drives everything: API key
   lookup (`process.env[`${code}_API_KEY`]`), the `executeWithApi` switch, and
   the `executeWithBrowser` switch. `apiEndpoint` null ⇒ AUTO mode picks BROWSER.
+  Global: this says *how to reach* an insurer. What a given dealer's
+  arrangement with them is lives in `insurer_panel_entries` — neither is
+  derivable from the other.
 - **applications** — the MSA payload stored **flat** (26 columns, not nested
   JSON). Assembled into the nested payload only at execution time.
 - **ocr_engines** — operator preferences (priority, enabled) for the OCR chain.
@@ -65,6 +116,19 @@ Four tables, all in `lib/db/src/schema/`:
 
 Status flow: `draft → pending_confirmation → submitting → completed | failed`.
 Validation failure resets status to `draft`, it does not set `failed`.
+
+**One application per DMS deal.** `applications_dms_deal_unique` on
+`(dms_dealer_code, dms_deal_id)` is load-bearing: two drafts from one deal that
+both reach execution mean two policies on one vehicle. `/ingest/push` checks for
+an existing row **before validating** and answers 409 with that row's id, and
+catches `23505` as a backstop for the race. Postgres NULLS DISTINCT is also
+load-bearing — hand, OCR and scrape applications all leave both columns null and
+must not collide. Do not add NULLS NOT DISTINCT.
+
+> `drizzle-kit push` offers to **TRUNCATE** when adding a unique constraint to a
+> table that already holds rows, and `--force` answers yes. Apply constraints
+> like this by hand (`alter table … add constraint …`) and then re-run push to
+> confirm it reports no changes.
 
 ## MSA payload validation rules
 
@@ -279,6 +343,11 @@ Every artifact throws at startup if `PORT` is missing, and the web artifacts als
 throw if `BASE_PATH` is missing. Values differ per artifact, so they cannot all
 live in one `.env`. Ports come from each `.replit-artifact/artifact.toml`:
 
+`API_SERVICE_KEY` must be in the workspace-root `.env` before anything starts:
+the API refuses to boot without it, and each Vite dev server throws when it
+creates its `/api` proxy. Generate one with
+`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
+
 ```powershell
 # API — build once, then run node directly so --env-file loads .env.
 # (Don't use the package's `dev` script on Windows: it starts with POSIX
@@ -306,7 +375,16 @@ pnpm run typecheck      # whole workspace
 pnpm run build          # typecheck + build all
 pnpm run db:push        # push schema changes (dev only, destructive)
 pnpm run db:seed        # insert the 6 starter providers, idempotent
+pnpm run db:seed-owners # owner, showrooms, DMS accounts + insurer panel
 ```
+
+`db:seed-owners` must run **after** `db:seed` — panel entries point at
+`providers` rows, and it warns loudly for any insurer code it cannot find rather
+than silently leaving it off the panel.
+
+**`pnpm install` must be run from Git Bash on Windows.** The `preinstall` hook
+that refuses npm/yarn is a `sh -c` script and PowerShell has no `sh`, so the
+install fails at the hook.
 
 `db:push` invokes drizzle-kit directly, which is not a Node entrypoint, so
 `--env-file` cannot reach it — export `DATABASE_URL` first:
@@ -324,9 +402,15 @@ assignment (`VAR=x cmd`) and depends on `$REPLIT_EXPO_DEV_DOMAIN`,
 ### Frontend pages
 
 InsurRouter (`artifacts/insur-router/src/pages/`), routed by Wouter under
-`BASE_URL`: `Dashboard` (`/`), `ApplicationsList`, `ApplicationNew`,
-`ApplicationDetail` (renders the log timeline incl. inline browser screenshots),
-`ProvidersList`, `ProviderEdit`. Wrapped in `components/layout/Shell.tsx`.
+`BASE_URL`: `Dashboard` (`/`), `Worklist` (`/worklist`), `ApplicationsList`,
+`ApplicationNew`, `ApplicationDetail` (renders the log timeline incl. inline
+browser screenshots), `ProvidersList`, `ProviderEdit`. Wrapped in
+`components/layout/Shell.tsx`.
+
+`Worklist` is the owner-facing DDMS console: every mirrored deal with the
+dealer's system and ours side by side, the difference classified, and the
+insurer panel with quota. Note `Select` in this app is a **native** select
+(`NativeSelect`), not the Radix composite VeloDocs uses.
 
 VeloDocs (`artifacts/doc-ingest/src/`) is a single `Workspace` page composing
 four components, one per ingest source plus review: `dms-pull`, `browser-scrape`,

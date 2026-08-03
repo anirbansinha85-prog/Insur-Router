@@ -7,6 +7,7 @@
  * writing back. What the dealer must key in by hand becomes an explicit task
  * with the exact value to copy, not a silent gap somebody discovers later.
  *
+ *   GET  /api/dms/showrooms            outlets the owner holds, for the picker
  *   POST /api/dms/showrooms/:id/sync   pull the deal list into the mirror
  *   GET  /api/dms/worklist?showroomId= every deal, both views, side by side
  *
@@ -17,12 +18,18 @@
  */
 
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
-import { db, showroomsTable } from "@workspace/db";
+import { asc, eq } from "drizzle-orm";
+import {
+  db,
+  ownersTable,
+  showroomDmsAccountsTable,
+  showroomsTable,
+} from "@workspace/db";
 import {
   DmsError,
   buildWorklist,
   isDmsConfigured,
+  panelForShowroom,
   summarise,
   syncShowroom,
 } from "../lib/dms";
@@ -42,6 +49,52 @@ async function showroomExists(id: number): Promise<boolean> {
     .where(eq(showroomsTable.id, id));
   return Boolean(row);
 }
+
+router.get("/dms/showrooms", async (_req, res): Promise<void> => {
+  // Two queries and a join in memory rather than one query with an aggregate:
+  // the showroom count is single digits per owner and will stay that way, and
+  // the flat rows are far easier to read than a jsonb_agg.
+  const showrooms = await db
+    .select({
+      id: showroomsTable.id,
+      code: showroomsTable.code,
+      name: showroomsTable.name,
+      city: showroomsTable.city,
+      state: showroomsTable.state,
+      isActive: showroomsTable.isActive,
+      ownerId: ownersTable.id,
+      ownerName: ownersTable.name,
+    })
+    .from(showroomsTable)
+    .innerJoin(ownersTable, eq(ownersTable.id, showroomsTable.ownerId))
+    .orderBy(asc(showroomsTable.ownerId), asc(showroomsTable.code));
+
+  const accounts = await db
+    .select({
+      showroomId: showroomDmsAccountsTable.showroomId,
+      oemCode: showroomDmsAccountsTable.oemCode,
+      dealerCode: showroomDmsAccountsTable.dealerCode,
+      insuranceChannel: showroomDmsAccountsTable.insuranceChannel,
+      isActive: showroomDmsAccountsTable.isActive,
+    })
+    .from(showroomDmsAccountsTable);
+
+  const byShowroom = new Map<number, typeof accounts>();
+  for (const account of accounts) {
+    const list = byShowroom.get(account.showroomId) ?? [];
+    list.push(account);
+    byShowroom.set(account.showroomId, list);
+  }
+
+  res.json(
+    showrooms.map((s) => ({
+      ...s,
+      dmsAccounts: (byShowroom.get(s.id) ?? []).map(
+        ({ showroomId: _ignored, ...rest }) => rest,
+      ),
+    })),
+  );
+});
 
 router.post("/dms/showrooms/:showroomId/sync", async (req, res): Promise<void> => {
   const showroomId = parseShowroomId(req.params.showroomId);
@@ -88,6 +141,24 @@ router.post("/dms/showrooms/:showroomId/sync", async (req, res): Promise<void> =
     }
     throw err;
   }
+});
+
+router.get("/dms/showrooms/:showroomId/panel", async (req, res): Promise<void> => {
+  const showroomId = parseShowroomId(req.params.showroomId);
+  if (showroomId === null) {
+    res.status(400).json({ error: "showroomId must be a positive integer" });
+    return;
+  }
+
+  if (!(await showroomExists(showroomId))) {
+    res.status(404).json({ error: `No showroom ${showroomId}` });
+    return;
+  }
+
+  // Quota and eligibility are computed by @workspace/quoting/panel — the same
+  // module the mock dealer portal uses — so the routing rules cannot drift
+  // between what the demo shows and what the server would actually do.
+  res.json({ entries: await panelForShowroom(showroomId) });
 });
 
 router.get("/dms/worklist", async (req, res): Promise<void> => {

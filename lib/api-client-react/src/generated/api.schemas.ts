@@ -13,6 +13,15 @@ export interface ErrorResponse {
   error: string;
 }
 
+/**
+ * This DMS deal already has an application. The existing id is returned rather than only an error, because the caller almost always wants to open that draft — creating a second one would eventually mean two policies on one vehicle.
+ */
+export interface DuplicateDealError {
+  error: string;
+  applicationId: number | null;
+  status?: string;
+}
+
 export type ProviderDefaultExecutionMode = typeof ProviderDefaultExecutionMode[keyof typeof ProviderDefaultExecutionMode];
 
 
@@ -595,6 +604,89 @@ export interface IngestResult {
   dealContext?: IngestResultDealContext;
 }
 
+export type ShowroomSummaryDmsAccountsItem = {
+  oemCode: string;
+  dealerCode: string;
+  /** @nullable */
+  insuranceChannel?: string | null;
+  isActive: boolean;
+};
+
+/**
+ * One outlet, with enough of its owner and DMS wiring to pick it.
+ */
+export interface ShowroomSummary {
+  id: number;
+  code: string;
+  name: string;
+  /** @nullable */
+  city?: string | null;
+  /** @nullable */
+  state?: string | null;
+  isActive: boolean;
+  ownerId: number;
+  ownerName: string;
+  /** The OEM dealer codes this showroom holds. Empty means nothing to sync — the showroom exists but is not wired to a DMS, which is a configuration gap the console should say out loud. */
+  dmsAccounts: ShowroomSummaryDmsAccountsItem[];
+}
+
+/**
+ * Taken from the DMS account's insuranceChannel, never stored on the panel row, so the two cannot disagree.
+ */
+export type PanelEntryRoute = typeof PanelEntryRoute[keyof typeof PanelEntryRoute];
+
+
+export const PanelEntryRoute = {
+  BROKER: 'BROKER',
+  DIRECT_AGENT: 'DIRECT_AGENT',
+} as const;
+
+/**
+ * What this dealer can reach. Not the same as the provider's own execution mode: a broker platform can front an insurer through a web portal even where that insurer publishes an API.
+ */
+export type PanelEntryIntegration = typeof PanelEntryIntegration[keyof typeof PanelEntryIntegration];
+
+
+export const PanelEntryIntegration = {
+  API: 'API',
+  PORTAL: 'PORTAL',
+} as const;
+
+export type PanelEntryQuota = {
+  remaining: number;
+  utilisation: number;
+  exhausted: boolean;
+  /** Near the limit — worth warning about, still selectable. */
+  tight: boolean;
+};
+
+/**
+ * One insurer on one outlet's panel. `providers` says how to reach an insurer; this says what this dealer's arrangement with them is. Neither is derivable from the other.
+ */
+export interface PanelEntry {
+  insurerCode: string;
+  insurerName: string;
+  shortName: string;
+  /** The providers row, so a caller can execute against it. */
+  providerId: number;
+  /** Which DMS account's arrangement this is. A showroom holding two brands has two panels and both appear — a deal from one brand cannot be placed on the other brand's panel. */
+  dealerCode: string;
+  /** Taken from the DMS account's insuranceChannel, never stored on the panel row, so the two cannot disagree. */
+  route: PanelEntryRoute;
+  /** What this dealer can reach. Not the same as the provider's own execution mode: a broker platform can front an insurer through a web portal even where that insurer publishes an API. */
+  integration: PanelEntryIntegration;
+  odBaseRate: number;
+  quotaPolicies: number;
+  quotaConsumed: number;
+  payoutRate: number;
+  slaMinutes: number;
+  isEnabled: boolean;
+  quota: PanelEntryQuota;
+  eligible: boolean;
+  /** Why an insurer is excluded, as a list rather than a boolean. A dealer who cannot see the reason will not trust the recommendation, and an unexplained recommendation is worse than none. */
+  reasons: string[];
+}
+
 /**
  * What one sync of one DMS account did.
  */
@@ -904,6 +996,10 @@ export const ListApplicationsStatus = {
 
 export type SyncShowroomDms200 = {
   results: DmsSyncResult[];
+};
+
+export type GetShowroomPanel200 = {
+  entries: PanelEntry[];
 };
 
 export type GetShowroomWorklistParams = {
