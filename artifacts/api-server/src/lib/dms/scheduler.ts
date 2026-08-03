@@ -17,6 +17,7 @@ import { and, eq } from "drizzle-orm";
 import { db, showroomDmsAccountsTable, showroomsTable } from "@workspace/db";
 import { logger } from "../logger";
 import { isDmsConfigured } from "./client";
+import { syncShowroomJobCards } from "./service-worklist";
 import { syncShowroom } from "./sync";
 
 const DEFAULT_INTERVAL_MS = 15 * 60 * 1000;
@@ -69,7 +70,10 @@ async function runOnce(): Promise<void> {
 
   for (const showroomId of showroomIds) {
     try {
+      // Sales then workshop, sequentially, for the same reason showrooms are
+      // sequential — this is one shared ERP and we are one of its tenants.
       await syncShowroom(showroomId);
+      await syncShowroomJobCards(showroomId);
       succeeded++;
     } catch (err) {
       // One unreachable dealership must not stop the others. The mirror keeps

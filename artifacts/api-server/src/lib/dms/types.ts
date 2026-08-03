@@ -163,6 +163,67 @@ export type DmsStockLookup = DmsStockUnit & {
   dealId: string | null;
 };
 
+// ── Workshop ────────────────────────────────────────────────────────────────
+
+export interface DmsJobCardSummary {
+  jcNo: string;
+  jcDt: DmsDate;
+  dealerCode: string;
+  status: string;
+  jcType: string;
+  regNo: string | null;
+  chassisNo: string;
+  custName: string;
+  modelDesc: string;
+  advisorEmpCode: string;
+  promisedDt: DmsDate;
+  actualCloseDt: DmsDate | null;
+  estimateAmt: string;
+  finalAmt: string | null;
+  /** `DD-MM-YYYY HH:mm:ss`. Not ISO — see `toIsoDate` in the adapter. */
+  modifiedAt: string;
+}
+
+export interface DmsJobCardLabour {
+  seq: number;
+  labourCode: string;
+  labourDesc: string;
+  hrs: number;
+  rateAmt: string;
+}
+
+export interface DmsJobCardPart {
+  seq: number;
+  partNo: string;
+  partDesc: string;
+  qty: number;
+  rateAmt: string;
+  warrantyFlg: "Y" | "N";
+  /** `N` while the part is not on the shelf — what AWAITING_PARTS actually means. */
+  issuedFlg: "Y" | "N";
+}
+
+export interface DmsPsf {
+  callDt: DmsDate | null;
+  satisfactionScore: number | null;
+  complaintFlg: "Y" | "N" | null;
+  remarksDesc: string | null;
+}
+
+export interface DmsJobCard extends DmsJobCardSummary {
+  custId: string;
+  mobileNo: string | null;
+  odometerKm: number;
+  technicianEmpCode: string | null;
+  bayNo: string | null;
+  complaintDesc: string;
+  observationDesc: string | null;
+  approvedAmt: string | null;
+  labour: DmsJobCardLabour[];
+  parts: DmsJobCardPart[];
+  psf: DmsPsf | null;
+}
+
 /** Every non-2xx response from the mock carries this shape. */
 export interface DmsErrorBody {
   errCode?: string;

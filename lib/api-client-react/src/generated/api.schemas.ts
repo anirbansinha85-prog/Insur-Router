@@ -799,6 +799,96 @@ export interface WorklistSummary {
 }
 
 /**
+ * What a job card needs from a human, ordered by what a service manager deals with first. Every state except ON_TRACK and CLOSED resolves to somebody picking up a phone — a workshop's backlog is mostly unmade calls. READY_UNCOLLECTED is the quiet one: the work is finished, the bay is occupied, and the customer has not been told.
+ */
+export type ServiceState = typeof ServiceState[keyof typeof ServiceState];
+
+
+export const ServiceState = {
+  AWAITING_APPROVAL: 'AWAITING_APPROVAL',
+  AWAITING_PART: 'AWAITING_PART',
+  READY_UNCOLLECTED: 'READY_UNCOLLECTED',
+  OVERDUE: 'OVERDUE',
+  FOLLOW_UP_DUE: 'FOLLOW_UP_DUE',
+  ON_TRACK: 'ON_TRACK',
+  CLOSED: 'CLOSED',
+} as const;
+
+/**
+ * What the workshop's own system believes.
+ */
+export type ServiceWorklistRowDms = {
+  status: string;
+  /** @nullable */
+  jcDate?: string | null;
+  /** @nullable */
+  promisedDate?: string | null;
+  /** @nullable */
+  actualCloseDate?: string | null;
+  /** @nullable */
+  estimateAmount?: number | null;
+  /** @nullable */
+  finalAmount?: number | null;
+  /** At least one part line still not on the shelf. */
+  hasUnissuedPart: boolean;
+  psfDone: boolean;
+};
+
+/**
+ * Ours. The DMS has no column for this.
+ */
+export type ServiceWorklistRowDdms = {
+  /** @nullable */
+  customerInformedAt: string | null;
+};
+
+export interface ServiceWorklistRow {
+  jcNo: string;
+  dealerCode: string;
+  showroomId: number;
+  /** @nullable */
+  showroomCode?: string | null;
+  /** @nullable */
+  customerName?: string | null;
+  /** @nullable */
+  customerMobile?: string | null;
+  /** @nullable */
+  modelDescription?: string | null;
+  /** @nullable */
+  regNo?: string | null;
+  jcType: string;
+  /** @nullable */
+  advisorEmpCode?: string | null;
+  /** What the workshop's own system believes. */
+  dms: ServiceWorklistRowDms;
+  /** Ours. The DMS has no column for this. */
+  ddms: ServiceWorklistRowDdms;
+  state: ServiceState;
+  /** @nullable */
+  note?: string | null;
+  /** @nullable */
+  actionRequired?: string | null;
+  /** Days past the promised date. Negative means still in hand. */
+  daysLate: number;
+  daysInStatus: number;
+  lastSyncedAt: string;
+  disappearedFromDms: boolean;
+}
+
+export type ServiceWorklistSummaryByState = {[key: string]: number};
+
+export interface ServiceWorklistSummary {
+  total: number;
+  byState: ServiceWorklistSummaryByState;
+  needsAction: number;
+  /** Finished but not collected — occupied bays and unmade calls. */
+  readyUncollected: number;
+  worstDaysLate: number;
+  /** @nullable */
+  lastSyncedAt?: string | null;
+}
+
+/**
  * Identifies the deal to pull. Deliberately not keyed on a registration number: under the Motor Vehicles Act an RTO will not register a vehicle without live insurance, so a new vehicle has no registration number at the moment the policy is bought. The keys that do exist at that point are the dealer's own deal identifier and the chassis number of the allocated stock unit. Supply at least one — dealId wins if both are given, because it resolves a whole deal rather than just a vehicle.
  */
 export interface DmsPullInput {
@@ -996,6 +1086,8 @@ export const ListApplicationsStatus = {
 
 export type SyncShowroomDms200 = {
   results: DmsSyncResult[];
+  /** The workshop pass. Both modules refresh together — a sync that left one stale would put numbers from two different times on one screen with nothing saying which. */
+  jobCardResults?: DmsSyncResult[];
 };
 
 export type GetShowroomPanel200 = {
@@ -1017,5 +1109,19 @@ includeDisappeared?: boolean;
 export type GetShowroomWorklist200 = {
   summary: WorklistSummary;
   rows: WorklistRow[];
+};
+
+export type GetServiceWorklistParams = {
+showroomId: number;
+/**
+ * Filter on the DMS job-card status, e.g. AWAITING_PARTS
+ */
+status?: string;
+includeDisappeared?: boolean;
+};
+
+export type GetServiceWorklist200 = {
+  summary: ServiceWorklistSummary;
+  rows: ServiceWorklistRow[];
 };
 

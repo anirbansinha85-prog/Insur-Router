@@ -17,7 +17,14 @@
  *   scheduler.ts     run the pull on a timer, so nobody has to remember
  */
 
-export { DmsError, fetchDeal, fetchStockByChassis, isDmsConfigured } from "./client";
+export {
+  DmsError,
+  dmsJobCards,
+  fetchDeal,
+  fetchJobCard,
+  fetchStockByChassis,
+  isDmsConfigured,
+} from "./client";
 export { adapterFor, adapterForDealer, listAdapters, oemForDealer, DEFAULT_OEM } from "./registry";
 export type { DmsAdapter, OemCode } from "./registry";
 export type { AdaptedDeal, DmsDealContext } from "./hero-adapter";
@@ -29,6 +36,13 @@ export { startDmsSyncScheduler } from "./scheduler";
 export type { SchedulerHandle } from "./scheduler";
 export { panelForShowroom } from "./panel";
 export type { PanelEntryWithState } from "./panel";
+export { syncShowroomJobCards, buildServiceWorklist, summariseService } from "./service-worklist";
+export type {
+  JobCardSyncResult,
+  ServiceState,
+  ServiceWorklistRow,
+  ServiceWorklistSummary,
+} from "./service-worklist";
 export { buildWorklist, summarise } from "./worklist";
 export type { WorklistRow, WorklistSummary, ReconcileState } from "./worklist";
 export type { DmsTenant } from "./tenant";

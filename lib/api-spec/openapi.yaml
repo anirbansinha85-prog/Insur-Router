@@ -443,6 +443,14 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/DmsSyncResult"
+                  jobCardResults:
+                    type: array
+                    description: >
+                      The workshop pass. Both modules refresh together — a sync
+                      that left one stale would put numbers from two different
+                      times on one screen with nothing saying which.
+                    items:
+                      $ref: "#/components/schemas/DmsSyncResult"
                 required: [results]
         "404":
           description: No such showroom, or it has no active DMS account
@@ -545,6 +553,59 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/WorklistRow"
+                required: [summary, rows]
+        "404":
+          description: No such showroom
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /dms/service-worklist:
+    get:
+      operationId: getServiceWorklist
+      tags: [dms]
+      summary: The workshop's open work, and what each job card needs from a human
+      description: >
+        The second instance of the mirror pattern. Where the deal worklist
+        reconciles a policy number that either matches or does not, this asks
+        whether the promise is being kept and whether anyone told the customer —
+        the second of which no DMS records, because telling someone is not a
+        workshop event.
+
+        Query parameter rather than a path segment, for the orval reason
+        documented on /dms/worklist.
+      parameters:
+        - name: showroomId
+          in: query
+          required: true
+          schema:
+            type: integer
+        - name: status
+          in: query
+          required: false
+          description: Filter on the DMS job-card status, e.g. AWAITING_PARTS
+          schema:
+            type: string
+        - name: includeDisappeared
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Job cards plus a summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  summary:
+                    $ref: "#/components/schemas/ServiceWorklistSummary"
+                  rows:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ServiceWorklistRow"
                 required: [summary, rows]
         "404":
           description: No such showroom
@@ -1549,6 +1610,81 @@ components:
         oldestDaysInStatus: { type: integer }
         lastSyncedAt: { type: ["string", "null"] }
       required: [total, byReconcile, byDmsStatus, needsAction, oldestDaysInStatus]
+
+    ServiceState:
+      type: string
+      enum:
+        [AWAITING_APPROVAL, AWAITING_PART, READY_UNCOLLECTED, OVERDUE,
+         FOLLOW_UP_DUE, ON_TRACK, CLOSED]
+      description: >
+        What a job card needs from a human, ordered by what a service manager
+        deals with first. Every state except ON_TRACK and CLOSED resolves to
+        somebody picking up a phone — a workshop's backlog is mostly unmade
+        calls. READY_UNCOLLECTED is the quiet one: the work is finished, the bay
+        is occupied, and the customer has not been told.
+
+    ServiceWorklistRow:
+      type: object
+      properties:
+        jcNo: { type: string }
+        dealerCode: { type: string }
+        showroomId: { type: integer }
+        showroomCode: { type: ["string", "null"] }
+        customerName: { type: ["string", "null"] }
+        customerMobile: { type: ["string", "null"] }
+        modelDescription: { type: ["string", "null"] }
+        regNo: { type: ["string", "null"] }
+        jcType: { type: string }
+        advisorEmpCode: { type: ["string", "null"] }
+        dms:
+          type: object
+          description: What the workshop's own system believes.
+          properties:
+            status: { type: string }
+            jcDate: { type: ["string", "null"] }
+            promisedDate: { type: ["string", "null"] }
+            actualCloseDate: { type: ["string", "null"] }
+            estimateAmount: { type: ["number", "null"] }
+            finalAmount: { type: ["number", "null"] }
+            hasUnissuedPart:
+              type: boolean
+              description: At least one part line still not on the shelf.
+            psfDone: { type: boolean }
+          required: [status, hasUnissuedPart, psfDone]
+        ddms:
+          type: object
+          description: Ours. The DMS has no column for this.
+          properties:
+            customerInformedAt: { type: ["string", "null"] }
+          required: [customerInformedAt]
+        state:
+          $ref: "#/components/schemas/ServiceState"
+        note: { type: ["string", "null"] }
+        actionRequired: { type: ["string", "null"] }
+        daysLate:
+          type: integer
+          description: Days past the promised date. Negative means still in hand.
+        daysInStatus: { type: integer }
+        lastSyncedAt: { type: string }
+        disappearedFromDms: { type: boolean }
+      required:
+        [jcNo, dealerCode, showroomId, jcType, dms, ddms, state, daysLate,
+         daysInStatus, lastSyncedAt, disappearedFromDms]
+
+    ServiceWorklistSummary:
+      type: object
+      properties:
+        total: { type: integer }
+        byState:
+          type: object
+          additionalProperties: { type: integer }
+        needsAction: { type: integer }
+        readyUncollected:
+          type: integer
+          description: Finished but not collected — occupied bays and unmade calls.
+        worstDaysLate: { type: integer }
+        lastSyncedAt: { type: ["string", "null"] }
+      required: [total, byState, needsAction, readyUncollected, worstDaysLate]
 
     DmsTenant:
       type: object

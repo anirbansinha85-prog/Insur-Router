@@ -9,4 +9,6 @@ import type { DmsSyncResult } from './dmsSyncResult';
 
 export type SyncShowroomDms200 = {
   results: DmsSyncResult[];
+  /** The workshop pass. Both modules refresh together — a sync that left one stale would put numbers from two different times on one screen with nothing saying which. */
+  jobCardResults?: DmsSyncResult[];
 };

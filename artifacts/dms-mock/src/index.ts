@@ -24,12 +24,26 @@ import { DEALERS, DEALS, FREE_STOCK } from "./deals.ts";
 import { MODELS } from "./catalogue.ts";
 import { buildServiceSchedule, formatDmsDate } from "./service-schedule.ts";
 import portal from "./portal/routes.ts";
+import {
+  dealIdsModifiedSince,
+  getJobCard,
+  listEmployees,
+  listJobCards,
+  openStore,
+  parseDmsTimestamp,
+  saveDeal,
+} from "./store.ts";
 import type { DmsDealStatus } from "./types.ts";
 
 const PORT = Number(process.env.DMS_PORT ?? 9090);
 const API_KEY = process.env.DMS_API_KEY ?? "dev-dms-key";
 const LATENCY_MS = Number(process.env.DMS_MOCK_LATENCY_MS ?? 0);
 const FAIL_RATE = Number(process.env.DMS_MOCK_FAIL_RATE ?? 0);
+
+// Open (and seed, first time) before any route can read. Everything below still
+// reads the in-memory DEALS array; the store keeps it durable rather than
+// replacing it.
+openStore({ reset: process.env.DMS_RESET === "1" });
 
 const app = express();
 app.use(express.json({ limit: "256kb" }));
@@ -105,10 +119,32 @@ app.get("/dms/v1/models", (_req, res) => {
  * exposure. Callers fetch the full record by id when they act on one.
  */
 app.get("/dms/v1/deals", (req, res) => {
-  const { dealerCode, status } = req.query as { dealerCode?: string; status?: DmsDealStatus };
+  const { dealerCode, status, modifiedSince } = req.query as {
+    dealerCode?: string;
+    status?: DmsDealStatus;
+    modifiedSince?: string;
+  };
+
+  // Incremental pull. Without it a mirror has to fetch everything every time,
+  // which is what makes a sync expensive enough that people turn it off.
+  let touched: Set<string> | null = null;
+  if (modifiedSince) {
+    const since = parseDmsTimestamp(modifiedSince);
+    if (!since) {
+      res.status(400).json({
+        errCode: "VALIDATION",
+        errDesc: "modifiedSince must be DD-MM-YYYY or DD-MM-YYYY HH:mm:ss",
+      });
+      return;
+    }
+    touched = dealIdsModifiedSince(since);
+  }
 
   const matches = DEALS.filter(
-    (d) => (!dealerCode || d.dealerCode === dealerCode) && (!status || d.status === status),
+    (d) =>
+      (!dealerCode || d.dealerCode === dealerCode) &&
+      (!status || d.status === status) &&
+      (!touched || touched.has(d.dealId)),
   );
 
   res.json({
@@ -173,6 +209,81 @@ app.get("/dms/v1/deals/:dealId/service-schedule", (req, res) => {
 });
 
 /**
+ * Job card list — the workshop's equivalent of the deal queue.
+ *
+ * `status=AWAITING_PARTS` and `status=AWAITING_APPROVAL` are the two queues
+ * worth draining: in both the vehicle is stationary because somebody has not
+ * made a phone call. Summary shape for the same reason the deal list is —
+ * complaint text and part lines are not needed to decide which row to open.
+ */
+app.get("/dms/v1/jobcards", (req, res) => {
+  const { dealerCode, status, modifiedSince, awaitingParts } = req.query as Record<string, string | undefined>;
+
+  let since: Date | undefined;
+  if (modifiedSince) {
+    const parsed = parseDmsTimestamp(modifiedSince);
+    if (!parsed) {
+      res.status(400).json({
+        errCode: "VALIDATION",
+        errDesc: "modifiedSince must be DD-MM-YYYY or DD-MM-YYYY HH:mm:ss",
+      });
+      return;
+    }
+    since = parsed;
+  }
+
+  const cards = listJobCards({
+    dealerCode,
+    status,
+    modifiedSince: since,
+    awaitingPartsOnly: awaitingParts === "Y",
+  });
+
+  res.json({
+    count: cards.length,
+    jobCards: cards.map((j) => ({
+      jcNo: j.jcNo,
+      jcDt: j.jcDt,
+      dealerCode: j.dealerCode,
+      status: j.status,
+      jcType: j.jcType,
+      regNo: j.regNo,
+      chassisNo: j.chassisNo,
+      custName: j.custName,
+      modelDesc: j.modelDesc,
+      advisorEmpCode: j.advisorEmpCode,
+      promisedDt: j.promisedDt,
+      actualCloseDt: j.actualCloseDt,
+      estimateAmt: j.estimateAmt,
+      finalAmt: j.finalAmt,
+      modifiedAt: j.modifiedAt,
+    })),
+  });
+});
+
+app.get("/dms/v1/jobcards/:jcNo", (req, res) => {
+  const jc = getJobCard(req.params.jcNo);
+  if (!jc) {
+    res.status(404).json({ errCode: "JOBCARD_NOT_FOUND", errDesc: req.params.jcNo });
+    return;
+  }
+  res.json(jc);
+});
+
+/**
+ * Staff master.
+ *
+ * Included because `dol` — date of leaving — is what turns "we are short
+ * staffed" from an anecdote into a number, and because a job card owned by a
+ * departed advisor is work with nobody's name against it.
+ */
+app.get("/dms/v1/employees", (req, res) => {
+  const { dealerCode, activeFlg } = req.query as Record<string, string | undefined>;
+  const employees = listEmployees(dealerCode, activeFlg === "Y");
+  res.json({ count: employees.length, employees });
+});
+
+/**
  * Write the issued policy back onto the deal.
  *
  * The DMS is the dealer's record of the transaction, so the policy has to land
@@ -214,6 +325,7 @@ app.patch("/dms/v1/deals/:dealId/insurance", (req, res) => {
 
   if (deal.status === "AWAITING_INSURANCE") deal.status = "AWAITING_REGISTRATION";
 
+  saveDeal(deal);
   res.json({ dealId: deal.dealId, status: deal.status, insurance: deal.insurance });
 });
 
@@ -242,6 +354,7 @@ app.patch("/dms/v1/deals/:dealId/registration", (req, res) => {
   deal.registration.rtoCode = rtoCode ?? regNo.toUpperCase().slice(0, 4);
   if (deal.status === "AWAITING_REGISTRATION") deal.status = "DELIVERED";
 
+  saveDeal(deal);
   res.json({ dealId: deal.dealId, status: deal.status, registration: deal.registration });
 });
 

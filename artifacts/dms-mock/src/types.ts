@@ -22,6 +22,15 @@
 /** `DD-MM-YYYY`. The DMS has no concept of ISO 8601. */
 export type DmsDate = string;
 
+/**
+ * `DD-MM-YYYY HH:mm:ss`. What legacy ERPs put in a "last modified" column.
+ *
+ * Awkward on purpose, like everything else here. An incremental sync has to
+ * parse and compare these, and a client that assumes ISO 8601 will silently
+ * compare strings lexicographically and pull the wrong window.
+ */
+export type DmsTimestamp = string;
+
 /** Decimal string, two places, no separators — e.g. `"79150.00"`. */
 export type DmsAmount = string;
 
@@ -244,6 +253,124 @@ export interface DmsDeal {
   invoice: DmsInvoice;
   registration: DmsRegistration;
   insurance: DmsInsurance;
+}
+
+// ── Workshop ────────────────────────────────────────────────────────────────
+// The service side of the dealership. Structurally the same problem as the
+// sales side: work sits still in a named state, and the state says nothing
+// about whether anyone told the customer.
+
+export type DmsEmployeeRole =
+  | "SALES_EXEC"
+  | "SERVICE_ADVISOR"
+  | "TECHNICIAN"
+  | "RTO_AGENT"
+  | "ACCOUNTS"
+  | "MANAGER";
+
+/**
+ * Staff master.
+ *
+ * `dol` — date of leaving — is the field that makes the staff-shortage case
+ * arguable from data rather than anecdote. A dealership's own system already
+ * knows its attrition; nobody reads it that way.
+ */
+export interface DmsEmployee {
+  empCode: string;
+  empName: string;
+  dealerCode: string;
+  role: DmsEmployeeRole;
+  doj: DmsDate;
+  dol: DmsDate | null;
+  activeFlg: "Y" | "N";
+  mobileNo: string | null;
+}
+
+export type DmsJobCardType =
+  | "FREE"
+  | "PAID"
+  | "RUNNING_REPAIR"
+  | "ACCIDENT"
+  | "CAMPAIGN"
+  | "WARRANTY";
+
+/**
+ * Workshop states, in the order every DMS moves them.
+ *
+ * `AWAITING_PARTS` and `AWAITING_APPROVAL` are the two that matter: in both the
+ * vehicle is stationary because **somebody has not made a phone call**. That is
+ * the same shape as a deal sitting in `AWAITING_INSURANCE`, and it is why the
+ * workshop was the right second module.
+ *
+ * `READY` is the quiet one. The work is finished and the customer does not know.
+ */
+export type DmsJobCardStatus =
+  | "OPEN"
+  | "IN_PROGRESS"
+  | "AWAITING_PARTS"
+  | "AWAITING_APPROVAL"
+  | "READY"
+  | "INVOICED"
+  | "DELIVERED";
+
+export interface DmsJobCardLabour {
+  seq: number;
+  labourCode: string;
+  labourDesc: string;
+  hrs: number;
+  rateAmt: DmsAmount;
+}
+
+export interface DmsJobCardPart {
+  seq: number;
+  partNo: string;
+  partDesc: string;
+  qty: number;
+  rateAmt: DmsAmount;
+  /** Covered under warranty — billed to the OEM, not the customer. */
+  warrantyFlg: "Y" | "N";
+  /** `N` while the part is not on the shelf. This is what AWAITING_PARTS means. */
+  issuedFlg: "Y" | "N";
+}
+
+/** Post-service follow-up. Recorded days later, if at all. */
+export interface DmsPsf {
+  callDt: DmsDate | null;
+  satisfactionScore: number | null;
+  complaintFlg: "Y" | "N" | null;
+  remarksDesc: string | null;
+}
+
+export interface DmsJobCard {
+  jcNo: string;
+  jcDt: DmsDate;
+  dealerCode: string;
+  chassisNo: string;
+  /** Present here, unlike on a new-vehicle deal — a serviced vehicle is registered. */
+  regNo: string | null;
+  custId: string;
+  custName: string;
+  mobileNo: string | null;
+  modelDesc: string;
+  odometerKm: number;
+  jcType: DmsJobCardType;
+  status: DmsJobCardStatus;
+  advisorEmpCode: string;
+  technicianEmpCode: string | null;
+  bayNo: string | null;
+  complaintDesc: string;
+  observationDesc: string | null;
+  /** What the customer was told. The number the workshop is judged on. */
+  promisedDt: DmsDate;
+  actualCloseDt: DmsDate | null;
+  estimateAmt: DmsAmount;
+  /** Null until the customer approves an estimate that grew. */
+  approvedAmt: DmsAmount | null;
+  finalAmt: DmsAmount | null;
+  labour: DmsJobCardLabour[];
+  parts: DmsJobCardPart[];
+  psf: DmsPsf | null;
+  modifiedAt: DmsTimestamp;
 }
 
 /** Computed, not stored — derived from delivery date and the model schedule. */

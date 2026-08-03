@@ -24,6 +24,7 @@
  */
 
 import { DEALS } from "../deals.ts";
+import { saveDeal } from "../store.ts";
 import { panelFor } from "../insurers.ts";
 import { eligibility, quotaState, type PanelEntry } from "@workspace/quoting/panel";
 import { computePremium, type PremiumBreakdown } from "@workspace/quoting/premium";
@@ -412,6 +413,11 @@ export function commitPolicy(ctx: Ctx, deal: DmsDeal, insurerCode: string): stri
   if (deal.status === "AWAITING_INSURANCE") deal.status = "AWAITING_REGISTRATION";
   q.p.quotaConsumed += 1;
   DRAFTS.delete(deal.dealId);
+
+  // Persist, so a policy issued through the portal survives a restart. It did
+  // not before, and a mock whose contents depend on process uptime is how a
+  // stale reading once became a recorded fact.
+  saveDeal(deal);
 
   return policyNo;
 }

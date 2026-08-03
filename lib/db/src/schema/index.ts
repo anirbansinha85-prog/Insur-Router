@@ -1,6 +1,7 @@
 export * from "./owners";
 export * from "./showrooms";
 export * from "./dms_deals";
+export * from "./dms_job_cards";
 export * from "./providers";
 export * from "./insurer_panel";
 export * from "./applications";

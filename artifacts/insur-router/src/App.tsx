@@ -11,6 +11,7 @@ import ApplicationDetail from '@/pages/ApplicationDetail';
 import ProvidersList from '@/pages/ProvidersList';
 import ProviderEdit from '@/pages/ProviderEdit';
 import Worklist from '@/pages/Worklist';
+import ServiceWorklist from '@/pages/ServiceWorklist';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -27,6 +28,7 @@ function Router() {
       <Switch>
         <Route path="/" component={Dashboard} />
         <Route path="/worklist" component={Worklist} />
+        <Route path="/service" component={ServiceWorklist} />
         <Route path="/applications" component={ApplicationsList} />
         <Route path="/applications/new" component={ApplicationNew} />
         <Route path="/applications/:id" component={ApplicationDetail} />

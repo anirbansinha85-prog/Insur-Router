@@ -31,6 +31,8 @@ import type {
   ErrorResponse,
   ExecutionRequest,
   ExecutionResult,
+  GetServiceWorklist200,
+  GetServiceWorklistParams,
   GetShowroomPanel200,
   GetShowroomWorklist200,
   GetShowroomWorklistParams,
@@ -1501,6 +1503,92 @@ export function useGetShowroomWorklist<TData = Awaited<ReturnType<typeof getShow
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetShowroomWorklistQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetServiceWorklistUrl = (params: GetServiceWorklistParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/dms/service-worklist?${stringifiedParams}` : `/api/dms/service-worklist`
+}
+
+/**
+ * The second instance of the mirror pattern. Where the deal worklist reconciles a policy number that either matches or does not, this asks whether the promise is being kept and whether anyone told the customer — the second of which no DMS records, because telling someone is not a workshop event.
+ * Query parameter rather than a path segment, for the orval reason documented on /dms/worklist.
+ * @summary The workshop's open work, and what each job card needs from a human
+ */
+export const getServiceWorklist = async (params: GetServiceWorklistParams, options?: Parameters<typeof customFetch>[1]): Promise<GetServiceWorklist200> => {
+
+  return customFetch<GetServiceWorklist200>(getGetServiceWorklistUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetServiceWorklistQueryKey = (params?: GetServiceWorklistParams,) => {
+    return [
+    `/api/dms/service-worklist`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetServiceWorklistQueryOptions = <TData = Awaited<ReturnType<typeof getServiceWorklist>>, TError = ErrorType<ErrorResponse>>(params: GetServiceWorklistParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getServiceWorklist>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetServiceWorklistQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getServiceWorklist>>> = ({ signal }) => getServiceWorklist(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getServiceWorklist>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetServiceWorklistQueryResult = NonNullable<Awaited<ReturnType<typeof getServiceWorklist>>>
+export type GetServiceWorklistQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary The workshop's open work, and what each job card needs from a human
+ */
+
+export function useGetServiceWorklist<TData = Awaited<ReturnType<typeof getServiceWorklist>>, TError = ErrorType<ErrorResponse>>(
+ params: GetServiceWorklistParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getServiceWorklist>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetServiceWorklistQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

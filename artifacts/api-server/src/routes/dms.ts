@@ -27,11 +27,14 @@ import {
 } from "@workspace/db";
 import {
   DmsError,
+  buildServiceWorklist,
   buildWorklist,
   isDmsConfigured,
   panelForShowroom,
   summarise,
+  summariseService,
   syncShowroom,
+  syncShowroomJobCards,
 } from "../lib/dms";
 import { logger } from "../lib/logger";
 
@@ -118,7 +121,11 @@ router.post("/dms/showrooms/:showroomId/sync", async (req, res): Promise<void> =
   }
 
   try {
+    // Both modules in one pass. A sync that refreshed sales and left the
+    // workshop stale would produce a console where half the numbers are from
+    // this minute and half from yesterday, with nothing on screen saying which.
     const results = await syncShowroom(showroomId);
+    const jobCardResults = await syncShowroomJobCards(showroomId);
 
     if (results.length === 0) {
       // The showroom exists but has no active DMS account, which is a
@@ -131,7 +138,7 @@ router.post("/dms/showrooms/:showroomId/sync", async (req, res): Promise<void> =
       return;
     }
 
-    res.json({ results });
+    res.json({ results, jobCardResults });
   } catch (err) {
     if (err instanceof DmsError) {
       const status = err.kind === "bad_response" ? 502 : 503;
@@ -183,6 +190,33 @@ router.get("/dms/worklist", async (req, res): Promise<void> => {
   // still renders when the dealer's ERP is busy or down. `lastSyncedAt` in the
   // summary is what keeps that honest rather than quietly stale.
   res.json({ summary: summarise(rows), rows });
+});
+
+/**
+ * The workshop's worklist.
+ *
+ * Same query-parameter shape as the deal worklist, for the same orval reason
+ * documented at the top of this file.
+ */
+router.get("/dms/service-worklist", async (req, res): Promise<void> => {
+  const showroomId = parseShowroomId(String(req.query.showroomId ?? ""));
+  if (showroomId === null) {
+    res.status(400).json({ error: "showroomId query parameter is required and must be a positive integer" });
+    return;
+  }
+
+  if (!(await showroomExists(showroomId))) {
+    res.status(404).json({ error: `No showroom ${showroomId}` });
+    return;
+  }
+
+  const rows = await buildServiceWorklist({
+    showroomId,
+    status: typeof req.query.status === "string" ? req.query.status : undefined,
+    includeDisappeared: req.query.includeDisappeared === "true",
+  });
+
+  res.json({ summary: summariseService(rows), rows });
 });
 
 export default router;

@@ -446,7 +446,19 @@ export const SyncShowroomDmsResponse = zod.object({
   "startedAt": zod.string(),
   "finishedAt": zod.string(),
   "durationMs": zod.number().int()
-}).describe('What one sync of one DMS account did.'))
+}).describe('What one sync of one DMS account did.')),
+  "jobCardResults": zod.array(zod.object({
+  "showroomId": zod.number().int(),
+  "dealerCode": zod.string(),
+  "seen": zod.number().int().describe('Deals the DMS listed.'),
+  "added": zod.number().int(),
+  "changed": zod.number().int(),
+  "unchanged": zod.number().int(),
+  "disappeared": zod.number().int().describe('Mirrored deals the DMS no longer lists. Marked, never deleted — a deal vanishing is itself information.\n'),
+  "startedAt": zod.string(),
+  "finishedAt": zod.string(),
+  "durationMs": zod.number().int()
+}).describe('What one sync of one DMS account did.')).optional().describe('The workshop pass. Both modules refresh together — a sync that left one stale would put numbers from two different times on one screen with nothing saying which.\n')
 })
 
 
@@ -532,6 +544,61 @@ export const GetShowroomWorklistResponse = zod.object({
   "reconcileNote": zod.string().nullish().describe('Plain-English statement of the difference.'),
   "actionRequired": zod.string().nullish().describe('The one thing to do next, when there is one.'),
   "daysInStatus": zod.number().int().describe('Days since the DMS status last moved. This is the number nobody has time to work out by hand, and the reason a mirror exists at all.\n'),
+  "lastSyncedAt": zod.string(),
+  "disappearedFromDms": zod.boolean()
+}))
+})
+
+
+/**
+ * The second instance of the mirror pattern. Where the deal worklist reconciles a policy number that either matches or does not, this asks whether the promise is being kept and whether anyone told the customer — the second of which no DMS records, because telling someone is not a workshop event.
+ * Query parameter rather than a path segment, for the orval reason documented on /dms/worklist.
+ * @summary The workshop's open work, and what each job card needs from a human
+ */
+export const GetServiceWorklistQueryParams = zod.object({
+  "showroomId": zod.coerce.number().int(),
+  "status": zod.coerce.string().optional().describe('Filter on the DMS job-card status, e.g. AWAITING_PARTS'),
+  "includeDisappeared": zod.coerce.boolean().optional()
+})
+
+export const GetServiceWorklistResponse = zod.object({
+  "summary": zod.object({
+  "total": zod.number().int(),
+  "byState": zod.record(zod.string(), zod.number().int()),
+  "needsAction": zod.number().int(),
+  "readyUncollected": zod.number().int().describe('Finished but not collected — occupied bays and unmade calls.'),
+  "worstDaysLate": zod.number().int(),
+  "lastSyncedAt": zod.string().nullish()
+}),
+  "rows": zod.array(zod.object({
+  "jcNo": zod.string(),
+  "dealerCode": zod.string(),
+  "showroomId": zod.number().int(),
+  "showroomCode": zod.string().nullish(),
+  "customerName": zod.string().nullish(),
+  "customerMobile": zod.string().nullish(),
+  "modelDescription": zod.string().nullish(),
+  "regNo": zod.string().nullish(),
+  "jcType": zod.string(),
+  "advisorEmpCode": zod.string().nullish(),
+  "dms": zod.object({
+  "status": zod.string(),
+  "jcDate": zod.string().nullish(),
+  "promisedDate": zod.string().nullish(),
+  "actualCloseDate": zod.string().nullish(),
+  "estimateAmount": zod.number().nullish(),
+  "finalAmount": zod.number().nullish(),
+  "hasUnissuedPart": zod.boolean().describe('At least one part line still not on the shelf.'),
+  "psfDone": zod.boolean()
+}).describe('What the workshop\'s own system believes.'),
+  "ddms": zod.object({
+  "customerInformedAt": zod.string().nullable()
+}).describe('Ours. The DMS has no column for this.'),
+  "state": zod.enum(['AWAITING_APPROVAL', 'AWAITING_PART', 'READY_UNCOLLECTED', 'OVERDUE', 'FOLLOW_UP_DUE', 'ON_TRACK', 'CLOSED']).describe('What a job card needs from a human, ordered by what a service manager deals with first. Every state except ON_TRACK and CLOSED resolves to somebody picking up a phone — a workshop\'s backlog is mostly unmade calls. READY_UNCOLLECTED is the quiet one: the work is finished, the bay is occupied, and the customer has not been told.\n'),
+  "note": zod.string().nullish(),
+  "actionRequired": zod.string().nullish(),
+  "daysLate": zod.number().int().describe('Days past the promised date. Negative means still in hand.'),
+  "daysInStatus": zod.number().int(),
   "lastSyncedAt": zod.string(),
   "disappearedFromDms": zod.boolean()
 }))

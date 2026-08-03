@@ -20,7 +20,14 @@
  */
 
 import { logger } from "../logger";
-import type { DmsDeal, DmsDealSummary, DmsErrorBody, DmsStockLookup } from "./types";
+import type {
+  DmsDeal,
+  DmsDealSummary,
+  DmsErrorBody,
+  DmsJobCard,
+  DmsJobCardSummary,
+  DmsStockLookup,
+} from "./types";
 
 export class DmsError extends Error {
   constructor(
@@ -196,6 +203,31 @@ export async function dmsList(
 /** Full deal record. Null when the DMS has no such deal. */
 export function fetchDeal(dealId: string): Promise<DmsDeal | null> {
   return dmsGet<DmsDeal>(`/dms/v1/deals/${encodeURIComponent(dealId)}`, {
+    notFoundIsNull: true,
+  });
+}
+
+/**
+ * Workshop job cards for a dealer.
+ *
+ * Summaries only, like the deal list: complaint text and part lines are not
+ * needed to decide which row to open, and shipping them for rows nobody opens
+ * is needless PII over the wire.
+ */
+export async function dmsJobCards(
+  dealerCode: string,
+  status?: string,
+): Promise<DmsJobCardSummary[]> {
+  const params = new URLSearchParams({ dealerCode });
+  if (status) params.set("status", status);
+  const body = await dmsGet<{ count: number; jobCards: DmsJobCardSummary[] }>(
+    `/dms/v1/jobcards?${params.toString()}`,
+  );
+  return body?.jobCards ?? [];
+}
+
+export function fetchJobCard(jcNo: string): Promise<DmsJobCard | null> {
+  return dmsGet<DmsJobCard>(`/dms/v1/jobcards/${encodeURIComponent(jcNo)}`, {
     notFoundIsNull: true,
   });
 }
