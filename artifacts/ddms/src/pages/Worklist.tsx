@@ -17,6 +17,7 @@ import {
   getGetShowroomWorklistQueryKey,
   useGetShowroomPanel,
   useGetShowroomWorklist,
+  useStartApplicationFromDeal,
   useSyncShowroomDms,
   type ReconcileState,
   type WorklistRow,
@@ -35,6 +36,7 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock,
+  Play,
   ListChecks,
   RefreshCw,
   ShieldAlert,
@@ -144,8 +146,17 @@ function SystemView({
  */
 const INSUR_ROUTER_ORIGIN = "http://localhost:24791"
 
+/** What went wrong starting one application, kept against the row that failed. */
+interface StartFailure {
+  dealId: string
+  message: string
+  missing: string[]
+}
+
 export default function Worklist() {
   const queryClient = useQueryClient()
+  const [pendingDeal, setPendingDeal] = useState<string | null>(null)
+  const [startError, setStartError] = useState<StartFailure | null>(null)
   const [filter, setFilter] = useState<ReconcileState | "all">("all")
   const { selected } = useShowroom()
 
@@ -165,6 +176,46 @@ export default function Worklist() {
   })
 
   const sync = useSyncShowroomDms()
+  const start = useStartApplicationFromDeal()
+
+  /**
+   * Create the application, then take the user to it.
+   *
+   * The worklist is refreshed first so the row has already changed state behind
+   * them — coming back to a list that still says "not started" would read as
+   * the button not having worked.
+   */
+  const startApplication = (dealId: string) => {
+    setPendingDeal(dealId)
+    setStartError(null)
+    start.mutate(
+      { dealId },
+      {
+        onSuccess: (res) => {
+          queryClient.invalidateQueries({ queryKey: ["/api/dms/worklist"] })
+          window.open(`${INSUR_ROUTER_ORIGIN}/applications/${res.applicationId}`, "_blank")
+        },
+        onError: (err) => {
+          const data = (err as { data?: unknown }).data as
+            | { error?: string; errors?: string[]; applicationId?: number }
+            | undefined
+          // 409 is not really a failure — the work exists, just not from this
+          // click. Send them to it rather than showing them an error.
+          if (data?.applicationId) {
+            queryClient.invalidateQueries({ queryKey: ["/api/dms/worklist"] })
+            window.open(`${INSUR_ROUTER_ORIGIN}/applications/${data.applicationId}`, "_blank")
+            return
+          }
+          setStartError({
+            dealId,
+            message: data?.error ?? "Could not start the application.",
+            missing: data?.errors ?? [],
+          })
+        },
+        onSettled: () => setPendingDeal(null),
+      },
+    )
+  }
 
   const rows: WorklistRow[] = data?.rows ?? []
   const summary = data?.summary
@@ -445,10 +496,49 @@ export default function Worklist() {
                               row.reconcile === "CONFLICT" ? "text-red-500" : "text-amber-500"
                             }`}
                           />
-                          <div>
-                            <div className="text-sm text-slate-800">{row.actionRequired}</div>
+                          <div className="min-w-0">
+                            {/* NOT_STARTED is the one state the software can
+                                resolve on its own — everything the proposal
+                                needs is already in the dealer's record. The
+                                rest still need a person, so they stay as
+                                instructions rather than pretending otherwise. */}
+                            {row.reconcile === "NOT_STARTED" ? (
+                              <Button
+                                variant="accent"
+                                size="sm"
+                                className="gap-1.5"
+                                disabled={start.isPending}
+                                onClick={() => startApplication(row.dealId)}
+                              >
+                                {start.isPending && pendingDeal === row.dealId ? (
+                                  <>
+                                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                    Starting…
+                                  </>
+                                ) : (
+                                  <>
+                                    <Play className="w-3.5 h-3.5" />
+                                    Start the application
+                                  </>
+                                )}
+                              </Button>
+                            ) : (
+                              <div className="text-sm text-slate-800">{row.actionRequired}</div>
+                            )}
                             {row.reconcileNote && (
-                              <div className="text-[11px] text-slate-400 mt-0.5">{row.reconcileNote}</div>
+                              <div className="text-[11px] text-slate-400 mt-1">{row.reconcileNote}</div>
+                            )}
+                            {startError?.dealId === row.dealId && (
+                              <div className="mt-1.5 text-[11px] rounded border border-red-200 bg-red-50 p-2 text-red-800">
+                                <div className="font-semibold">{startError.message}</div>
+                                {startError.missing.length > 0 && (
+                                  <ul className="mt-1 list-disc list-inside space-y-0.5">
+                                    {startError.missing.map((m) => (
+                                      <li key={m}>{m}</li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </div>
                             )}
                           </div>
                         </div>

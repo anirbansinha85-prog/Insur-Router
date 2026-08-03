@@ -416,7 +416,12 @@ export function layout(o: ShellOptions): string {
       <div class="dl">${esc(o.dealerName)}<small>${esc(o.dealerCode)} · ${esc(
         o.dealerCity,
       )}</small></div>
-      <span class="sandbox" title="Demonstration environment with invented data">Sandbox</span>
+      <!-- No sandbox badge. The dealership data here is invented but it stands
+           in for a real dealer's records, and a demo label on the chrome makes
+           the whole thing read as a toy. The honesty that matters is narrower
+           and stays: a policy no insurer issued is still marked as such, on the
+           policy itself, where somebody could otherwise believe they are
+           covered. -->
       <span class="sp"></span>
       ${switcher}
       <span class="fy">FY 2026-27</span>

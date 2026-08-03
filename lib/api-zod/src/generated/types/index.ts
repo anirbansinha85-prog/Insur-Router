@@ -43,6 +43,7 @@ export * from './getShowroomPanel200';
 export * from './getShowroomWorklist200';
 export * from './getShowroomWorklistParams';
 export * from './healthStatus';
+export * from './incompleteDealError';
 export * from './ingestPushInput';
 export * from './ingestPushInputDealContext';
 export * from './ingestPushResult';

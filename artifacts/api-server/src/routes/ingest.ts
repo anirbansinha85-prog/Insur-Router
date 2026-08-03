@@ -19,7 +19,7 @@ import { Router, type IRouter } from "express";
 import { URL } from "url";
 import dns from "dns/promises";
 import net from "net";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import {
   IngestDmsPullBody,
   IngestBrowserScrapeBody,
@@ -36,6 +36,7 @@ import {
   ocrEnginesTable,
 } from "@workspace/db";
 import { chromiumLaunchOptions } from "../lib/browser-executor";
+import { createDraftApplication } from "../lib/draft-application";
 import {
   DmsError,
   adapterForDealer,
@@ -595,125 +596,10 @@ router.post("/ingest/ocr", async (req, res): Promise<void> => {
 });
 
 // ─── Push to InsurRouter ──────────────────────────────────────────────────────
-
-/** Convert a Date or ISO string to YYYY-MM-DD for Drizzle date columns (mode:"string") */
-function toDateStr(val: Date | string): string {
-  if (val instanceof Date) return val.toISOString().slice(0, 10);
-  return String(val).slice(0, 10);
-}
-
-interface MsaValidationResult {
-  errors: string[];
-  invalidFields: string[];
-}
-
-/**
- * Validates required MSA fields before inserting a draft application.
- * Mirrors the rules used by /applications/:id/validate (excluding providerId
- * which is not required at ingest time).
- */
-function validateMsaFields(fields: MsaFields): MsaValidationResult {
-  const errors: string[] = [];
-  const invalidFields: string[] = [];
-
-  const requireStr = (field: keyof MsaFields, msg: string) => {
-    if (!fields[field]) {
-      errors.push(msg);
-      invalidFields.push(field);
-    }
-  };
-
-  // Vehicle
-  requireStr("vehicleMake", "Vehicle make is required");
-  requireStr("vehicleModel", "Vehicle model is required");
-  requireStr("vehicleVariant", "Vehicle variant is required");
-  requireStr("vehicleEngineNumber", "Engine number is required");
-  requireStr("vehicleChassisNumber", "Chassis number / VIN is required");
-  if ((fields.vehicleExShowroomPrice as number) <= 0) {
-    errors.push("Ex-showroom price must be greater than zero");
-    invalidFields.push("vehicleExShowroomPrice");
-  }
-  if (!fields.vehicleDateOfPurchase) {
-    errors.push("Date of purchase is required");
-    invalidFields.push("vehicleDateOfPurchase");
-  }
-
-  // Owner KYC
-  requireStr("ownerFullName", "Owner full name is required");
-  requireStr("ownerBillingAddress", "Billing address is required");
-  if (!fields.ownerPincode || String(fields.ownerPincode).length !== 6) {
-    errors.push("Pincode must be a 6-digit number");
-    invalidFields.push("ownerPincode");
-  }
-  if (!fields.ownerPhoneNumber || !/^\d{10}$/.test(String(fields.ownerPhoneNumber))) {
-    errors.push("Phone number must be exactly 10 digits");
-    invalidFields.push("ownerPhoneNumber");
-  }
-  if (!fields.ownerEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fields.ownerEmail)) {
-    errors.push("Email address is invalid");
-    invalidFields.push("ownerEmail");
-  }
-  requireStr("ownerDateOfBirth", "Date of birth is required");
-  requireStr("ownerIdProofType", "ID proof type is required");
-  requireStr("ownerIdProofNumber", "ID proof number is required");
-
-  // RTO
-  requireStr("rtoRegistrationCity", "Registration city is required");
-  requireStr("rtoRegistrationState", "Registration state is required");
-
-  return { errors, invalidFields };
-}
-
-/**
- * DMS relationship description → the `nominee_relationship` enum.
- *
- * The mock already emits enum-shaped values, but a real dealer system holds
- * whatever the salesperson typed — "Wife", "S/o", "Husband", "Mother-in-law".
- * Unrecognised input maps to OTHER rather than being dropped: the enum is a
- * storage convenience, and losing the fact that a nominee exists because the
- * word was unfamiliar would be a far worse outcome than a coarse label.
- *
- * The original text is not lost either — it stays in the deal record on the
- * DMS side, which remains the system of record for it.
- */
-const RELATIONSHIP_SYNONYMS: Record<string, string> = {
-  WIFE: "SPOUSE",
-  HUSBAND: "SPOUSE",
-  SPOUSE: "SPOUSE",
-  FATHER: "FATHER",
-  DAD: "FATHER",
-  MOTHER: "MOTHER",
-  MOM: "MOTHER",
-  SON: "SON",
-  DAUGHTER: "DAUGHTER",
-  BROTHER: "BROTHER",
-  SISTER: "SISTER",
-};
-
-type NomineeRelationship =
-  typeof applicationsTable.$inferInsert["nomineeRelationship"];
-
-function normaliseRelationship(
-  desc: string | null | undefined,
-): NomineeRelationship {
-  if (!desc) return null;
-  const key = desc.trim().toUpperCase().replace(/[^A-Z]/g, "");
-  return (RELATIONSHIP_SYNONYMS[key] ?? "OTHER") as NomineeRelationship;
-}
-
-/**
- * Postgres `unique_violation` from the one-application-per-deal constraint.
- *
- * The lookup before the insert catches every ordinary duplicate; this catches
- * the one it cannot — two requests for the same deal arriving close enough
- * together that both lookups miss. Rare, and precisely the case where a silent
- * second policy would be most expensive.
- */
-function isDuplicateDealError(err: unknown): boolean {
-  if (typeof err !== "object" || err === null) return false;
-  const e = err as { code?: string; constraint?: string };
-  return e.code === "23505" && e.constraint === "applications_dms_deal_unique";
-}
+//
+// The draft creation itself lives in lib/draft-application.ts, because DDMS
+// starts applications from a worklist row too and a forty-column insert written
+// twice is one that drifts. This route now only translates HTTP to that call.
 
 router.post("/ingest/push", async (req, res): Promise<void> => {
   const parsed = IngestPushBody.safeParse(req.body);
@@ -730,6 +616,7 @@ router.post("/ingest/push", async (req, res): Promise<void> => {
   // it belongs to or what the engine capacity is.
   const tenant = parsed.data.tenant ?? null;
   const ctx = (parsed.data.dealContext ?? null) as DmsDealContext | null;
+  const doc = parsed.data.document;
 
   logger.info(
     {
@@ -741,158 +628,33 @@ router.post("/ingest/push", async (req, res): Promise<void> => {
     "Ingest push to InsurRouter",
   );
 
-  // One application per deal. A worklist invites exactly the duplicate this
-  // guards against — two people working the same list, or one person clicking
-  // twice on a slow connection — and two drafts that both reach execution mean
-  // two policies on one vehicle. Answering with the row that already exists is
-  // more useful than an error: the caller wants to reach that draft.
-  //
-  // Checked *before* validation on purpose. Validating first tells someone to
-  // go and find a missing email address for a deal that was already ingested —
-  // work that was never needed, on a draft they should have been sent to.
-  if (ctx?.dealerCode && ctx?.dealId) {
-    const [existing] = await db
-      .select({ id: applicationsTable.id, status: applicationsTable.status })
-      .from(applicationsTable)
-      .where(
-        and(
-          eq(applicationsTable.dmsDealerCode, ctx.dealerCode),
-          eq(applicationsTable.dmsDealId, ctx.dealId),
-        ),
-      );
-
-    if (existing) {
-      logger.info(
-        { dealId: ctx.dealId, applicationId: existing.id },
-        "Ingest push rejected — this deal already has an application",
-      );
-      res.status(409).json({
-        error: `Deal ${ctx.dealId} already has application #${existing.id} (${existing.status}).`,
-        applicationId: existing.id,
-        status: existing.status,
-      });
-      return;
-    }
-  }
-
-  // Validate required MSA fields before creating the draft
-  const validation = validateMsaFields(fields as unknown as MsaFields);
-  if (validation.errors.length > 0) {
-    logger.info({ errors: validation.errors }, "Ingest push rejected — validation failed");
-    res.status(400).json({ errors: validation.errors, invalidFields: validation.invalidFields });
-    return;
-  }
-
-  // Zod coerces date-formatted strings to Date objects; Drizzle date columns use mode:"string"
-  const dateOfPurchase = toDateStr(fields.vehicleDateOfPurchase as unknown as Date | string);
-  const dateOfBirth = toDateStr(fields.ownerDateOfBirth as unknown as Date | string);
-
-  // Insert directly into the shared database — same table that InsurRouter reads
-  // executionMode omitted — schema default "AUTO" applies
-  const inserted = await db
-    .insert(applicationsTable)
-    .values({
-      vehicleMake: fields.vehicleMake,
-      vehicleModel: fields.vehicleModel,
-      vehicleVariant: fields.vehicleVariant,
-      vehicleEngineNumber: fields.vehicleEngineNumber,
-      vehicleChassisNumber: fields.vehicleChassisNumber,
-      vehicleExShowroomPrice: fields.vehicleExShowroomPrice,
-      vehicleDateOfPurchase: dateOfPurchase,
-      ownerFullName: fields.ownerFullName,
-      ownerBillingAddress: fields.ownerBillingAddress,
-      ownerPincode: fields.ownerPincode,
-      ownerPhoneNumber: String(fields.ownerPhoneNumber),
-      ownerEmail: fields.ownerEmail,
-      ownerDateOfBirth: dateOfBirth,
-      ownerIdProofType: fields.ownerIdProofType,
-      ownerIdProofNumber: fields.ownerIdProofNumber,
-      rtoRegistrationCity: fields.rtoRegistrationCity,
-      rtoRegistrationState: fields.rtoRegistrationState,
-      rtoCode: fields.rtoCode,
-
-      // ── Tenant scope ────────────────────────────────────────────────────
-      // Which showroom, and through it which owner, owns this row.
-      showroomId: tenant?.showroomId ?? null,
-      dmsDealerCode: ctx?.dealerCode ?? null,
-      dmsDealId: ctx?.dealId ?? null,
-
-      // ── Rating attributes ───────────────────────────────────────────────
-      // Without these the premium engine has nothing to band on: third-party
-      // premium is slabbed by cc on petrol and by kW on electric, and a
-      // deal reaching the pricer with neither has no price at all.
-      vehicleFuelType: ctx?.vehicle.fuelType ?? null,
-      vehicleCubicCapacity: ctx?.vehicle.cubicCapacity ?? null,
-      vehicleMotorKw: ctx?.vehicle.motorKw ?? null,
-      vehicleSeatingCapacity: ctx?.vehicle.seatingCapacity ?? null,
-      vehicleManufactureMonth: ctx?.vehicle.manufactureMonth ?? null,
-      vehicleManufactureYear: ctx?.vehicle.manufactureYear ?? null,
-
-      // A company has no owner-driver, so compulsory PA cover does not apply.
-      ownerEntityType: ctx?.owner.entityType ?? "INDIVIDUAL",
-
-      // ── Nominee ─────────────────────────────────────────────────────────
-      // Frequently null even here: a vehicle sale does not require a nominee,
-      // so the DMS often has not captured one. No document carries it either,
-      // which is why it ends up being asked in the UI.
-      nomineeFullName: ctx?.nominee.fullName ?? null,
-      nomineeDateOfBirth: ctx?.nominee.dateOfBirth ?? null,
-      nomineeRelationship: normaliseRelationship(ctx?.nominee.relationship),
-      nomineeAppointeeName: ctx?.nominee.appointeeName ?? null,
-      nomineeAppointeeRelationship: ctx?.nominee.appointeeRelationship ?? null,
-
-      // ── Hypothecation ───────────────────────────────────────────────────
-      isHypothecated: ctx?.hypothecation.isHypothecated ?? false,
-      hypothecationFinancierName: ctx?.hypothecation.financierName ?? null,
-      hypothecationLoanAccountNumber: ctx?.hypothecation.loanAccountNumber ?? null,
-
-      // Audit trail: what the OCR actually read, before any mapping.
-      sourceDocument: parsed.data.document
-        ? (parsed.data.document as unknown as Record<string, unknown>)
-        : null,
-    })
-    .returning()
-    .catch(async (err: unknown) => {
-      if (!isDuplicateDealError(err)) throw err;
-      const [winner] = await db
-        .select({ id: applicationsTable.id })
-        .from(applicationsTable)
-        .where(
-          and(
-            eq(applicationsTable.dmsDealerCode, ctx!.dealerCode),
-            eq(applicationsTable.dmsDealId, ctx!.dealId),
-          ),
-        );
-      return { conflictWith: winner?.id ?? null } as const;
-    });
-
-  if ("conflictWith" in inserted) {
-    logger.warn(
-      { dealId: ctx?.dealId, applicationId: inserted.conflictWith },
-      "Ingest push lost a race — the same deal was pushed twice at once",
-    );
-    res.status(409).json({
-      error: `Deal ${ctx?.dealId} already has application #${inserted.conflictWith}.`,
-      applicationId: inserted.conflictWith,
-    });
-    return;
-  }
-
-  const [app] = inserted;
-  const doc = parsed.data.document;
-  await db.insert(submissionLogsTable).values({
-    applicationId: app.id,
-    step: "data_ingestion",
-    status: "success",
-    message: doc
+  const result = await createDraftApplication({
+    fields: fields as unknown as MsaFields,
+    tenant,
+    ctx,
+    document: doc ? (doc as unknown as Record<string, unknown>) : null,
+    sourceDesc: doc
       ? `Draft created via VeloDocs ingest from ${doc.documentType} (${doc.fields.length} fields read): ${fields.vehicleMake} ${fields.vehicleModel} (${fields.ownerFullName})`
       : `Draft created via VeloDocs ingest: ${fields.vehicleMake} ${fields.vehicleModel} (${fields.ownerFullName})`,
-    metadata: doc
-      ? { documentType: doc.documentType, issuer: doc.issuer, summary: doc.summary }
-      : null,
   });
 
-  res.status(201).json({ applicationId: app.id });
+  if (result.kind === "duplicate") {
+    res.status(409).json({
+      error:
+        `Deal ${ctx?.dealId} already has application #${result.applicationId}` +
+        (result.status ? ` (${result.status}).` : "."),
+      applicationId: result.applicationId,
+      status: result.status ?? undefined,
+    });
+    return;
+  }
+
+  if (result.kind === "invalid") {
+    res.status(400).json({ errors: result.errors, invalidFields: result.invalidFields });
+    return;
+  }
+
+  res.status(201).json({ applicationId: result.applicationId });
 });
 
 export default router;

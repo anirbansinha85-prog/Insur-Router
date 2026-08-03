@@ -501,6 +501,59 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /dms/deals/{dealId}/start-application:
+    post:
+      operationId: startApplicationFromDeal
+      tags: [dms]
+      summary: Start an insurance application from a worklist row
+      description: >
+        The first action in DDMS, and the point at which it stops being a
+        report. Everything the pipeline needs is already in the dealer's system,
+        so pull, translate, resolve the owner and create the draft all happen
+        server-side rather than making the browser orchestrate two calls and
+        hold a customer's KYC in between.
+
+        422 rather than 400 when the DMS record is incomplete: the request was
+        well formed, the dealership simply never captured the field. Retrying
+        will not help — a human has to supply it.
+      parameters:
+        - name: dealId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Draft application created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestPushResult"
+        "404":
+          description: No such deal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: This deal already has an application
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DuplicateDealError"
+        "422":
+          description: The DMS record is missing details the proposal requires
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncompleteDealError"
+        "503":
+          description: DMS unreachable or not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /dms/worklist:
     get:
       operationId: getShowroomWorklist
@@ -871,6 +924,30 @@ components:
           type: string
       required:
         - error
+
+    IncompleteDealError:
+      type: object
+      description: >
+        The dealer's record does not carry everything an insurance proposal
+        needs. Names the fields so the console can send someone to fill them in
+        rather than reporting a generic failure.
+      properties:
+        error:
+          type: string
+        errors:
+          type: array
+          items: { type: string }
+        invalidFields:
+          type: array
+          items: { type: string }
+        gaps:
+          type: array
+          description: >
+            What the adapter already knew was missing from the DMS record,
+            phrased for a person. Usually the same story as invalidFields, from
+            the other end.
+          items: { type: string }
+      required: [error, errors, invalidFields]
 
     DuplicateDealError:
       type: object

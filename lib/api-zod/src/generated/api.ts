@@ -498,6 +498,20 @@ export const GetShowroomPanelResponse = zod.object({
 
 
 /**
+ * The first action in DDMS, and the point at which it stops being a report. Everything the pipeline needs is already in the dealer's system, so pull, translate, resolve the owner and create the draft all happen server-side rather than making the browser orchestrate two calls and hold a customer's KYC in between.
+ * 422 rather than 400 when the DMS record is incomplete: the request was well formed, the dealership simply never captured the field. Retrying will not help — a human has to supply it.
+ * @summary Start an insurance application from a worklist row
+ */
+export const StartApplicationFromDealParams = zod.object({
+  "dealId": zod.coerce.string()
+})
+
+export const StartApplicationFromDealResponse = zod.object({
+  "applicationId": zod.number().describe('ID of the newly created draft application in InsurRouter')
+})
+
+
+/**
  * The owner's console. Each row carries the dealer system's view and ours side by side, plus how they differ and the single action that would close the gap. Reconciliation is computed on read, never stored, so it cannot go stale.
  * Reads only the mirror and never calls the DMS, so the console still renders when the dealer's ERP is busy or down.
  * `showroomId` is a query parameter rather than a path segment on purpose. Orval emits `<Operation>Params` for path parameters *and* for query parameters, so an operation carrying both produces the same exported name twice and the api-zod barrel fails to compile. `listApplications` already follows this query-only shape for the same reason — do not "tidy" it into /dms/showrooms/{id}/worklist without checking codegen.

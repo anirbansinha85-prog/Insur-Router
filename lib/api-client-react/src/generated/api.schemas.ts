@@ -14,6 +14,17 @@ export interface ErrorResponse {
 }
 
 /**
+ * The dealer's record does not carry everything an insurance proposal needs. Names the fields so the console can send someone to fill them in rather than reporting a generic failure.
+ */
+export interface IncompleteDealError {
+  error: string;
+  errors: string[];
+  invalidFields: string[];
+  /** What the adapter already knew was missing from the DMS record, phrased for a person. Usually the same story as invalidFields, from the other end. */
+  gaps?: string[];
+}
+
+/**
  * This DMS deal already has an application. The existing id is returned rather than only an error, because the caller almost always wants to open that draft — creating a second one would eventually mean two policies on one vehicle.
  */
 export interface DuplicateDealError {

@@ -39,6 +39,7 @@ import type {
   GetShowroomWorklist200,
   GetShowroomWorklistParams,
   HealthStatus,
+  IncompleteDealError,
   IngestPushInput,
   IngestPushResult,
   IngestResult,
@@ -1429,6 +1430,79 @@ export function useGetShowroomPanel<TData = Awaited<ReturnType<typeof getShowroo
 
 
 
+
+export const getStartApplicationFromDealUrl = (dealId: string,) => {
+
+
+
+
+  return `/api/dms/deals/${dealId}/start-application`
+}
+
+/**
+ * The first action in DDMS, and the point at which it stops being a report. Everything the pipeline needs is already in the dealer's system, so pull, translate, resolve the owner and create the draft all happen server-side rather than making the browser orchestrate two calls and hold a customer's KYC in between.
+ * 422 rather than 400 when the DMS record is incomplete: the request was well formed, the dealership simply never captured the field. Retrying will not help — a human has to supply it.
+ * @summary Start an insurance application from a worklist row
+ */
+export const startApplicationFromDeal = async (dealId: string, options?: Parameters<typeof customFetch>[1]): Promise<IngestPushResult> => {
+
+  return customFetch<IngestPushResult>(getStartApplicationFromDealUrl(dealId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getStartApplicationFromDealMutationOptions = <TError = ErrorType<ErrorResponse | DuplicateDealError | IncompleteDealError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startApplicationFromDeal>>, TError,{dealId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startApplicationFromDeal>>, TError,{dealId: string}, TContext> => {
+
+const mutationKey = ['startApplicationFromDeal'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startApplicationFromDeal>>, {dealId: string}> = (props) => {
+          const {dealId} = props ?? {};
+
+          return  startApplicationFromDeal(dealId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartApplicationFromDealMutationResult = NonNullable<Awaited<ReturnType<typeof startApplicationFromDeal>>>
+
+    export type StartApplicationFromDealMutationError = ErrorType<ErrorResponse | DuplicateDealError | IncompleteDealError>
+
+    /**
+ * @summary Start an insurance application from a worklist row
+ */
+export const useStartApplicationFromDeal = <TError = ErrorType<ErrorResponse | DuplicateDealError | IncompleteDealError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startApplicationFromDeal>>, TError,{dealId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof startApplicationFromDeal>>,
+        TError,
+        {dealId: string},
+        TContext
+      > => {
+      return useMutation(getStartApplicationFromDealMutationOptions(options));
+    }
 
 export const getGetShowroomWorklistUrl = (params: GetShowroomWorklistParams,) => {
   const normalizedParams = new URLSearchParams();

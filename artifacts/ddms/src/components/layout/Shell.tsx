@@ -128,14 +128,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <header className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between gap-4 shrink-0">
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h2 className="font-bold text-slate-900 truncate">
-                {selected?.name ?? "No showroom"}
-              </h2>
-              <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200 shrink-0">
-                Sandbox
-              </span>
-            </div>
+            <h2 className="font-bold text-slate-900 truncate">
+              {selected?.name ?? "No showroom"}
+            </h2>
             <div className="text-xs text-slate-500 truncate">
               {selected?.dmsAccounts.map((a) => a.dealerCode).join(", ") || "no dealer code"}
               {selected?.city && ` · ${selected.city}`}

@@ -27,6 +27,9 @@ import {
 } from "@workspace/db";
 import {
   DmsError,
+  adapterForDealer,
+  fetchDeal,
+  resolveTenantByDealerCode,
   buildLeadWorklist,
   buildServiceWorklist,
   buildWorklist,
@@ -39,6 +42,7 @@ import {
   syncShowroomEnquiries,
   syncShowroomJobCards,
 } from "../lib/dms";
+import { createDraftApplication } from "../lib/draft-application";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -250,6 +254,95 @@ router.get("/dms/lead-worklist", async (req, res): Promise<void> => {
   });
 
   res.json({ summary: summariseLeads(rows), rows });
+});
+
+/**
+ * Start an insurance application from a worklist row.
+ *
+ * The first action button in DDMS, and the point at which it stops being a
+ * report. Everything the pipeline needs is already in the dealer's system, so
+ * the whole sequence — pull the deal, translate it, resolve the owner, create
+ * the draft — happens here rather than making the browser orchestrate two calls
+ * and hold a customer's KYC in between.
+ *
+ * Three outcomes, all of them useful:
+ *   201  created, with the application id to open
+ *   409  the deal already has one, with its id — go there instead
+ *   422  the DMS record is missing fields insurance requires, listed. Not a
+ *        failure of ours: the dealership never captured them, and the fix is a
+ *        human in VeloDocs, not a retry.
+ */
+router.post("/dms/deals/:dealId/start-application", async (req, res): Promise<void> => {
+  const dealId = req.params.dealId;
+
+  if (!isDmsConfigured()) {
+    res.status(503).json({
+      error:
+        "DMS is not configured. Set DMS_API_URL and DMS_API_KEY " +
+        "(http://localhost:9090 and dev-dms-key for the local mock).",
+    });
+    return;
+  }
+
+  try {
+    const deal = await fetchDeal(dealId);
+    if (!deal) {
+      res.status(404).json({ error: `No deal ${dealId}` });
+      return;
+    }
+
+    const adapter = adapterForDealer(deal.dealerCode);
+    const adapted = adapter.adaptDeal(deal);
+    const tenant = await resolveTenantByDealerCode(deal.dealerCode);
+
+    const result = await createDraftApplication({
+      fields: adapted.fields,
+      tenant,
+      ctx: adapted.dealContext,
+      // No document was read — this came from the dealer's own record, which is
+      // authoritative for every vehicle fact. Writing a document reference here
+      // would claim a scan that never happened.
+      document: null,
+      sourceDesc:
+        `Application started from DDMS worklist — deal ${deal.dealId} ` +
+        `(${adapted.fields.vehicleMake} ${adapted.fields.vehicleModel}, ${adapted.fields.ownerFullName})`,
+    });
+
+    if (result.kind === "duplicate") {
+      res.status(409).json({
+        error: `Deal ${dealId} already has application #${result.applicationId}.`,
+        applicationId: result.applicationId,
+      });
+      return;
+    }
+
+    if (result.kind === "invalid") {
+      // 422 rather than 400: the request was well formed, the dealer's record
+      // is simply incomplete. The caller needs the field list to route the user
+      // somewhere useful.
+      res.status(422).json({
+        error: `Deal ${dealId} is missing details the proposal requires.`,
+        errors: result.errors,
+        invalidFields: result.invalidFields,
+        gaps: adapted.dealContext.gaps,
+      });
+      return;
+    }
+
+    logger.info(
+      { dealId, applicationId: result.applicationId, showroom: tenant?.showroomCode ?? null },
+      "Application started from DDMS",
+    );
+    res.status(201).json({ applicationId: result.applicationId });
+  } catch (err) {
+    if (err instanceof DmsError) {
+      const status = err.kind === "not_found" ? 404 : err.kind === "bad_response" ? 502 : 503;
+      logger.error({ err: err.message, kind: err.kind }, "Starting an application failed");
+      res.status(status).json({ error: err.message, kind: err.kind });
+      return;
+    }
+    throw err;
+  }
 });
 
 export default router;

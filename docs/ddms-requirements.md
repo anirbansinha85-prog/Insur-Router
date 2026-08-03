@@ -79,13 +79,14 @@ Status: **✅ done** · **◑ partial** · **○ not started**
 | R-30 | **A dense dealer portal, in the shape of the Hero portal at `:9090/portal`** — module-grouped sidebar, KPI cards, action buttons on rows, quota bars, an identity header with showroom picker and financial year | ○ **currently a thin admin console** |
 | R-31 | Distinct from the OEM's own system: the owner's group identity, multi-showroom, not one dealer code | ◑ |
 | R-32 | Never show invented identity — no fake user until there is a login | ✅ |
+| R-33 | **The seeded dealership data must read as real.** No "sandbox", "demo data" or similar labelling on the chrome. The records are invented, but they stand in for a real dealer's, and a demo badge makes the whole product read as a toy | ✅ |
 
 ### Non-negotiables
 
 | # | Requirement | Status |
 |---|---|---|
 | R-40 | Never write to the OEM's DMS | ✅ |
-| R-41 | Never present simulated output as real | ✅ |
+| R-41 | Never present simulated output as real. **Narrower than R-33 and it survives it**: dealership records may read as real because they stand in for real ones, but a policy number no insurer issued stays marked on the policy itself, because somebody could otherwise believe they are covered | ✅ |
 | R-42 | Per-user authentication before any real customer | ○ **blocker** |
 | R-43 | Deccan stays parked; Saraswati is the working showroom | ✅ |
 | R-44 | Remote-desktop access (AnyDesk-style) is **not** the integration route | ✅ ruled out |
@@ -113,18 +114,28 @@ and switching showroom in the header carries across all three screens.
 > pieces of work, and bundling them is how an objective ends up never finishing.
 > Buttons are OBJ-2.
 
-### OBJ-2 — The first real action button  ← **next**
+### OBJ-2 — The first real action button  ✅ **done 3 Aug**
 *Covers R-20, R-21. The locked decision.*
 
-"Start the insurance application" stops being text. It calls the real pipeline:
-pull the deal from the DMS, create the application, and land the user in
-InsurRouter with it open.
+"Start the insurance application" stopped being text. `POST
+/dms/deals/{dealId}/start-application` pulls the deal, translates it, resolves
+the owner and creates the draft server-side, then the console opens it in
+InsurRouter.
 
 **Done when:** clicking it on deal `…000181` produces an application in Supabase
 and the row's reconcile state changes on the next render, with no manual step in
 between.
 
-### OBJ-3 — Per-user authentication
+**Verified** through the UI, not just the API: one button on screen, clicked,
+application #12 created, InsurRouter opened at `/applications/12`, row moved
+`NOT_STARTED → IN_SYNC` and the Not-started filter went to zero.
+
+Only `NOT_STARTED` gets a button. The other states still need a person — keying
+a policy number into the dealer's system, resolving two policies on one vehicle
+— and dressing those as buttons would be the same lie as a simulated policy that
+looks issued.
+
+### OBJ-3 — Per-user authentication  ← **next**
 *Covers R-42. Blocks every real customer.*
 
 Owner logs in. `showroomId` comes from the session, not the request. RLS
@@ -154,14 +165,17 @@ sent. A human approves until trust is earned.
 can leave the system without either a rule permitting it or a person approving
 it.
 
-### OBJ-6 — Real DMS access
-*Covers R-6.*
+### OBJ-6 — A dealership that reads as real
+*Covers R-6, R-33. Replaces "get real DMS access", which Anirban ruled out on
+3 Aug: the data we generate is the data, and it has to feel real rather than be
+real.*
 
-Replace the mock with a real dealer's data. Blocked on a commercial question,
-not a technical one: whether the dealer's OEM contract permits third-party
-access.
+Deepen the seeded dealership until nothing on screen reads as a fixture: enough
+volume that the lists need filtering, names and models spread the way a real
+month is, and no demo labelling anywhere in the chrome.
 
-**Done when:** one real showroom's deals appear in the mirror.
+**Done when:** somebody shown the console without preamble asks a question about
+the business rather than a question about the data.
 
 ---
 
@@ -172,9 +186,12 @@ access.
 three; insurer panel with quota; scheduled sync; API authentication; the
 one-application-per-deal constraint; DDMS as its own service.
 
-**The gap that matters:** DDMS reports. It does not act. Every "what to do" cell
-on all three screens is a sentence, not a button — so the product is currently
-the *control panel* half of the dual role and none of the *action* half.
+**The dual role has started.** The first action button works end to end: a deal
+with no insurance goes from a row on a screen to an application in the database
+in one click, and the row changes state behind you. The other actions on the
+three screens are still sentences, because they still need a person — and
+dressing those as buttons would be the same defect as a simulated policy that
+looks issued.
 
 **The blocker before a customer:** no per-user auth. An owner-level product with
 no owner login cannot be sold to an owner.
