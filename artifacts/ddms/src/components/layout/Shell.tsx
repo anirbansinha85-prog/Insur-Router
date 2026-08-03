@@ -1,123 +1,187 @@
 import { Link, useLocation } from "wouter"
-import { Users, ListChecks, Wrench, Building2, ExternalLink } from "lucide-react"
+import {
+  Users, ListChecks, Wrench, LayoutDashboard, ShieldCheck, Bell,
+  ExternalLink, Building2,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
+import { financialYear, useShowroom } from "@/lib/showroom"
+import { NativeSelect } from "@/components/ui/select"
 
 /**
- * DDMS's own shell.
+ * DDMS's shell, in the shape of a dealer portal rather than an admin console.
  *
- * Deliberately not InsurRouter's. The person here is an owner looking across
- * several showrooms, not an agent working one application, and the two screens
- * answering to the same chrome was the visible symptom of DDMS having been
- * built inside the wrong product.
+ * The reference is the dealer portal the mock serves at :9090/portal — grouped
+ * sidebar, identity header, dense content. That is the interface Anirban had in
+ * mind all along, and the thin slate console built before this was the wrong
+ * class of product: a dealership manager lives in a portal all day, and a
+ * portal has to look like somewhere you work rather than somewhere you look.
  *
- * The nav follows the customer through the business — enquiry, then sale, then
- * service — because that is the order in which work is lost.
+ * What is deliberately *not* copied is the OEM's identity. That portal is Hero
+ * red and belongs to the manufacturer. This is the owner's own product, across
+ * showrooms and irrespective of OEM, so it carries its own mark.
  */
+
+interface NavGroup {
+  label: string
+  items: Array<{ href: string; label: string; icon: typeof Users }>
+}
+
+const GROUPS: NavGroup[] = [
+  {
+    label: "Showroom",
+    items: [
+      { href: "/", label: "Enquiries", icon: Users },
+      { href: "/worklist", label: "Deals", icon: ListChecks },
+    ],
+  },
+  {
+    label: "Insurance",
+    items: [{ href: "/worklist", label: "Issuance queue", icon: ShieldCheck }],
+  },
+  {
+    label: "After sales",
+    items: [{ href: "/service", label: "Service & warranty", icon: Wrench }],
+  },
+]
+
 export function Shell({ children }: { children: React.ReactNode }) {
   const [location] = useLocation()
+  const { showrooms, selected, setShowroomId, isLoading } = useShowroom()
 
-  const nav = [
-    { href: "/", label: "Enquiries", icon: Users, hint: "Leads and the response clock" },
-    { href: "/worklist", label: "Sales", icon: ListChecks, hint: "Deals and insurance" },
-    { href: "/service", label: "Workshop", icon: Wrench, hint: "Job cards" },
-  ]
-
-  // The other two products, reachable from here but not owned by here. They run
-  // as their own services; DDMS links out rather than embedding them.
-  const services = [
-    { href: "http://localhost:24791/", label: "InsurRouter", hint: "Insurance issuance" },
-    { href: "http://localhost:18815/doc-ingest/", label: "VeloDocs", hint: "Document ingestion" },
-  ]
+  const owner = selected?.ownerName ?? "—"
 
   return (
-    <div className="flex h-screen w-full bg-slate-50 text-slate-900 font-sans">
-      <aside className="w-64 bg-[#0d1b2a] text-slate-300 flex flex-col border-r border-slate-800">
-        <div className="h-16 flex items-center px-6 border-b border-slate-800 text-white font-bold tracking-wide text-lg gap-3 shrink-0">
-          <div className="w-7 h-7 rounded bg-emerald-500 flex items-center justify-center shadow-sm">
-            <span className="text-white text-[10px] font-black">DD</span>
+    <div className="flex h-screen w-full bg-slate-100 text-slate-900 font-sans">
+      <aside className="w-60 bg-[#111a2b] text-slate-300 flex flex-col shrink-0">
+        <div className="px-5 py-4 border-b border-white/10">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded bg-emerald-500 flex items-center justify-center shrink-0">
+              <LayoutDashboard className="w-4 h-4 text-white" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-white font-bold leading-tight truncate">{owner}</div>
+              <div className="text-[10px] text-slate-400 leading-tight">
+                Dealer Decision Management
+              </div>
+            </div>
           </div>
-          DDMS
         </div>
 
-        <div className="flex-1 py-6 px-4 space-y-1 overflow-y-auto">
-          <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4 px-2">
-            Across the group
-          </div>
-          {nav.map((item) => {
-            const isActive =
-              location === item.href || (item.href !== "/" && location.startsWith(item.href))
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-start gap-3 px-3 py-2 rounded-md transition-colors text-sm font-medium group",
-                  isActive ? "bg-emerald-600 text-white" : "hover:bg-slate-800 hover:text-white",
-                )}
-              >
-                <item.icon
-                  className={cn(
-                    "w-4 h-4 mt-0.5 shrink-0",
-                    isActive ? "text-white" : "text-slate-400 group-hover:text-slate-200",
-                  )}
-                />
-                <span className="flex flex-col">
-                  {item.label}
-                  <span
+        <div className="flex-1 py-4 overflow-y-auto">
+          {GROUPS.map((group) => (
+            <div key={group.label} className="mb-5">
+              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-5 mb-2">
+                {group.label}
+              </div>
+              {group.items.map((item) => {
+                const isActive =
+                  location === item.href || (item.href !== "/" && location.startsWith(item.href))
+                return (
+                  <Link
+                    key={`${group.label}-${item.href}-${item.label}`}
+                    href={item.href}
                     className={cn(
-                      "text-[10px] font-normal",
-                      isActive ? "text-emerald-100" : "text-slate-500",
+                      "flex items-center gap-3 px-5 py-2 text-sm font-medium transition-colors border-l-2",
+                      isActive
+                        ? "bg-emerald-600/15 text-white border-emerald-500"
+                        : "border-transparent hover:bg-white/5 hover:text-white",
                     )}
                   >
-                    {item.hint}
-                  </span>
-                </span>
-              </Link>
-            )
-          })}
-
-          <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 mt-8 px-2">
-            Services
-          </div>
-          {services.map((s) => (
-            <a
-              key={s.href}
-              href={s.href}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-start gap-3 px-3 py-2 rounded-md transition-colors text-sm font-medium hover:bg-slate-800 hover:text-white group"
-            >
-              <ExternalLink className="w-4 h-4 mt-0.5 shrink-0 text-slate-500 group-hover:text-slate-300" />
-              <span className="flex flex-col">
-                {s.label}
-                <span className="text-[10px] font-normal text-slate-500">{s.hint}</span>
-              </span>
-            </a>
+                    <item.icon
+                      className={cn("w-4 h-4 shrink-0", isActive ? "text-emerald-400" : "text-slate-500")}
+                    />
+                    {item.label}
+                  </Link>
+                )
+              })}
+            </div>
           ))}
+
+          <div className="mb-2">
+            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-5 mb-2">
+              Services
+            </div>
+            {/* Separate products, reachable from here, not embedded. */}
+            {[
+              { href: "http://localhost:24791/", label: "InsurRouter" },
+              { href: "http://localhost:18815/doc-ingest/", label: "VeloDocs" },
+            ].map((s) => (
+              <a
+                key={s.href}
+                href={s.href}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-3 px-5 py-2 text-sm font-medium border-l-2 border-transparent hover:bg-white/5 hover:text-white transition-colors"
+              >
+                <ExternalLink className="w-4 h-4 shrink-0 text-slate-500" />
+                {s.label}
+              </a>
+            ))}
+          </div>
         </div>
 
-        <div className="p-4 border-t border-slate-800 shrink-0">
-          <div className="flex items-center gap-3 px-2 py-2 rounded-md">
-            <div className="w-8 h-8 rounded-full bg-slate-700 border border-slate-600 flex items-center justify-center shrink-0">
-              <Building2 className="w-4 h-4 text-slate-300" />
-            </div>
-            <div className="flex flex-col min-w-0">
-              <span className="text-sm font-semibold text-white truncate">
-                Saraswati–Deccan Group
-              </span>
-              {/* Says what it is. There is no login yet, and a fake user name
-                  in the corner would imply otherwise. */}
-              <span className="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">
-                Owner · no auth yet
-              </span>
-            </div>
-          </div>
+        <div className="px-5 py-3 border-t border-white/10 text-[10px] text-slate-500 leading-relaxed">
+          Reads the dealer's DMS. Never writes to it.
         </div>
       </aside>
 
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <div className="flex-1 overflow-auto bg-slate-50">
-          <div className="p-8 max-w-[1600px] mx-auto">{children}</div>
+        <header className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between gap-4 shrink-0">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h2 className="font-bold text-slate-900 truncate">
+                {selected?.name ?? "No showroom"}
+              </h2>
+              <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200 shrink-0">
+                Sandbox
+              </span>
+            </div>
+            <div className="text-xs text-slate-500 truncate">
+              {selected?.dmsAccounts.map((a) => a.dealerCode).join(", ") || "no dealer code"}
+              {selected?.city && ` · ${selected.city}`}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 shrink-0">
+            {!isLoading && showrooms.length > 0 && (
+              <NativeSelect
+                className="w-56 h-9 text-sm"
+                value={selected ? String(selected.id) : ""}
+                onChange={(e) => setShowroomId(Number(e.target.value))}
+              >
+                {showrooms.map((s) => (
+                  <option key={s.id} value={String(s.id)}>
+                    {s.name}
+                    {!s.isActive && " (inactive)"}
+                    {s.dmsAccounts.length === 0 && " — no DMS"}
+                  </option>
+                ))}
+              </NativeSelect>
+            )}
+            <span className="text-xs font-semibold text-slate-500 tabular-nums">
+              {financialYear()}
+            </span>
+            <button className="text-slate-400 hover:text-slate-600 transition-colors">
+              <Bell className="w-4 h-4" />
+            </button>
+            {/* No invented user. There is no login yet and pretending otherwise
+                is the same defect as a simulated policy that looks issued. */}
+            <div className="flex items-center gap-2 pl-3 border-l border-slate-200">
+              <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center">
+                <Building2 className="w-3.5 h-3.5 text-slate-500" />
+              </div>
+              <div className="leading-tight">
+                <div className="text-xs font-semibold text-slate-800">Owner</div>
+                <div className="text-[10px] text-slate-400 uppercase tracking-wider">
+                  no auth yet
+                </div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-auto">
+          <div className="p-6 max-w-[1700px] mx-auto">{children}</div>
         </div>
       </main>
     </div>

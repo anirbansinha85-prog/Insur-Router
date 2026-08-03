@@ -17,20 +17,18 @@ import {
   getGetShowroomWorklistQueryKey,
   useGetShowroomPanel,
   useGetShowroomWorklist,
-  useListShowrooms,
   useSyncShowroomDms,
   type ReconcileState,
   type WorklistRow,
 } from "@workspace/api-client-react"
+import { useShowroom } from "@/lib/showroom"
 import { useQueryClient } from "@tanstack/react-query"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { NativeSelect } from "@/components/ui/select"
 import { formatDate } from "@/lib/utils"
-import { useLocation } from "wouter"
 import {
   AlertTriangle,
   ArrowRight,
@@ -136,21 +134,20 @@ function SystemView({
   )
 }
 
+/**
+ * Where InsurRouter lives.
+ *
+ * DDMS links *out* to it rather than routing to it, because they are separate
+ * services now. Hardcoded to the local dev origin until there is a real service
+ * registry — and hardcoded visibly here rather than buried, so it is one edit
+ * when that arrives.
+ */
+const INSUR_ROUTER_ORIGIN = "http://localhost:24791"
+
 export default function Worklist() {
-  const [, setLocation] = useLocation()
   const queryClient = useQueryClient()
-  const [showroomId, setShowroomId] = useState<number | null>(null)
   const [filter, setFilter] = useState<ReconcileState | "all">("all")
-
-  const { data: showrooms, isLoading: showroomsLoading } = useListShowrooms()
-
-  // Default to the first showroom that can actually be synced. Picking one with
-  // no DMS account would open on a permanently empty table and look broken.
-  const selected = useMemo(() => {
-    if (!showrooms?.length) return null
-    if (showroomId !== null) return showrooms.find((s) => s.id === showroomId) ?? null
-    return showrooms.find((s) => s.isActive && s.dmsAccounts.length > 0) ?? showrooms[0]
-  }, [showrooms, showroomId])
+  const { selected } = useShowroom()
 
   const worklistParams = { showroomId: selected?.id ?? 0 }
   const { data, isLoading, isFetching } = useGetShowroomWorklist(worklistParams, {
@@ -201,34 +198,14 @@ export default function Worklist() {
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 ease-out">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Showroom worklist</h1>
-          <p className="text-slate-500 text-sm mt-1">
+          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Deals &amp; issuance</h1>
+          <p className="text-slate-500 text-sm mt-0.5">
             Every deal in the dealer's system, next to what we know about it. The
             difference between the two columns is the work.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
-          {showroomsLoading ? (
-            <Skeleton className="h-10 w-64" />
-          ) : (
-            <div className="relative">
-              <Store className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-              <NativeSelect
-                className="w-64 pl-9"
-                value={selected ? String(selected.id) : ""}
-                onChange={(e) => setShowroomId(Number(e.target.value))}
-              >
-                {showrooms?.map((s) => (
-                  <option key={s.id} value={String(s.id)}>
-                    {s.name}
-                    {!s.isActive && " (inactive)"}
-                    {s.dmsAccounts.length === 0 && " — no DMS"}
-                  </option>
-                ))}
-              </NativeSelect>
-            </div>
-          )}
           <Button
             variant="accent"
             className="gap-2"
@@ -444,13 +421,15 @@ export default function Worklist() {
                         simulated={row.ddms.policySimulated}
                       />
                       {row.ddms.applicationId && (
-                        <button
-                          onClick={() => setLocation(`/applications/${row.ddms.applicationId}`)}
-                          className="mt-1 text-[11px] text-accent hover:underline inline-flex items-center gap-0.5 font-medium"
+                        <a
+                          href={`${INSUR_ROUTER_ORIGIN}/applications/${row.ddms.applicationId}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-1 text-[11px] text-emerald-700 hover:underline inline-flex items-center gap-0.5 font-medium"
                         >
-                          #{row.ddms.applicationId}
+                          #{row.ddms.applicationId} in InsurRouter
                           <ChevronRight className="w-3 h-3" />
-                        </button>
+                        </a>
                       )}
                     </TableCell>
 

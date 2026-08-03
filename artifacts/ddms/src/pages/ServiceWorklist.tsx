@@ -14,17 +14,16 @@ import { useMemo, useState } from "react"
 import {
   getGetServiceWorklistQueryKey,
   useGetServiceWorklist,
-  useListShowrooms,
   type ServiceState,
   type ServiceWorklistRow,
 } from "@workspace/api-client-react"
+import { useShowroom } from "@/lib/showroom"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { NativeSelect } from "@/components/ui/select"
 import { formatDate } from "@/lib/utils"
-import { AlertTriangle, Clock, PhoneCall, Store, Wrench } from "lucide-react"
+import { AlertTriangle, Clock, PhoneCall, Wrench } from "lucide-react"
 
 const STATE: Record<
   ServiceState,
@@ -89,16 +88,8 @@ function StatCard({
 }
 
 export default function ServiceWorklist() {
-  const [showroomId, setShowroomId] = useState<number | null>(null)
   const [filter, setFilter] = useState<ServiceState | "all">("all")
-
-  const { data: showrooms, isLoading: showroomsLoading } = useListShowrooms()
-
-  const selected = useMemo(() => {
-    if (!showrooms?.length) return null
-    if (showroomId !== null) return showrooms.find((s) => s.id === showroomId) ?? null
-    return showrooms.find((s) => s.isActive && s.dmsAccounts.length > 0) ?? showrooms[0]
-  }, [showrooms, showroomId])
+  const { selected } = useShowroom()
 
   const params = { showroomId: selected?.id ?? 0 }
   const { data, isLoading } = useGetServiceWorklist(params, {
@@ -118,35 +109,12 @@ export default function ServiceWorklist() {
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 ease-out">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Workshop</h1>
-          <p className="text-slate-500 text-sm mt-1">
-            Every open job card, and what it needs from a person. Almost all of it
-            is a phone call nobody has made.
-          </p>
-        </div>
-
-        {showroomsLoading ? (
-          <Skeleton className="h-10 w-64" />
-        ) : (
-          <div className="relative">
-            <Store className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-            <NativeSelect
-              className="w-64 pl-9"
-              value={selected ? String(selected.id) : ""}
-              onChange={(e) => setShowroomId(Number(e.target.value))}
-            >
-              {showrooms?.map((s) => (
-                <option key={s.id} value={String(s.id)}>
-                  {s.name}
-                  {!s.isActive && " (inactive)"}
-                  {s.dmsAccounts.length === 0 && " — no DMS"}
-                </option>
-              ))}
-            </NativeSelect>
-          </div>
-        )}
+      <div>
+        <h1 className="text-xl font-bold text-slate-900 tracking-tight">Service &amp; warranty</h1>
+        <p className="text-slate-500 text-sm mt-0.5">
+          Every open job card, and what it needs from a person. Almost all of it
+          is a phone call nobody has made.
+        </p>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

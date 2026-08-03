@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { Shell } from '@/components/layout/Shell';
+import { ShowroomProvider } from '@/lib/showroom';
 
 import Leads from '@/pages/Leads';
 import Worklist from '@/pages/Worklist';
@@ -43,7 +44,11 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <WouterRouter base={import.meta.env.BASE_URL?.replace(/\/$/, '') || ''}>
-        <Router />
+        {/* Showroom scope wraps the router, so switching outlet in the header
+            carries across every screen rather than each page keeping its own. */}
+        <ShowroomProvider>
+          <Router />
+        </ShowroomProvider>
       </WouterRouter>
     </QueryClientProvider>
   );
