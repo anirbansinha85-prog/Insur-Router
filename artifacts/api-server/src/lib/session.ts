@@ -14,7 +14,13 @@
 import { randomBytes, createHash } from "node:crypto";
 import { and, eq, gt, lt } from "drizzle-orm";
 import type { NextFunction, Request, Response } from "express";
-import { db, sessionsTable, showroomsTable, usersTable } from "@workspace/db";
+import {
+  db,
+  sessionsTable,
+  showroomsTable,
+  usersTable,
+  withSessionScope,
+} from "@workspace/db";
 // Hashing lives in lib/db, beside the column it protects, so the seed
 // scripts can create users without reaching into this artifact.
 export { hashPassword, verifyPassword } from "@workspace/db";
@@ -103,6 +109,12 @@ declare global {
   namespace Express {
     interface Request {
       sessionUser?: SessionUser;
+      /**
+       * The hash, never the token. It is what the database compares against
+       * and what `withSessionScope` puts on the connection — see the note
+       * there about GUCs turning up in `pg_stat_activity`.
+       */
+      sessionTokenHash?: string;
     }
   }
 }
@@ -149,7 +161,10 @@ export async function attachSession(
   const token = sessionTokenFrom(req);
   if (token) {
     const user = await resolveSession(token);
-    if (user) req.sessionUser = user;
+    if (user) {
+      req.sessionUser = user;
+      req.sessionTokenHash = hashToken(token);
+    }
   }
   next();
 }
@@ -160,6 +175,46 @@ export function requireUser(req: Request, res: Response, next: NextFunction): vo
     return;
   }
   next();
+}
+
+/**
+ * Put the rest of this request on the restricted connection.
+ *
+ * From here down, `db` is a connection belonging to the `ddms_app` role, which
+ * cannot bypass row-level security and has been told — via the session token
+ * hash, which it has no way to read for itself — whose data it is allowed to
+ * see. A handler below this that forgets its `where owner_id = ...` now returns
+ * nothing instead of returning everything.
+ *
+ * The scope has to outlive `next()`, because the handlers it calls finish
+ * asynchronously long after it returns. `res` closing is the only reliable
+ * signal that the request is genuinely over, whether it ended in a response, an
+ * error, or the client hanging up.
+ */
+export function sessionScope(req: Request, res: Response, next: NextFunction): void {
+  const tokenHash = req.sessionTokenHash;
+  if (!tokenHash) {
+    // Only reachable if this is mounted without `requireUser` above it.
+    res.status(401).json({ error: "Not signed in." });
+    return;
+  }
+
+  const finished = new Promise<void>((resolve) => {
+    res.on("close", () => resolve());
+  });
+
+  void withSessionScope(tokenHash, async () => {
+    next();
+    await finished;
+  }).catch((err: unknown) => {
+    // The scope itself failed — could not take a connection, or could not set
+    // the session on it. Express has already been handed the request, so the
+    // most this can do is say so loudly.
+    logger.error({ err }, "Session-scoped connection failed");
+    if (!res.headersSent) {
+      res.status(503).json({ error: "Database is unavailable." });
+    }
+  });
 }
 
 /**

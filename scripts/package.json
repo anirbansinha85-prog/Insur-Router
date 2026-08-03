@@ -8,14 +8,17 @@
     "seed": "tsx --env-file-if-exists=../.env ./src/seed-providers.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "seed-owners": "tsx --env-file-if-exists=../.env ./src/seed-owners.ts",
-    "seed-users": "tsx --env-file-if-exists=../.env ./src/seed-users.ts"
+    "seed-users": "tsx --env-file-if-exists=../.env ./src/seed-users.ts",
+    "rls": "tsx --env-file-if-exists=../.env ./src/apply-rls.ts"
   },
   "dependencies": {
     "@workspace/db": "workspace:*",
-    "drizzle-orm": "catalog:"
+    "drizzle-orm": "catalog:",
+    "pg": "^8.22.0"
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@types/pg": "^8.20.0",
     "tsx": "catalog:"
   }
 }

@@ -87,7 +87,8 @@ Status: **✅ done** · **◑ partial** · **○ not started**
 |---|---|---|
 | R-40 | Never write to the OEM's DMS | ✅ |
 | R-41 | Never present simulated output as real. **Narrower than R-33 and it survives it**: dealership records may read as real because they stand in for real ones, but a policy number no insurer issued stays marked on the policy itself, because somebody could otherwise believe they are covered | ✅ |
-| R-42 | Per-user authentication before any real customer | ○ **blocker** |
+| R-42 | Per-user authentication before any real customer | ✅ |
+| R-45 | Isolation enforced by the database, not only by application code. The DDMS request path connects as a role that cannot bypass RLS and cannot read a session token | ✅ |
 | R-43 | Deccan stays parked; Saraswati is the working showroom | ✅ |
 | R-44 | Remote-desktop access (AnyDesk-style) is **not** the integration route | ✅ ruled out |
 
@@ -162,23 +163,72 @@ a failing query rather than by inspection.
 404 not 403 on the cross-tenant reads: 403 confirms the showroom exists, which
 is what an attacker enumerating ids wanted to learn.
 
-> **Not yet done, and it was in the original wording:** RLS policies so the
-> Supabase key stops being a master key. The API connects as the Postgres owner
-> and bypasses RLS entirely, so today's isolation is enforced in the
-> application, not the database. That is a real remaining hole — anything
-> holding the connection string sees everything — and it is now OBJ-7 rather
-> than quietly dropped.
+> **Not done here, and it was in the original wording:** RLS policies, so the
+> connection string stops being a master key. Split out as OBJ-7 rather than
+> quietly dropped.
 
-### OBJ-7 — Isolation enforced by the database, not just the app  ← **next**
-*Split out of OBJ-3, where it was in the wording and did not get done.*
+### OBJ-7 — Isolation enforced by the database, not just the app  ✅ **done 3 Aug**
+*Covers R-45. Split out of OBJ-3, where it was in the wording and did not get
+done.*
 
-Application-level scoping is in place, but the API connects as the Postgres
-owner and bypasses RLS. Anything holding the connection string still sees every
-owner's data.
+A second Postgres role, `ddms_app`, which owns nothing and cannot bypass RLS.
+The DDMS request path connects as it; `sessionScope` sets the session token
+hash on the connection and the policies in `lib/db/sql/rls.sql` resolve the
+owner from there.
+
+The token hash is what makes this more than bookkeeping. `ddms_app` has **no
+grants at all** on `users` or `sessions`, so it cannot read a token hash and
+therefore cannot invent one. `app.current_owner_id()` is `security definer` and
+reads those tables on its behalf, returning only an owner id.
 
 **Done when:** a connection that is not the owner role reads zero rows from
-`applications` without a policy granting it, proven by a query returning
-nothing rather than by reading the policy file.
+`applications` without a policy granting it, proven by a query returning nothing
+rather than by reading the policy file.
+
+**Verified.** `pnpm run db:rls` finishes by proving it and exits non-zero if it
+cannot, so this is a check that runs rather than a claim in a document:
+
+| As `ddms_app`, no session | |
+|---|---|
+| `applications`, `dms_deals`, `dms_job_cards`, `dms_enquiries`, `showrooms`, `owners` | 0 rows each |
+| `users`, `sessions` | permission denied — not "empty", denied |
+| invented token hash | 0 rows |
+| `create policy` on `showrooms` | must be owner of table |
+| `alter table … disable row level security` | must be owner of table |
+
+With a real session, and the application-level check deliberately out of the
+way — signed in as Malhotra, reaching for Saraswati's showroom 1:
+
+| | |
+|---|---|
+| `insert into applications … showroom_id = 1` | new row violates row-level security policy |
+| `select from applications where showroom_id = 1` | 0 rows |
+| `update dms_deals where showroom_id = 1` | 0 rows changed |
+| `select own showroom 7` | 1 row (control) |
+
+And through HTTP, on a shared connection pool: 40 interleaved requests across
+the two owners, each returning only its own outlets. A pooled connection that
+kept a previous request's token would have shown up here as one wrong answer in
+forty.
+
+> **What this does not do.** The process still holds the owner credential, for
+> InsurRouter's routes, VeloDocs's ingest and the sync scheduler. Somebody who
+> can read the whole environment still reads everything. What is closed is the
+> DDMS request path: it now cannot reach another tenant even when the code
+> asks it to. Retiring the owner connection from the running server needs
+> InsurRouter to have a sign-in of its own — OBJ-8.
+
+### OBJ-8 — One credential, and it is not the owner's  ← **next**
+*Follows OBJ-7. Covers R-7 and the rest of R-42.*
+
+InsurRouter and VeloDocs still run on the connection that bypasses RLS, because
+they have no sign-in and no tenant to scope by. Until they do, the server holds
+a credential that sees every dealership.
+
+**Done when:** the running API server's environment contains no connection
+string with `bypassrls`, and InsurRouter's application list shows only the
+signed-in owner's applications — proven by signing in as the second owner and
+getting an empty list rather than by reading the code.
 
 ### OBJ-4 — The remaining modules
 *Covers R-16, R-17, R-18.*
@@ -219,7 +269,8 @@ the business rather than a question about the data.
 
 **Built and verified:** owner tier; the read-only mirror across three modules
 (deals, job cards, enquiries); reconciliation on deals; derived state on all
-three; insurer panel with quota; scheduled sync; API authentication; the
+three; insurer panel with quota; scheduled sync; API authentication; per-user
+sign-in; row-level security on the DDMS request path; the
 one-application-per-deal constraint; DDMS as its own service.
 
 **The dual role has started.** The first action button works end to end: a deal
@@ -229,8 +280,10 @@ three screens are still sentences, because they still need a person — and
 dressing those as buttons would be the same defect as a simulated policy that
 looks issued.
 
-**The blocker before a customer:** no per-user auth. An owner-level product with
-no owner login cannot be sold to an owner.
+**The blocker before a customer has moved.** Sign-in exists and the database
+enforces the boundary rather than trusting the code to. What is left is that the
+server still holds a credential that can see every dealership, because the other
+two products have nothing to scope by yet — OBJ-8.
 
 ---
 

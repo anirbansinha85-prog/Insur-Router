@@ -47,9 +47,68 @@ in production needs the same injection at the reverse proxy.
 internet); origins come from `CORS_ORIGINS`, defaulting to the three local dev
 servers.
 
-**This authenticates a process, not a person.** It cannot say *which* showroom
-is asking, so it does not yet enforce the owner scoping the schema is shaped
-for — `showroomId` still arrives in the request rather than from a session.
+**This authenticates a process, not a person**, and cannot say whose data is
+being asked for. That is what the session layer below is for. Neither
+substitutes for the other.
+
+## Who is asking: sessions, scope, and row-level security
+
+Three layers, each answering a different question. Skipping any one of them
+leaves a hole the other two cannot cover.
+
+| Layer | Question | Where |
+|---|---|---|
+| Service key | is this one of our processes? | `lib/auth.ts` |
+| Session | who is signed in? | `lib/session.ts`, `users` + `sessions` |
+| Row-level security | what may that person's connection see? | `lib/db/sql/rls.sql` |
+
+**Sessions.** `POST /api/auth/login` verifies a scrypt password and issues an
+httpOnly cookie. Only the SHA-256 of the token is stored, so the table is not a
+list of usable credentials. `attachSession` runs app-wide and never rejects;
+`requireUser` rejects. `assertShowroomAccess` answers **404, not 403**, on a
+showroom the session's owner does not hold — a 403 confirms it exists.
+
+**The two database roles**, and they are not interchangeable:
+
+| | `DATABASE_URL` (`postgres`) | `DATABASE_URL_APP` (`ddms_app`) |
+|---|---|---|
+| Owns the tables | yes | no |
+| `bypassrls` | **yes** | no |
+| Grants on `users` / `sessions` | all | **none** |
+| Used by | drizzle-kit, seeds, InsurRouter and VeloDocs routes, the sync scheduler | the DDMS request path |
+
+The DMS router mounts `sessionScope`, which checks out a connection from the
+`ddms_app` pool and sets `app.session_token` on it for the life of the request.
+`db` from `@workspace/db` is an `AsyncLocalStorage`-backed proxy: inside a scope
+it is that connection, outside one it is the owner pool. **No caller passes a
+handle around**, which is the whole reason it is a proxy — `lib/db/src/scope.ts`
+has the argument.
+
+Policies resolve the tenant through `app.current_owner_id()`, a `security
+definer` function that reads `sessions` and `users`. `ddms_app` has no grants on
+those tables, so it cannot read a token hash and therefore cannot invent one:
+holding its credentials gets you exactly as far as holding no session at all.
+
+**Consequences worth knowing before you write a query:**
+
+- Inside the DMS router, a query with **no** tenant filter returns only the
+  signed-in owner's rows. That is the point, not a coincidence to rely on
+  silently — write the filter anyway, and let RLS be the backstop.
+- `applications.showroom_id` is nullable, and a null belongs to **nobody**
+  under RLS. Hand, OCR and scrape applications are invisible to DDMS by design.
+  They are still reachable through InsurRouter, which runs on the owner pool.
+- A new table arrives with RLS enabled and no policy, so `ddms_app` cannot read
+  it at all. **Run `pnpm run db:rls` after every `db:push`**, and add the table
+  to `rls.sql` first. A blank DDMS screen is the intended failure.
+- Anything genuinely cross-tenant — the sync scheduler is the only one today —
+  imports `ownerDb` by name rather than `db`, so reaching past a tenant is a
+  visible decision instead of a missing scope.
+
+**Mount router-wide gates on their path prefix**, never path-less.
+`router.use(requireUser)` inside the DMS router runs for every request that
+*reaches* that router, including ones destined for a router mounted after it —
+which is how VeloDocs's ingest routes silently answered 401 for a whole
+session. Use `router.use("/dms", requireUser, sessionScope)`.
 
 ## Workspace layout
 
@@ -67,7 +126,9 @@ artifacts/            deployable apps
   dms-mock/           fake OEM dealer system, dev fixture — see its README
 docs/                 domain reference (issuance field requirements, IRDAI rates)
 lib/                  shared packages
-  db/                 Drizzle schema + pg pool. Source of truth for tables.
+  db/                 Drizzle schema + the two pg pools. Source of truth for
+                      tables. src/scope.ts holds the request-scoped handle;
+                      sql/rls.sql holds the row-level security policies.
   api-spec/           openapi.yaml — source of truth for API contracts
   api-zod/            GENERATED Zod schemas + types. Do not hand-edit.
   api-client-react/   GENERATED React Query hooks. Do not hand-edit.
@@ -86,7 +147,8 @@ pnpm run typecheck:libs                         # before checking leaf packages
 
 ## Data model
 
-Ten tables, all in `lib/db/src/schema/`.
+Fifteen tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
+which of them `ddms_app` may read, and on what terms, is in `lib/db/sql/rls.sql`.
 
 **The owner tier** — who the data belongs to:
 
@@ -362,6 +424,12 @@ the API refuses to boot without it, and each Vite dev server throws when it
 creates its `/api` proxy. Generate one with
 `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
 
+`DATABASE_URL_APP` must be there too, for the same reason and with the same
+failure mode — the API refuses to boot without it rather than falling back to
+the connection that bypasses row-level security. Copy `DATABASE_URL`, change the
+user to `ddms_app.<project-ref>`, pick a password, then `pnpm run db:rls`, which
+creates the role with whatever password that URL says.
+
 ```powershell
 # API — build once, then run node directly so --env-file loads .env.
 # (Don't use the package's `dev` script on Windows: it starts with POSIX
@@ -399,11 +467,15 @@ pnpm run build          # typecheck + build all
 pnpm run db:push        # push schema changes (dev only, destructive)
 pnpm run db:seed        # insert the 6 starter providers, idempotent
 pnpm run db:seed-owners # owner, showrooms, DMS accounts + insurer panel
+pnpm run db:seed-users  # sign-in accounts, plus a second owner to isolate from
+pnpm run db:rls         # create the ddms_app role and apply RLS policies
 ```
 
-`db:seed-owners` must run **after** `db:seed` — panel entries point at
-`providers` rows, and it warns loudly for any insurer code it cannot find rather
-than silently leaving it off the panel.
+Order matters twice. `db:seed-owners` must run **after** `db:seed` — panel
+entries point at `providers` rows, and it warns loudly for any insurer code it
+cannot find rather than silently leaving it off the panel. `db:rls` must run
+**after every `db:push`** — a new table arrives with RLS enabled and no policy,
+so `ddms_app` cannot read it until `lib/db/sql/rls.sql` names it.
 
 **`pnpm install` must be run from Git Bash on Windows.** The `preinstall` hook
 that refuses npm/yarn is a `sh -c` script and PowerShell has no `sh`, so the
@@ -476,8 +548,11 @@ real request.
 - **`preinstall` refuses npm and yarn.** Use pnpm.
 - **`lib/api-client-react` is a composite TS package.** After codegen it must be
   rebuilt with `tsc` before Expo (rc-capture) will typecheck against it.
-- **RLS is enabled deny-all** (no policies) on the Supabase tables. The API
-  connects as the Postgres owner over a direct `pg` pool, which bypasses RLS, so
-  the app is unaffected. This deliberately blocks the Supabase anon key from
-  reading anything — any future Supabase-client frontend needs policies written
-  first, and will read zero rows until then.
+- **RLS policies name `ddms_app` explicitly, not `public`.** The Supabase `anon`
+  and `authenticated` roles therefore still read nothing, which is the intended
+  answer until a Supabase-client frontend exists and someone writes policies for
+  it deliberately.
+- **`pnpm run db:rls` proves itself and exits non-zero if it cannot.** It
+  reconnects as `ddms_app` with no session and checks the tables read empty and
+  that `users`/`sessions` are denied. Reading the policy file proves nothing — a
+  typo in an owner comparison still reads like a policy.

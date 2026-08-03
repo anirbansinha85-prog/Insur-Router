@@ -14,7 +14,7 @@
  */
 
 import { and, eq } from "drizzle-orm";
-import { db, showroomDmsAccountsTable, showroomsTable } from "@workspace/db";
+import { ownerDb, showroomDmsAccountsTable, showroomsTable } from "@workspace/db";
 import { logger } from "../logger";
 import { isDmsConfigured } from "./client";
 import { syncShowroomEnquiries } from "./lead-worklist";
@@ -34,9 +34,17 @@ function readMs(name: string, fallback: number): number {
   return value;
 }
 
-/** Showrooms worth syncing: active, and holding at least one active DMS account. */
+/**
+ * Showrooms worth syncing: active, and holding at least one active DMS account.
+ *
+ * `ownerDb` rather than `db`, spelled out rather than inherited. This runs on a
+ * timer with nobody signed in, and it is cross-tenant by definition — it syncs
+ * every owner's showrooms, which is the one thing a tenant-scoped connection
+ * must never do. Naming the unrestricted handle here makes that a decision
+ * somebody took rather than a scope somebody forgot to open.
+ */
 async function syncableShowroomIds(): Promise<number[]> {
-  const rows = await db
+  const rows = await ownerDb
     .selectDistinct({ id: showroomsTable.id })
     .from(showroomsTable)
     .innerJoin(

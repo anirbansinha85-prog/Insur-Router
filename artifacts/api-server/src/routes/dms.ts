@@ -43,15 +43,32 @@ import {
   syncShowroomJobCards,
 } from "../lib/dms";
 import { createDraftApplication } from "../lib/draft-application";
-import { assertShowroomAccess, requireUser } from "../lib/session";
+import { assertShowroomAccess, requireUser, sessionScope } from "../lib/session";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
-// Everything below is one owner's business data, so the whole router needs a
-// signed-in user. Gated here rather than per route: a route added later is
-// then protected by default instead of by whoever remembers.
-router.use(requireUser);
+/**
+ * Two gates, on every route in this file and on nothing else.
+ *
+ * `requireUser` decides whether there is an owner at all. `sessionScope` puts
+ * the rest of the request on the restricted database role, where the policies
+ * in `lib/db/sql/rls.sql` apply — so a handler that forgets its tenant filter
+ * comes back empty rather than coming back with everybody. The unscoped
+ * `showroom_dms_accounts` read further down this file is the case in point: it
+ * has no `where` clause at all, and until `sessionScope` existed it pulled
+ * every dealer code in the database into this process.
+ *
+ * Mounted **on the `/dms` prefix**, and that is not cosmetic. A path-less
+ * `router.use(requireUser)` runs for every request that reaches this router,
+ * including ones meant for a router mounted after it — which is exactly what
+ * happened when this gate first went in, and it answered 401 to all of
+ * VeloDocs's ingest routes for as long as nobody tested them.
+ *
+ * Gated at the router rather than per route on purpose: a route added to this
+ * file later is protected by default instead of by whoever remembers.
+ */
+router.use("/dms", requireUser, sessionScope);
 
 function parseShowroomId(raw: string): number | null {
   const id = Number(raw);

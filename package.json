@@ -9,6 +9,7 @@
     "db:seed": "pnpm --filter @workspace/scripts run seed",
     "db:seed-owners": "pnpm --filter @workspace/scripts run seed-owners",
     "db:seed-users": "pnpm --filter @workspace/scripts run seed-users",
+    "db:rls": "pnpm --filter @workspace/scripts run rls",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
   },

@@ -1,6 +1,7 @@
 import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
+import { requireAppRoleConfigured } from "@workspace/db";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import {
@@ -14,6 +15,11 @@ const app: Express = express();
 
 // Fail at import time, not on the first unauthenticated request.
 const serviceKey = requireServiceKeyConfigured();
+
+// Same reasoning, one layer down. Without the restricted role the DDMS routes
+// would fall back to the connection that bypasses row-level security, and every
+// policy written in lib/db/sql/rls.sql would be inert with nothing saying so.
+requireAppRoleConfigured();
 
 app.use(
   pinoHttp({
