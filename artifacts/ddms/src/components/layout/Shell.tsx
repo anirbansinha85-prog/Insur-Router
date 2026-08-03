@@ -1,8 +1,9 @@
 import { Link, useLocation } from "wouter"
 import {
   Users, ListChecks, Wrench, LayoutDashboard, ShieldCheck, Bell,
-  ExternalLink, Building2,
+  ExternalLink, LogOut,
 } from "lucide-react"
+import type { SessionUser } from "@workspace/api-client-react"
 import { cn } from "@/lib/utils"
 import { financialYear, useShowroom } from "@/lib/showroom"
 import { NativeSelect } from "@/components/ui/select"
@@ -44,7 +45,13 @@ const GROUPS: NavGroup[] = [
   },
 ]
 
-export function Shell({ children }: { children: React.ReactNode }) {
+interface ShellProps {
+  children: React.ReactNode
+  user: SessionUser
+  onSignOut: () => void
+}
+
+export function Shell({ children, user, onSignOut }: ShellProps) {
   const [location] = useLocation()
   const { showrooms, selected, setShowroomId, isLoading } = useShowroom()
 
@@ -159,18 +166,29 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <button className="text-slate-400 hover:text-slate-600 transition-colors">
               <Bell className="w-4 h-4" />
             </button>
-            {/* No invented user. There is no login yet and pretending otherwise
-                is the same defect as a simulated policy that looks issued. */}
             <div className="flex items-center gap-2 pl-3 border-l border-slate-200">
-              <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center">
-                <Building2 className="w-3.5 h-3.5 text-slate-500" />
+              <div className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
+                <span className="text-[10px] font-bold text-emerald-700">
+                  {user.name
+                    .split(" ")
+                    .map((p) => p[0])
+                    .slice(0, 2)
+                    .join("")}
+                </span>
               </div>
               <div className="leading-tight">
-                <div className="text-xs font-semibold text-slate-800">Owner</div>
+                <div className="text-xs font-semibold text-slate-800">{user.name}</div>
                 <div className="text-[10px] text-slate-400 uppercase tracking-wider">
-                  no auth yet
+                  {user.role.toLowerCase()}
                 </div>
               </div>
+              <button
+                onClick={onSignOut}
+                title="Sign out"
+                className="ml-1 text-slate-400 hover:text-slate-700 transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
             </div>
           </div>
         </header>

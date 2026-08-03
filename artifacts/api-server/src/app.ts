@@ -8,6 +8,7 @@ import {
   requireServiceKeyConfigured,
   serviceKeyAuth,
 } from "./lib/auth";
+import { attachSession } from "./lib/session";
 
 const app: Express = express();
 
@@ -41,6 +42,10 @@ app.use(express.urlencoded({ extended: true }));
 // is covered by default. A route that should be public opts out by name in
 // lib/auth.ts, which keeps the exemptions in one readable list rather than
 // scattered across the routers.
-app.use("/api", serviceKeyAuth(serviceKey), router);
+// Two layers, answering two different questions. The service key asks "is this
+// one of our processes"; the session asks "whose data is this". Neither
+// substitutes for the other, and the key alone was what let any caller read any
+// owner's customers by changing a number in a URL.
+app.use("/api", serviceKeyAuth(serviceKey), attachSession, router);
 
 export default app;

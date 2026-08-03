@@ -135,14 +135,50 @@ a policy number into the dealer's system, resolving two policies on one vehicle
 — and dressing those as buttons would be the same lie as a simulated policy that
 looks issued.
 
-### OBJ-3 — Per-user authentication  ← **next**
-*Covers R-42. Blocks every real customer.*
+### OBJ-3 — Per-user authentication  ✅ **done 3 Aug**
+*Covers R-42.*
 
-Owner logs in. `showroomId` comes from the session, not the request. RLS
-policies written so the Supabase key stops being a master key.
+Owner signs in; scope comes from the session. `users` and `sessions` tables,
+scrypt passwords, an httpOnly server-side session that can be revoked, and
+`assertShowroomAccess` on every route that touches tenant data — gated on the
+whole DMS router rather than per route, so a route added later is protected by
+default instead of by whoever remembers.
 
 **Done when:** two owners exist and neither can read the other's rows, proven by
 a failing query rather than by inspection.
+
+**Verified**, with Malhotra Motors seeded as a second owner:
+
+| | |
+|---|---|
+| Service key, no session | `401 Not signed in` |
+| Wrong password | `401 Those details are not right` |
+| Saraswati owner sees | `DEL-SARASWATI, PUN-DECCAN` |
+| Malhotra owner sees | `MUM-MALHOTRA` |
+| Malhotra reads Saraswati's worklist | `404 No showroom 1` |
+| Malhotra starts an application on a Saraswati deal | `404 No showroom 1` |
+| Saraswati reads their own | `200`, 4 deals |
+
+404 not 403 on the cross-tenant reads: 403 confirms the showroom exists, which
+is what an attacker enumerating ids wanted to learn.
+
+> **Not yet done, and it was in the original wording:** RLS policies so the
+> Supabase key stops being a master key. The API connects as the Postgres owner
+> and bypasses RLS entirely, so today's isolation is enforced in the
+> application, not the database. That is a real remaining hole — anything
+> holding the connection string sees everything — and it is now OBJ-7 rather
+> than quietly dropped.
+
+### OBJ-7 — Isolation enforced by the database, not just the app  ← **next**
+*Split out of OBJ-3, where it was in the wording and did not get done.*
+
+Application-level scoping is in place, but the API connects as the Postgres
+owner and bypasses RLS. Anything holding the connection string still sees every
+owner's data.
+
+**Done when:** a connection that is not the owner role reads zero rows from
+`applications` without a policy granting it, proven by a query returning
+nothing rather than by reading the policy file.
 
 ### OBJ-4 — The remaining modules
 *Covers R-16, R-17, R-18.*

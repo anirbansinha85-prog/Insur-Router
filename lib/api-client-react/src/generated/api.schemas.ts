@@ -615,6 +615,22 @@ export interface IngestResult {
   dealContext?: IngestResultDealContext;
 }
 
+export interface LoginInput {
+  email: string;
+  password: string;
+}
+
+/**
+ * Where tenant scope comes from. `ownerId` is never accepted from a request — it is read from the session, which is the whole point.
+ */
+export interface SessionUser {
+  userId: number;
+  ownerId: number;
+  email: string;
+  name: string;
+  role: string;
+}
+
 export type ShowroomSummaryDmsAccountsItem = {
   oemCode: string;
   dealerCode: string;

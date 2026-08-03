@@ -43,24 +43,22 @@ import {
   syncShowroomJobCards,
 } from "../lib/dms";
 import { createDraftApplication } from "../lib/draft-application";
+import { assertShowroomAccess, requireUser } from "../lib/session";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
+
+// Everything below is one owner's business data, so the whole router needs a
+// signed-in user. Gated here rather than per route: a route added later is
+// then protected by default instead of by whoever remembers.
+router.use(requireUser);
 
 function parseShowroomId(raw: string): number | null {
   const id = Number(raw);
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
-async function showroomExists(id: number): Promise<boolean> {
-  const [row] = await db
-    .select({ id: showroomsTable.id })
-    .from(showroomsTable)
-    .where(eq(showroomsTable.id, id));
-  return Boolean(row);
-}
-
-router.get("/dms/showrooms", async (_req, res): Promise<void> => {
+router.get("/dms/showrooms", async (req, res): Promise<void> => {
   // Two queries and a join in memory rather than one query with an aggregate:
   // the showroom count is single digits per owner and will stay that way, and
   // the flat rows are far easier to read than a jsonb_agg.
@@ -77,7 +75,11 @@ router.get("/dms/showrooms", async (_req, res): Promise<void> => {
     })
     .from(showroomsTable)
     .innerJoin(ownersTable, eq(ownersTable.id, showroomsTable.ownerId))
-    .orderBy(asc(showroomsTable.ownerId), asc(showroomsTable.code));
+    // Scoped to the signed-in owner. This is the picker that decides what the
+    // whole console shows, so an unscoped list here would put another owner's
+    // outlets one click away.
+    .where(eq(showroomsTable.ownerId, req.sessionUser!.ownerId))
+    .orderBy(asc(showroomsTable.code));
 
   const accounts = await db
     .select({
@@ -113,10 +115,7 @@ router.post("/dms/showrooms/:showroomId/sync", async (req, res): Promise<void> =
     return;
   }
 
-  if (!(await showroomExists(showroomId))) {
-    res.status(404).json({ error: `No showroom ${showroomId}` });
-    return;
-  }
+  if (!(await assertShowroomAccess(req, res, showroomId))) return;
 
   if (!isDmsConfigured()) {
     res.status(503).json({
@@ -165,10 +164,7 @@ router.get("/dms/showrooms/:showroomId/panel", async (req, res): Promise<void> =
     return;
   }
 
-  if (!(await showroomExists(showroomId))) {
-    res.status(404).json({ error: `No showroom ${showroomId}` });
-    return;
-  }
+  if (!(await assertShowroomAccess(req, res, showroomId))) return;
 
   // Quota and eligibility are computed by @workspace/quoting/panel — the same
   // module the mock dealer portal uses — so the routing rules cannot drift
@@ -183,10 +179,7 @@ router.get("/dms/worklist", async (req, res): Promise<void> => {
     return;
   }
 
-  if (!(await showroomExists(showroomId))) {
-    res.status(404).json({ error: `No showroom ${showroomId}` });
-    return;
-  }
+  if (!(await assertShowroomAccess(req, res, showroomId))) return;
 
   const rows = await buildWorklist({
     showroomId,
@@ -213,10 +206,7 @@ router.get("/dms/service-worklist", async (req, res): Promise<void> => {
     return;
   }
 
-  if (!(await showroomExists(showroomId))) {
-    res.status(404).json({ error: `No showroom ${showroomId}` });
-    return;
-  }
+  if (!(await assertShowroomAccess(req, res, showroomId))) return;
 
   const rows = await buildServiceWorklist({
     showroomId,
@@ -243,10 +233,7 @@ router.get("/dms/lead-worklist", async (req, res): Promise<void> => {
     return;
   }
 
-  if (!(await showroomExists(showroomId))) {
-    res.status(404).json({ error: `No showroom ${showroomId}` });
-    return;
-  }
+  if (!(await assertShowroomAccess(req, res, showroomId))) return;
 
   const rows = await buildLeadWorklist({
     showroomId,
@@ -294,6 +281,17 @@ router.post("/dms/deals/:dealId/start-application", async (req, res): Promise<vo
     const adapter = adapterForDealer(deal.dealerCode);
     const adapted = adapter.adaptDeal(deal);
     const tenant = await resolveTenantByDealerCode(deal.dealerCode);
+
+    // Whose deal is this? A deal id is guessable, and without this an owner
+    // could start an application against another owner's customer — creating a
+    // real row, in the wrong tenant, from a single POST.
+    if (!tenant) {
+      // Unmapped dealer code. A configuration gap, but from here it is also
+      // "not yours" — there is no owner to check against, so nobody may act.
+      res.status(404).json({ error: `No deal ${dealId}` });
+      return;
+    }
+    if (!(await assertShowroomAccess(req, res, tenant.showroomId))) return;
 
     const result = await createDraftApplication({
       fields: adapted.fields,

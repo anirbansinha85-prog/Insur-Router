@@ -16,6 +16,8 @@ tags:
     description: Insurance application management
   - name: dashboard
     description: Dashboard analytics and summaries
+  - name: auth
+    description: Sign-in and sessions
   - name: ingest
     description: Document ingestion and MSA payload extraction (VeloDocs)
   - name: dms
@@ -391,6 +393,72 @@ paths:
                 $ref: "#/components/schemas/Policy"
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Sessions ────────────────────────────────────────────────────────────────
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Sign in and receive a session cookie
+      description: >
+        Sets an httpOnly session cookie. The service key still applies — it says
+        the request came from one of our front ends — but the session is what
+        says whose data may be read.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              # Named, not inline. An inline request body makes orval emit
+              # `<Operation>Body` into both the zod and the types barrels, and
+              # the re-export collides — the same trap as `<Operation>Params`
+              # documented on /dms/worklist. Every request body here is a $ref
+              # for that reason.
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionUser"
+        "401":
+          description: Wrong details, or the account is deactivated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: End the session
+      responses:
+        "204":
+          description: Signed out
+
+  /auth/me:
+    get:
+      operationId: getCurrentUser
+      tags: [auth]
+      summary: Who the session belongs to
+      description: >
+        The console calls this on load to decide whether to show the sign-in
+        screen. 401 is a normal answer here, not a fault.
+      responses:
+        "200":
+          description: The signed-in user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionUser"
+        "401":
+          description: Not signed in
           content:
             application/json:
               schema:
@@ -1543,6 +1611,26 @@ components:
       required:
         - fields
         - confidence
+
+    LoginInput:
+      type: object
+      properties:
+        email: { type: string }
+        password: { type: string }
+      required: [email, password]
+
+    SessionUser:
+      type: object
+      description: >
+        Where tenant scope comes from. `ownerId` is never accepted from a
+        request — it is read from the session, which is the whole point.
+      properties:
+        userId: { type: integer }
+        ownerId: { type: integer }
+        email: { type: string }
+        name: { type: string }
+        role: { type: string }
+      required: [userId, ownerId, email, name, role]
 
     ShowroomSummary:
       type: object

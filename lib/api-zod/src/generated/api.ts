@@ -404,6 +404,43 @@ export const GetPolicyResponse = zod.object({
 
 
 /**
+ * Sets an httpOnly session cookie. The service key still applies — it says the request came from one of our front ends — but the session is what says whose data may be read.
+ * @summary Sign in and receive a session cookie
+ */
+export const LoginBody = zod.object({
+  "email": zod.string(),
+  "password": zod.string()
+})
+
+export const LoginResponse = zod.object({
+  "userId": zod.number().int(),
+  "ownerId": zod.number().int(),
+  "email": zod.string(),
+  "name": zod.string(),
+  "role": zod.string()
+}).describe('Where tenant scope comes from. `ownerId` is never accepted from a request — it is read from the session, which is the whole point.\n')
+
+
+/**
+ * @summary End the session
+ */
+export const LogoutResponse = zod.void()
+
+
+/**
+ * The console calls this on load to decide whether to show the sign-in screen. 401 is a normal answer here, not a fault.
+ * @summary Who the session belongs to
+ */
+export const GetCurrentUserResponse = zod.object({
+  "userId": zod.number().int(),
+  "ownerId": zod.number().int(),
+  "email": zod.string(),
+  "name": zod.string(),
+  "role": zod.string()
+}).describe('Where tenant scope comes from. `ownerId` is never accepted from a request — it is read from the session, which is the whole point.\n')
+
+
+/**
  * Drives the showroom picker on the owner console. Returns inactive showrooms too, marked as such, because an owner who has parked an outlet still needs to see it exists — silently hiding it looks like data loss.
  * @summary Showrooms the owner holds, with their DMS accounts
  */
