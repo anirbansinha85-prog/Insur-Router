@@ -100,6 +100,21 @@ refused, are in section 3b.*
 | R-63 | **See the outlet, act on what is yours or unowned.** A nine-person dealership covers for each other, so hiding a colleague's leads would be wrong and would hide the orphaned-work finding R-19 exists for. Visibility is the outlet; the write is yours, or nobody's | ✅ SELECT owner-scoped, writes narrowed |
 | R-64 | **A cross-outlet *finding* survives the narrowing; the other outlet's *rows* do not.** An advisor scoped to one branch still learns that the part their customer is waiting for is free at the other one, and still cannot open that branch's ledger. The finding is the product; the rows are somebody else's business | ✅ |
 
+### What it remembers
+*Researched 4 August, after the queue. The severity table shipped as the
+product's opinion; it is the dealership's, and the agent has never once looked
+at what this dealership actually did last time.*
+
+| # | Requirement | Status |
+|---|---|---|
+| R-65 | **Priority is dealer policy, not product logic.** The severity table decides what a short-staffed dealership does first, and it is currently one owner's judgement written by us into a file. It becomes per-owner data with the product's table as the default, editable by the owner or a showroom manager, with what changed and who changed it in the decision log. Same class as R-58: a bounded table of numbers, **not** a rule builder | ○ |
+| R-66 | **Memory is what people here actually did, and nothing else.** Only rows the decision log attributes to a *person* count as precedent. A mark the system made is excluded on purpose: an agent that re-reads its own output as evidence turns one early mistake into a settled belief, and the loop is invisible from inside. `decision_log.userId` already distinguishes the two, which is the whole reason R-60 insisted null means *the system did this* | ○ |
+| R-67 | **Nothing is stored as memory that was not already stored as a fact.** Precedent is derived on read from `decision_log` and `record_events` — both append-only, both writable only through `applyAction`. No summarised memory, no free text, no ingestion surface. What cannot be written cannot be poisoned, and the commonest poisoning payload in the literature is a plausible-looking *preference* | ○ |
+| R-68 | **Precedent carries its date and its count, or it is not shown.** "You did this 5 times of the last 6, most recently on 28 July" is a fact somebody can weigh. "You usually do this" is a claim with no way to tell a settled habit from something that stopped in March. Stale-but-true is the failure mode, and a date is the whole of the fix | ○ |
+| R-69 | **Precedent informs a person or a default. It never authorises and never acts.** R-49 does not bend for memory: an agent that has seen a pattern still may not decide whether an action is permitted or a record in breach. What it may do is say what happened last time, next to the button — and propose a change to the *stored* priority for the owner to accept or refuse | ○ |
+| R-70 | **Similarity is a small set of named features, not an embedding.** Module, state, and two or three things that actually differ between cases. A dealership has hundreds of open records and twelve action types; a vector index would be slower to explain than to build, and "why did it show me that one" has to have an answer in one sentence | ○ |
+| R-71 | **A pattern that stops is a pattern that stops being shown.** Precedent reads a moving window, so a habit the dealership drops disappears from the product by itself rather than by somebody remembering to retire it | ○ |
+
 ### How it looks
 
 | # | Requirement | Status |
@@ -795,8 +810,10 @@ short-staffed dealership does not employ. So:
 | 3 | ~~**OBJ-8** One credential~~ ✅ | no | the other half. Doing 14 and 8 together was one piece of work about who sees what, and it had been outstanding since 3 August |
 | 4 | ~~**OBJ-15** The queue~~ ✅ | no | the capacity thesis, finally operational |
 | 5 | **OBJ-16** Rules that run themselves | no | needs 13 for the trigger and 15 for somewhere to put the work |
-| 6 | **OBJ-17** The agent operates the registry | yes, gated | almost free by then: the registry, the refusals, the gate and the audit trail all exist |
-| 7 | **OBJ-6** A dealership that reads as real | no | last, and better last — by then there is more for the data to exercise |
+| 6 | **OBJ-18** The severity table belongs to the dealership | no | *added 4 Aug.* The queue shipped with our opinion of what matters in it |
+| 7 | **OBJ-19** The agent remembers what this dealership did | no | *added 4 Aug.* Precedent from the decision log. Before 17, so the agent that acts acts with it |
+| 8 | **OBJ-17** The agent operates the registry | yes, gated | the registry, the refusals, the gate and the audit trail all exist by then |
+| 9 | **OBJ-6** A dealership that reads as real | no | last, and better last — by then there is more for the data to exercise |
 
 > Two objectives already on the list keep their place in it rather than being
 > pushed behind new work. OBJ-8 moves *up*, because roles and credentials are
@@ -1020,6 +1037,12 @@ next call.
 > departed salesman's code with an *undo* next to it — a confirmation that the
 > work was assigned, on the one screen that exists because it is not.
 
+> **And one thing this shipped with that is not ours to decide.** `SEVERITY`
+> says a stuck registration outranks a broken payment promise. That is a
+> dealership's judgement, not a product's, and it is one afternoon's opinion
+> written into a file — see **OBJ-18**, which makes it per-owner data an owner
+> or a showroom manager sets.
+
 ### OBJ-16 — Rules that run themselves
 *Covers R-52, R-56, R-57, R-58, R-60.*
 
@@ -1063,6 +1086,74 @@ did'."*
 is refused for exactly the reasons a person would be, and the decision log
 shows the system did it — with a person able to undo it.
 
+### OBJ-18 — The severity table belongs to the dealership
+*Covers R-65. Extends R-58, which already made thresholds dealer policy.*
+
+`SEVERITY` in `lib/dms/queue.ts` decides what a short-staffed dealership does
+first, and right now it is one afternoon's judgement written by us into a file.
+Whether a stuck RC outranks a broken payment promise is not a product question.
+
+Per-owner rows, the product's table as the default, and a screen where an owner
+or a **showroom manager** — who already holds every module in `access.ts` —
+sets a number against each known state. Changes go through the same
+`applyAction` path as everything else, so who changed it and what it was before
+land in the decision log without new machinery.
+
+**Deliberately not a rule builder.** The states are a fixed enum, the values are
+1–3, and there is nothing to compose. That is the R-52 line: thresholds and
+priorities become data, logic does not. The failure mode this product is
+designed against is eighty flows on one object, and eighty numbers in a table
+cannot do that.
+
+**Done when:** an owner moves `DEAD_STOCK` below `RTO_SILENT`, the queue reorders
+on the next build for every login in that dealership, the previous value is in
+the decision log, and a **Reset to the product's defaults** control puts it back.
+
+### OBJ-19 — The agent remembers what this dealership did
+*Covers R-66 to R-71, and answers the "otherwise it is just a dumb thing"
+objection to OBJ-17.*
+
+Everything the product knows about a record it works out from scratch each time.
+Fifty-eight decisions are already logged with a person against them, sixty-eight
+state transitions with dates, and nothing has ever read either one to ask **what
+did we do last time this happened here**. That question is what separates an
+agent from a rules engine with a chat window.
+
+**Case-based reasoning, not a memory store.** The literature's three-tier
+episodic/semantic/procedural split describes systems that write memories; the
+substrate here is two append-only logs the product already keeps, and precedent
+is a query over them rather than a thing to be curated. Retrieval is a group-by
+on named features — module, state, and the two or three that differ between
+cases — because with hundreds of records and twelve action types the honest
+index is an index, and "why did it show me that one" has a one-sentence answer.
+
+What it produces, in the three places a person is already looking:
+
+| Where | What it adds |
+|---|---|
+| A queue item | *"Six of these in the last 60 days. Five were chased within a day; one was disputed."* |
+| The explain panel | The nearest past cases, what was done, and what came of the record afterwards |
+| The owner's priority screen | *"Nobody has touched a `DEAD_STOCK` item in 60 days"* — a proposal to change the stored number, which the owner accepts or refuses |
+
+**Four failure modes, and the answer to each is already in the product's shape.**
+
+| Failure | Why it does not happen here |
+|---|---|
+| **Self-reinforcement** — the agent re-reads its own output as ground truth and one early error becomes settled | Only rows with a `userId` count. R-60 made *the system did this* distinguishable for exactly this kind of reason, a fortnight before there was a use for it |
+| **Poisoning** — the effective payload is something that reads like a preference or a constraint | Nothing is written. Precedent is derived on read from logs that only `applyAction` can append to, so there is no ingestion surface to attack |
+| **Temporal obsolescence** — a memory that is true and no longer current | A moving window and a date on every claim. A habit the dealership drops leaves the product by itself |
+| **No admissibility** — the agent cannot decline a retrieved memory | It never applies one. Precedent reaches a person, or it reaches the owner as a proposal about a stored number. R-49 does not bend |
+
+**Explicitly not:** precedent does not reorder the queue, does not change a
+classifier's answer, and does not widen what `authoriseSend()` permits. It
+proposes and it explains. The owner's table is the only thing that moves the
+order, and a person moves it.
+
+**Done when:** a queue item for a state this dealership has handled before
+carries what was done last time with a count and a date; a state it has never
+handled carries nothing rather than a hedge; and a pattern stopped 60 days ago
+is gone from the screen without anybody retiring it.
+
 ### Sources
 
 Salesforce order of execution and record-triggered flows —
@@ -1084,6 +1175,25 @@ HubSpot workflows, sequences, goals and unenrolment —
 <https://knowledge.hubspot.com/articles/kcs_article/workflows/set-unenrollment-triggers-in-company-deal-ticket-quote-based-workflows>.
 Automation sprawl, the failure mode being designed against —
 <https://www.equals11.com/blog/flow-sprawl-is-the-silent-killer-of-your-salesforce-org-6-signs-you-have-it>.
+
+Agent memory, researched 4 August for OBJ-19. The three-tier taxonomy and what
+production systems actually keep —
+<https://thenuancedperspective.substack.com/p/designing-agentic-memory-in-2026>,
+<https://arxiv.org/html/2603.07670v1>.
+Case-based reasoning, which is the shape this product needs rather than a
+memory store — retrieval by named features, and recommendations that carry
+their similarity, their matching features and their points of difference so
+that reason-giving and audit are possible —
+<https://www.givainc.com/blog/case-based-reasoning-cbr-meaning-ai-help-desk/>,
+<https://www.sciencedirect.com/science/article/abs/pii/S0950705107000433>.
+The failure modes, which decided the design more than the patterns did —
+self-reinforcement through re-ingesting one's own output, temporal
+obsolescence, poisoning by plausible-looking preferences, and the missing
+admissibility mechanism that leaves agents unable to decline a retrieved
+memory —
+<https://arxiv.org/html/2603.11768v1>,
+<https://arxiv.org/html/2607.27080>,
+<https://arxiv.org/pdf/2606.06054>.
 
 ### OBJ-6 — A dealership that reads as real
 *Covers R-6, R-33. Replaces "get real DMS access", which Anirban ruled out on
