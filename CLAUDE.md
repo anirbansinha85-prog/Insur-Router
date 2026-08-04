@@ -150,7 +150,7 @@ pnpm run typecheck:libs                         # before checking leaf packages
 
 ## Data model
 
-Twenty-five tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
+Twenty-four tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
 which of them `ddms_app` may read, and on what terms, is in `lib/db/sql/rls.sql`.
 
 **The owner tier** — who the data belongs to:
