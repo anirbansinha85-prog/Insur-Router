@@ -60,7 +60,7 @@ Status: **✅ done** · **◑ partial** · **○ not started**
 | R-16 | Spares, finance/receivables, inventory ageing, registration workflow | ✅ all four |
 | R-17 | Invoice generation, automated | ✅ as a **statement of account** through the approval gate. Generating the dealer's tax invoice would mean two invoices for one debt, and the DMS is read-only |
 | R-18 | DDMS holds every DMS field **plus** its own decision fields for each function | ✅ 7 modules, every decision field proven load-bearing by query |
-| R-19 | Staff shortage made visible from the dealer's own data — attrition, orphaned work | ◑ leads only, and orphaned work across every module. The rest is OBJ-15 |
+| R-19 | Staff shortage made visible from the dealer's own data — attrition, orphaned work | ✅ every module, and orphaned work is its own band on the queue rather than a row somebody has to think to look for |
 
 ### What it does
 
@@ -88,8 +88,8 @@ refused, are in section 3b.*
 | R-51 | **A change of derived state is an event, and events are recorded.** Not a field diff — `classify()`'s answer moving from one state to another. A file that crossed into `RC_IN_DRAWER` at 3am must be knowable without anybody having opened a screen | ✅ |
 | R-52 | **Automation is one ordered list, it lives in code, and it is capped.** No rule builder, no per-dealership flows, and a stated ceiling on how many rules may exist. The failure mode being designed against is documented: orgs reach eighty automations on one object, page saves take eight seconds, and nobody can predict what a save will do | ○ |
 | R-53 | **A dealership has people, and scope only ever narrows.** Roles inside an owner — advisor, RTO agent, accounts, manager — expressed as an *additional* predicate on top of the owner's, never an alternative one. A bug in the role layer must be able to hide rows and must not be able to reveal them | ✅ |
-| R-54 | **Work is routed by role and capacity, and never becomes unroutable.** Who can do it, who has room, and who is actually in today. When nothing matches, it degrades to a named queue rather than disappearing | ○ |
-| R-55 | **One queue, worked one at a time.** Seven screens each holding a list is a reporting product. The capacity thesis needs a single ordered queue that can be worked start to finish without returning to a list | ○ |
+| R-54 | **Work is routed by role and capacity, and never becomes unroutable.** Who can do it, who has room, and who is actually in today. When nothing matches, it degrades to a named queue rather than disappearing | ✅ the picker offers only staff still here, each with what they carry; unroutable work lands in the second band rather than vanishing |
+| R-55 | **One queue, worked one at a time.** Seven screens each holding a list is a reporting product. The capacity thesis needs a single ordered queue that can be worked start to finish without returning to a list | ✅ |
 | R-56 | **Automation may write a decision field. Only the gate lets anything leave.** An automated mark is internal, reversible and logged. Anything outbound still passes `authoriseSend()`, unchanged — the line drawn in R-48 does not move because the caller stopped being a person | ○ |
 | R-57 | **A chase stops when its goal state is reached.** The exit condition is a `classify()` state, not a reply or a click. A cadence that cannot stop itself is the mechanism by which automation becomes something a dealership apologises for | ○ |
 | R-58 | **Thresholds are dealer policy, not product logic.** Credit periods, ageing buckets, chase cadence, what counts as the RTO having gone quiet — per owner, stored, and changes to them audited. The rules stay in code; the numbers belong to the dealership | ○ |
@@ -793,7 +793,7 @@ short-staffed dealership does not employ. So:
 | 1 | ~~**OBJ-13** The mirror emits events~~ ✅ | no | invisible, small, and four things are blocked behind it |
 | 2 | ~~**OBJ-14** People, and what each may see~~ ✅ | no | the queue needs a *me*; and it is half of the access story |
 | 3 | ~~**OBJ-8** One credential~~ ✅ | no | the other half. Doing 14 and 8 together was one piece of work about who sees what, and it had been outstanding since 3 August |
-| 4 | **OBJ-15** The queue | no | the capacity thesis, finally operational |
+| 4 | ~~**OBJ-15** The queue~~ ✅ | no | the capacity thesis, finally operational |
 | 5 | **OBJ-16** Rules that run themselves | no | needs 13 for the trigger and 15 for somewhere to put the work |
 | 6 | **OBJ-17** The agent operates the registry | yes, gated | almost free by then: the registry, the refusals, the gate and the audit trail all exist |
 | 7 | **OBJ-6** A dealership that reads as real | no | last, and better last — by then there is more for the data to exercise |
@@ -958,7 +958,7 @@ Through HTTP as well:
 > each role on a screen they can work on and states the refusal where it cannot,
 > which is the same discipline as never showing a simulated policy as issued.
 
-### OBJ-15 — The queue
+### OBJ-15 — The queue  ✅ **done 4 Aug**
 *Covers R-54, R-55. Absorbs the rest of R-19.*
 
 One screen, one ordered list, across all seven modules, for the person signed
@@ -978,6 +978,47 @@ exactly what happens when skills gate eligibility and nobody holds the skill.
 **Done when:** the leading number on that screen is everything waiting on a
 person across every module, and somebody can clear ten items without once
 returning to a list.
+
+**Verified.** Signed in as the owner, the screen leads with **33**, and ten
+items were worked through in a browser — counter 1 of 33 through 11 of 33, 23
+left — with the URL never leaving `/`. Not one of them was the same kind of
+work as the last: a unit on the floor 131 days somebody is asking for, a
+receivable whose promised date passed, a part blocking a job card, an enquiry
+whose salesman left, a warranty claim in dispute.
+
+| login | total | mine | nobody's | outlet's | modules |
+|---|---|---|---|---|---|
+| Anirban, owner | 33 | 0 | 17 | 16 | all seven |
+| Vikram, sales exec | 7 | 1 | 3 | 3 | enquiries, vehicles, deals |
+| Sunil, service advisor | 10 | 3 | 7 | 0 | job cards, parts |
+| Jaswinder, RTO agent | 6 | 5 | 1 | 0 | registrations |
+| Meera, accounts | 4 | 0 | 4 | 0 | receivables, deals |
+
+An owner's *mine* is zero and that is right: an owner has no employee code, so
+nothing in the dealership is assigned to them. The bands are computed from
+codes, and no code means no claim.
+
+**R-19 closed, end to end.** The orphaned lead — Suresh Pillai, assigned to a
+salesman who left on 28-02-2026 — reads *"Was Imtiaz Khan, who has left.
+Nobody is carrying this"* in the second band, with a picker offering only staff
+who are still here and what each already holds: *Vikram Chandel · 3 open*,
+*Neha Grover · 5 open*. Handing it on moved the record from **Nobody's ·
+NO_OWNER · "Reassign to someone still here"** to **Mine · FOLLOW_UP_OVERDUE ·
+"Make the follow-up call"** — the item did not disappear, it became somebody's
+next call.
+
+> **Two bugs the screen found, both about not moving under somebody.**
+>
+> Acting on an item invalidated every `/api/dms/*` query, the queue included,
+> so the list rebuilt and everything below shifted up — the next item moved out
+> from under the person about to read it. `invalidateWorklists` now excludes
+> the queue by name; it builds fresh on arrival and rebuilds when somebody asks,
+> and the header says when it was built.
+>
+> And the reassignment picker was handed the employee code on the row, which on
+> an orphan belongs to somebody who has left. It rendered a tick beside a
+> departed salesman's code with an *undo* next to it — a confirmation that the
+> work was assigned, on the one screen that exists because it is not.
 
 ### OBJ-16 — Rules that run themselves
 *Covers R-52, R-56, R-57, R-58, R-60.*

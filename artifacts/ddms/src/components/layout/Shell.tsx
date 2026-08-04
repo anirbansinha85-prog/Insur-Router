@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter"
 import {
   Users, ListChecks, Wrench, LayoutDashboard, ShieldCheck, Bell,
-  ExternalLink, LogOut, IdCard, Boxes, Send, Wallet, Bike,
+  ExternalLink, LogOut, IdCard, Boxes, Send, Wallet, Bike, ListTodo,
 } from "lucide-react"
 import type { SessionUser } from "@workspace/api-client-react"
 import { cn } from "@/lib/utils"
@@ -30,9 +30,15 @@ interface NavGroup {
 
 const GROUPS: NavGroup[] = [
   {
+    // Its own group and first, because it is not one more list of records —
+    // it is the answer to what to do next, assembled from all of them.
+    label: "Today",
+    items: [{ href: "/", label: "My queue", icon: ListTodo }],
+  },
+  {
     label: "Showroom",
     items: [
-      { href: "/", label: "Enquiries", icon: Users, module: "ENQUIRY" },
+      { href: "/enquiries", label: "Enquiries", icon: Users, module: "ENQUIRY" },
       { href: "/worklist", label: "Deals", icon: ListChecks, module: "DEAL" },
       // Under Showroom rather than a compliance group of its own: the file is
       // opened by the sale and closed by handing a card to the same customer,

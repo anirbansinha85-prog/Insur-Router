@@ -75,6 +75,7 @@ import type {
   Provider,
   ProviderInput,
   ProviderUpdate,
+  QueueResult,
   RecentApplication,
   SearchEntities200,
   SearchEntitiesParams,
@@ -2788,6 +2789,87 @@ export function useListDmsEvents<TData = Awaited<ReturnType<typeof listDmsEvents
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListDmsEventsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetDmsQueueUrl = () => {
+
+
+
+
+  return `/api/dms/queue`
+}
+
+/**
+ * Seven screens each holding a list is a reporting product: it says what is wrong and leaves *which of these to do next* to the person with no time to decide it. This is the screen that decides, and the capacity argument the product is sold on stands or falls on it.
+ * Three bands, in order — mine, nobody's, my outlet's. The middle one is the point: an enquiry assigned to a salesman who left in February is on nobody's list, is not late by any measure the DMS holds, and simply stops happening. A departed assignee puts an item in that band rather than in "somebody else's", because the work is not less orphaned for the DMS still carrying the name.
+ * Contents are the classifiers' answers read through the same builders the screens and the event detector use — every record whose own screen would show an `actionRequired`, and whose state appears in the severity table. Nothing here is a second opinion about which rows matter, and no model is involved anywhere: what somebody should do next is exactly the decision R-49 says a model may not make.
+ * Scoped twice. The outlet narrows to the one on the login for a member of staff, and the role decides which modules are built at all — so a service advisor's queue holds job cards and parts rather than an empty ledger section.
+ * @summary One ordered list of everything waiting on a person
+ */
+export const getDmsQueue = async ( options?: Parameters<typeof customFetch>[1]): Promise<QueueResult> => {
+
+  return customFetch<QueueResult>(getGetDmsQueueUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDmsQueueQueryKey = () => {
+    return [
+    `/api/dms/queue`
+    ] as const;
+    }
+
+
+export const getGetDmsQueueQueryOptions = <TData = Awaited<ReturnType<typeof getDmsQueue>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDmsQueue>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDmsQueueQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDmsQueue>>> = ({ signal }) => getDmsQueue({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDmsQueue>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDmsQueueQueryResult = NonNullable<Awaited<ReturnType<typeof getDmsQueue>>>
+export type GetDmsQueueQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary One ordered list of everything waiting on a person
+ */
+
+export function useGetDmsQueue<TData = Awaited<ReturnType<typeof getDmsQueue>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDmsQueue>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDmsQueueQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

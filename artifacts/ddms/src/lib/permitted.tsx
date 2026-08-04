@@ -21,7 +21,9 @@ import type { SessionUser } from "@workspace/api-client-react"
 
 /** Path → the module the server will gate it on. Kept beside the routes. */
 export const ROUTE_MODULE: Record<string, string> = {
-  "/": "ENQUIRY",
+  // "/" is the queue and is deliberately absent: it spans every module and
+  // scopes itself, so there is no one module to gate it on.
+  "/enquiries": "ENQUIRY",
   "/worklist": "DEAL",
   "/registrations": "REGISTRATION",
   "/service": "JOB_CARD",
@@ -33,7 +35,7 @@ export const ROUTE_MODULE: Record<string, string> = {
 
 /** Where each module lives, for sending somebody somewhere they can work. */
 const MODULE_ROUTE: Array<[string, string]> = [
-  ["ENQUIRY", "/"],
+  ["ENQUIRY", "/enquiries"],
   ["DEAL", "/worklist"],
   ["REGISTRATION", "/registrations"],
   ["JOB_CARD", "/service"],
@@ -60,10 +62,15 @@ export function mayOpen(user: SessionUser, path: string): boolean {
  * people that it is broken.
  */
 export function landingFor(user: SessionUser): string {
+  // The queue, since OBJ-15. It spans every module and scopes itself by what
+  // this role may read, so it is the one screen that is never the wrong door —
+  // and for somebody who works a list rather than browses one, it is the right
+  // door. The module walk below is kept as the fallback for a session with no
+  // module list at all.
   const modules = user.modules ?? []
-  if (modules.length === 0) return "/"
+  if (modules.length > 0) return "/"
   const first = MODULE_ROUTE.find(([m]) => modules.includes(m) && m !== "OUTBOX")
-  return first?.[1] ?? "/outbox"
+  return first?.[1] ?? "/"
 }
 
 export function Landing({ user }: { user: SessionUser }) {

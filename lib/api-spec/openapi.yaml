@@ -1280,6 +1280,49 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /dms/queue:
+    get:
+      operationId: getDmsQueue
+      tags: [dms]
+      summary: One ordered list of everything waiting on a person
+      description: >
+        Seven screens each holding a list is a reporting product: it says what
+        is wrong and leaves *which of these to do next* to the person with no
+        time to decide it. This is the screen that decides, and the capacity
+        argument the product is sold on stands or falls on it.
+
+        Three bands, in order — mine, nobody's, my outlet's. The middle one is
+        the point: an enquiry assigned to a salesman who left in February is on
+        nobody's list, is not late by any measure the DMS holds, and simply
+        stops happening. A departed assignee puts an item in that band rather
+        than in "somebody else's", because the work is not less orphaned for
+        the DMS still carrying the name.
+
+        Contents are the classifiers' answers read through the same builders
+        the screens and the event detector use — every record whose own screen
+        would show an `actionRequired`, and whose state appears in the severity
+        table. Nothing here is a second opinion about which rows matter, and no
+        model is involved anywhere: what somebody should do next is exactly the
+        decision R-49 says a model may not make.
+
+        Scoped twice. The outlet narrows to the one on the login for a member
+        of staff, and the role decides which modules are built at all — so a
+        service advisor's queue holds job cards and parts rather than an empty
+        ledger section.
+      responses:
+        "200":
+          description: Ordered — band, then severity, then how long it has waited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueueResult"
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /dms/staff:
     get:
       operationId: listShowroomStaff
@@ -2392,6 +2435,124 @@ components:
               name: { type: string }
             required: [id, code, name]
       required: [userId, ownerId, email, name, role]
+
+    QueueModule:
+      type: string
+      enum: [DEAL, JOB_CARD, ENQUIRY, REGISTRATION, PART, RECEIVABLE, VEHICLE]
+
+    QueueBand:
+      type: string
+      enum: [MINE, UNASSIGNED, OUTLET]
+      description: >
+        Whose it is. UNASSIGNED covers both "carrying nobody's code" and
+        "carrying the code of somebody who has left" — one band, because to a
+        dealership they are the same problem.
+
+    QueueAction:
+      type: object
+      description: >
+        A control the row may offer. Decided by the rules that own the module
+        rather than by the screen, so the queue can render any module's controls
+        without knowing what any of them mean.
+      properties:
+        action: { type: string }
+        label: { type: string }
+        doneLabel: { type: string }
+        done: { type: boolean }
+        tone:
+          type: string
+          enum: [amber, red, slate]
+        extra:
+          type: object
+          additionalProperties: true
+          description: >
+            Fields the action needs beyond the record key — which branch a part
+            comes from, which enquiry a unit was offered against.
+      required: [action, label, doneLabel, done, tone]
+
+    QueueItem:
+      type: object
+      properties:
+        module: { $ref: "#/components/schemas/QueueModule" }
+        recordKey: { type: string }
+        showroomId: { type: integer }
+        showroomCode: { type: ["string", "null"] }
+        band: { $ref: "#/components/schemas/QueueBand" }
+        severity:
+          type: integer
+          description: 3 today, 2 this week, 1 behind the other two.
+        waitingDays:
+          type: integer
+          description: >
+            How long in the module's own terms — days late, days overdue, days
+            on the floor. A lead's clock runs in minutes, so a breach on the
+            same morning lands at zero and its severity carries it.
+        title: { type: string }
+        subtitle: { type: ["string", "null"] }
+        state: { type: string }
+        note: { type: ["string", "null"] }
+        actionRequired: { type: string }
+        assignedEmpCode: { type: ["string", "null"] }
+        assignedEmpName: { type: ["string", "null"] }
+        assigneeGone: { type: boolean }
+        contactName: { type: ["string", "null"] }
+        contactMobile: { type: ["string", "null"] }
+        actions:
+          type: array
+          items: { $ref: "#/components/schemas/QueueAction" }
+        assignAction:
+          type: ["string", "null"]
+          enum: [ENQUIRY_REASSIGN, REGISTRATION_ASSIGN_AGENT, null]
+          description: >
+            The reassignment this row supports, when it has one. Not a button —
+            a picker over staff who still work here, each carrying what they
+            already hold. R-54 asks that work never becomes unroutable, and the
+            screen that shows orphaned work has to be where it can be handed on,
+            or "reassign to someone still here" is advice with a trip to another
+            screen attached.
+        assignRole:
+          type: ["string", "null"]
+          description: Which role the picker offers. Null means everybody at the outlet.
+        href:
+          type: string
+          description: The module screen, for anyone who wants the full picture.
+      required:
+        - module
+        - recordKey
+        - showroomId
+        - band
+        - severity
+        - waitingDays
+        - title
+        - state
+        - actionRequired
+        - assigneeGone
+        - actions
+        - href
+
+    QueueResult:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/QueueItem" }
+        total:
+          type: integer
+          description: >
+            The leading number — everything waiting on a person, across every
+            module this role may read.
+        mine: { type: integer }
+        unassigned: { type: integer }
+        outlet: { type: integer }
+        byModule:
+          type: array
+          items:
+            type: object
+            properties:
+              module: { $ref: "#/components/schemas/QueueModule" }
+              count: { type: integer }
+            required: [module, count]
+      required: [items, total, mine, unassigned, outlet, byModule]
 
     ShowroomSummary:
       type: object

@@ -457,6 +457,43 @@ the screen it came from is worse than no event stream.
 > other and the log flapped between the two states on every pass, for ever. Any
 > key on a record has to be the key that record actually has.
 
+## One queue, worked one at a time
+
+Every screen below answers *what is wrong with these records*. `GET /api/dms/queue`
+answers the question a short-staffed dealership actually has each morning —
+**what should I do next** — and it is the only screen that spans all seven
+modules at once. It is the root of DDMS since OBJ-15; Enquiries moved to
+`/enquiries`.
+
+Three bands, in order: **mine**, **nobody's**, **my outlet's**. The middle one
+is the point. An enquiry assigned to a salesman who left in February is on
+nobody's list and is not late by any measure the DMS holds — it simply stops
+happening, and that is what a dealership loses. A departed assignee puts an item
+in that band rather than in "somebody else's", because the work is not less
+orphaned for the DMS still carrying the name.
+
+`lib/dms/queue.ts` reads the classifiers' answers through the same
+`build…Worklist` functions the screens and the event detector use — every record
+whose own screen would show an `actionRequired`, and whose state appears in
+`SEVERITY`. That table is the single place the queue's contents are decided, and
+it is capped and in code: severity has to be comparable *across* modules to sort
+one list, and a per-module score would leave "is a stuck RC worse than a broken
+payment promise" a question nobody answers in one place. **No model anywhere** —
+what somebody should do next is exactly the decision R-49 says a model may not
+make.
+
+Which controls a row offers is decided in `queue.ts` too, not by the screen, so
+the queue renders any module's actions without knowing what any of them mean.
+The reassignment picker is separate from the buttons because it is a list of
+staff who still work here with what each already carries (R-54).
+
+> **The order is frozen while it is being worked.** Acting on an item removes it
+> from the server's answer, so refetching would shift everything below up and
+> move the next item out from under the person about to read it.
+> `invalidateWorklists` in `ddms/src/lib/actions.tsx` excludes `/api/dms/queue`
+> by name for that reason; it builds fresh on arrival and rebuilds when somebody
+> asks, and the header says when it was built.
+
 ## Who the person is, not just which dealership
 
 Since OBJ-14 a dealership's staff have their own logins, and scope is **three
@@ -856,7 +893,7 @@ assignment (`VAR=x cmd`) and depends on `$REPLIT_EXPO_DEV_DOMAIN`,
 
 ### Frontend pages
 
-DDMS (`artifacts/ddms/src/pages/`): `Leads` (`/`), `Worklist` (`/worklist`),
+DDMS (`artifacts/ddms/src/pages/`): `Queue` (`/`), `Leads` (`/enquiries`), `Worklist` (`/worklist`),
 `Registrations` (`/registrations`), `ServiceWorklist` (`/service`),
 `Spares` (`/spares`), `Receivables` (`/receivables`), `Inventory`
 (`/inventory`), `Outbox` (`/outbox`), `Dossier` (`/who/:entityId`,

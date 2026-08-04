@@ -35,7 +35,13 @@ function invalidateWorklists(qc: ReturnType<typeof useQueryClient>) {
   void qc.invalidateQueries({
     predicate: (q) => {
       const key = q.queryKey?.[0]
-      return typeof key === "string" && key.startsWith("/api/dms/")
+      if (typeof key !== "string" || !key.startsWith("/api/dms/")) return false
+      // Every screen but one. The queue is worked by position, and acting on an
+      // item removes it from the server's answer — so refreshing it here would
+      // shift everything below up and move the next item out from under the
+      // person who was about to read it. It builds fresh on arrival and
+      // rebuilds when somebody asks; see the note at the top of Queue.tsx.
+      return key !== "/api/dms/queue"
     },
   })
 }

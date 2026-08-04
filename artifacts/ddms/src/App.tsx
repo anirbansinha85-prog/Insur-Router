@@ -7,9 +7,10 @@ import {
 } from '@workspace/api-client-react';
 import { Shell } from '@/components/layout/Shell';
 import { ShowroomProvider } from '@/lib/showroom';
-import { Landing, NotYours, ROUTE_MODULE, mayOpen } from '@/lib/permitted';
+import { NotYours, ROUTE_MODULE, mayOpen } from '@/lib/permitted';
 
 import SignIn from '@/pages/SignIn';
+import Queue from '@/pages/Queue';
 import Leads from '@/pages/Leads';
 import Worklist from '@/pages/Worklist';
 import ServiceWorklist from '@/pages/ServiceWorklist';
@@ -88,15 +89,19 @@ function Gate() {
     <ShowroomProvider>
       <Shell user={u} onSignOut={signOut}>
         <Switch>
-          {/* Enquiries at the root for anybody who may read them — a lead
-              nobody answers never becomes a deal to insure or a bike to
-              service, so it is where the day starts. For everybody else the
-              root sends them to the first screen they can actually work on:
-              landing an RTO agent on Enquiries and letting the API refuse
-              behind it is how a product teaches people it is broken. */}
-          <Route path="/">
-            {mayOpen(u, "/") ? <Leads /> : <Landing user={u} />}
-          </Route>
+          {/* The queue is the root, since OBJ-15. Enquiries held it before,
+              on the argument that a lead nobody answers never becomes a deal
+              to insure or a bike to service — which is still true, and is now
+              an argument for the queue: it holds those leads *and* everything
+              else waiting on a person, in the order they should be done.
+
+              Not module-gated. The queue spans every module and scopes itself
+              by what this role may read, so there is no single module to refuse
+              it on, and it is the one screen that is never the wrong door. An
+              empty queue is a true answer. */}
+          <Route path="/"><Queue /></Route>
+          <Route path="/queue"><Queue /></Route>
+          <Route path="/enquiries">{guard(u, "/enquiries", <Leads />)}</Route>
           <Route path="/worklist">{guard(u, "/worklist", <Worklist />)}</Route>
           <Route path="/registrations">{guard(u, "/registrations", <Registrations />)}</Route>
           <Route path="/service">{guard(u, "/service", <ServiceWorklist />)}</Route>

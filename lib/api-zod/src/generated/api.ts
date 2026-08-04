@@ -1212,6 +1212,55 @@ export const ListDmsEventsResponse = zod.object({
 
 
 /**
+ * Seven screens each holding a list is a reporting product: it says what is wrong and leaves *which of these to do next* to the person with no time to decide it. This is the screen that decides, and the capacity argument the product is sold on stands or falls on it.
+ * Three bands, in order — mine, nobody's, my outlet's. The middle one is the point: an enquiry assigned to a salesman who left in February is on nobody's list, is not late by any measure the DMS holds, and simply stops happening. A departed assignee puts an item in that band rather than in "somebody else's", because the work is not less orphaned for the DMS still carrying the name.
+ * Contents are the classifiers' answers read through the same builders the screens and the event detector use — every record whose own screen would show an `actionRequired`, and whose state appears in the severity table. Nothing here is a second opinion about which rows matter, and no model is involved anywhere: what somebody should do next is exactly the decision R-49 says a model may not make.
+ * Scoped twice. The outlet narrows to the one on the login for a member of staff, and the role decides which modules are built at all — so a service advisor's queue holds job cards and parts rather than an empty ledger section.
+ * @summary One ordered list of everything waiting on a person
+ */
+export const GetDmsQueueResponse = zod.object({
+  "items": zod.array(zod.object({
+  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART', 'RECEIVABLE', 'VEHICLE']),
+  "recordKey": zod.string(),
+  "showroomId": zod.number().int(),
+  "showroomCode": zod.string().nullish(),
+  "band": zod.enum(['MINE', 'UNASSIGNED', 'OUTLET']).describe('Whose it is. UNASSIGNED covers both \"carrying nobody\'s code\" and \"carrying the code of somebody who has left\" — one band, because to a dealership they are the same problem.\n'),
+  "severity": zod.number().int().describe('3 today, 2 this week, 1 behind the other two.'),
+  "waitingDays": zod.number().int().describe('How long in the module\'s own terms — days late, days overdue, days on the floor. A lead\'s clock runs in minutes, so a breach on the same morning lands at zero and its severity carries it.\n'),
+  "title": zod.string(),
+  "subtitle": zod.string().nullish(),
+  "state": zod.string(),
+  "note": zod.string().nullish(),
+  "actionRequired": zod.string(),
+  "assignedEmpCode": zod.string().nullish(),
+  "assignedEmpName": zod.string().nullish(),
+  "assigneeGone": zod.boolean(),
+  "contactName": zod.string().nullish(),
+  "contactMobile": zod.string().nullish(),
+  "actions": zod.array(zod.object({
+  "action": zod.string(),
+  "label": zod.string(),
+  "doneLabel": zod.string(),
+  "done": zod.boolean(),
+  "tone": zod.enum(['amber', 'red', 'slate']),
+  "extra": zod.record(zod.string(), zod.unknown()).optional().describe('Fields the action needs beyond the record key — which branch a part comes from, which enquiry a unit was offered against.\n')
+}).describe('A control the row may offer. Decided by the rules that own the module rather than by the screen, so the queue can render any module\'s controls without knowing what any of them mean.\n')),
+  "assignAction": zod.union([zod.literal('ENQUIRY_REASSIGN'),zod.literal('REGISTRATION_ASSIGN_AGENT'),zod.literal(null)]).nullish().describe('The reassignment this row supports, when it has one. Not a button — a picker over staff who still work here, each carrying what they already hold. R-54 asks that work never becomes unroutable, and the screen that shows orphaned work has to be where it can be handed on, or \"reassign to someone still here\" is advice with a trip to another screen attached.\n'),
+  "assignRole": zod.string().nullish().describe('Which role the picker offers. Null means everybody at the outlet.'),
+  "href": zod.string().describe('The module screen, for anyone who wants the full picture.')
+})),
+  "total": zod.number().int().describe('The leading number — everything waiting on a person, across every module this role may read.\n'),
+  "mine": zod.number().int(),
+  "unassigned": zod.number().int(),
+  "outlet": zod.number().int(),
+  "byModule": zod.array(zod.object({
+  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART', 'RECEIVABLE', 'VEHICLE']),
+  "count": zod.number().int()
+}))
+})
+
+
+/**
  * Behind the reassignment pickers. Departed employees are excluded rather than greyed out — they are the reason the reassignment field exists, and a list containing them invites handing work back to somebody who left in February. `carrying` is included because reassigning an orphaned lead to whoever is already busiest is a decision DDMS would have made worse.
  * @summary Staff who still work at this outlet, and what each already carries
  */

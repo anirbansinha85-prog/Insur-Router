@@ -83,6 +83,8 @@ import {
   requireUser,
   sessionScope,
 } from "../lib/session";
+import { seesEveryOutlet } from "../lib/dms/access";
+import { buildQueue } from "../lib/dms/queue";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -724,6 +726,43 @@ router.get("/dms/events", async (req, res): Promise<void> => {
   });
 
   res.json({ rows });
+});
+
+/**
+ * One queue, worked one at a time.
+ *
+ * Every screen above answers *what is wrong with these records*. This answers
+ * the question a short-staffed dealership actually has to answer every
+ * morning — *what should I do next* — and it is the only screen in the product
+ * that spans all seven modules at once.
+ *
+ * Three bands: mine, then nobody's, then my outlet's. The middle one is the
+ * point; orphaned work is what a dealership loses, and until now it was
+ * visible only as a row on a list somebody had to think to open.
+ *
+ * Scoped twice, like everything else. `visibleShowroomIds` narrows to the
+ * outlet a member of staff works at, and `canRead` decides which modules are
+ * built at all — a service advisor's queue holds job cards and parts and does
+ * not silently contain an empty ledger section.
+ */
+router.get("/dms/queue", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  const owned = await ownedShowroomIds(user.ownerId);
+
+  // The outlets this person may act in. An owner or a manager gets the group;
+  // anybody else gets the one on their login. Always a subset of `owned`,
+  // which is the property every other scope in this product rests on.
+  const visible =
+    user.showroomId !== null && !seesEveryOutlet(user.role) ? [user.showroomId] : owned;
+
+  const result = await buildQueue({
+    ownerShowroomIds: owned,
+    visibleShowroomIds: visible,
+    empCode: user.empCode,
+    role: user.role,
+  });
+
+  res.json(result);
 });
 
 /**

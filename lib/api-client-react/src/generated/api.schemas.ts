@@ -678,6 +678,127 @@ export interface SessionUser {
   showrooms?: SessionUserShowroomsItem[];
 }
 
+export type QueueModule = typeof QueueModule[keyof typeof QueueModule];
+
+
+export const QueueModule = {
+  DEAL: 'DEAL',
+  JOB_CARD: 'JOB_CARD',
+  ENQUIRY: 'ENQUIRY',
+  REGISTRATION: 'REGISTRATION',
+  PART: 'PART',
+  RECEIVABLE: 'RECEIVABLE',
+  VEHICLE: 'VEHICLE',
+} as const;
+
+/**
+ * Whose it is. UNASSIGNED covers both "carrying nobody's code" and "carrying the code of somebody who has left" — one band, because to a dealership they are the same problem.
+ */
+export type QueueBand = typeof QueueBand[keyof typeof QueueBand];
+
+
+export const QueueBand = {
+  MINE: 'MINE',
+  UNASSIGNED: 'UNASSIGNED',
+  OUTLET: 'OUTLET',
+} as const;
+
+export type QueueActionTone = typeof QueueActionTone[keyof typeof QueueActionTone];
+
+
+export const QueueActionTone = {
+  amber: 'amber',
+  red: 'red',
+  slate: 'slate',
+} as const;
+
+/**
+ * Fields the action needs beyond the record key — which branch a part comes from, which enquiry a unit was offered against.
+ */
+export type QueueActionExtra = { [key: string]: unknown };
+
+/**
+ * A control the row may offer. Decided by the rules that own the module rather than by the screen, so the queue can render any module's controls without knowing what any of them mean.
+ */
+export interface QueueAction {
+  action: string;
+  label: string;
+  doneLabel: string;
+  done: boolean;
+  tone: QueueActionTone;
+  /** Fields the action needs beyond the record key — which branch a part comes from, which enquiry a unit was offered against. */
+  extra?: QueueActionExtra;
+}
+
+/**
+ * The reassignment this row supports, when it has one. Not a button — a picker over staff who still work here, each carrying what they already hold. R-54 asks that work never becomes unroutable, and the screen that shows orphaned work has to be where it can be handed on, or "reassign to someone still here" is advice with a trip to another screen attached.
+ * @nullable
+ */
+export type QueueItemAssignAction = typeof QueueItemAssignAction[keyof typeof QueueItemAssignAction] | null;
+
+
+export const QueueItemAssignAction = {
+  ENQUIRY_REASSIGN: 'ENQUIRY_REASSIGN',
+  REGISTRATION_ASSIGN_AGENT: 'REGISTRATION_ASSIGN_AGENT',
+} as const;
+
+export interface QueueItem {
+  module: QueueModule;
+  recordKey: string;
+  showroomId: number;
+  /** @nullable */
+  showroomCode?: string | null;
+  band: QueueBand;
+  /** 3 today, 2 this week, 1 behind the other two. */
+  severity: number;
+  /** How long in the module's own terms — days late, days overdue, days on the floor. A lead's clock runs in minutes, so a breach on the same morning lands at zero and its severity carries it. */
+  waitingDays: number;
+  title: string;
+  /** @nullable */
+  subtitle?: string | null;
+  state: string;
+  /** @nullable */
+  note?: string | null;
+  actionRequired: string;
+  /** @nullable */
+  assignedEmpCode?: string | null;
+  /** @nullable */
+  assignedEmpName?: string | null;
+  assigneeGone: boolean;
+  /** @nullable */
+  contactName?: string | null;
+  /** @nullable */
+  contactMobile?: string | null;
+  actions: QueueAction[];
+  /**
+     * The reassignment this row supports, when it has one. Not a button — a picker over staff who still work here, each carrying what they already hold. R-54 asks that work never becomes unroutable, and the screen that shows orphaned work has to be where it can be handed on, or "reassign to someone still here" is advice with a trip to another screen attached.
+     * @nullable
+     */
+  assignAction?: QueueItemAssignAction;
+  /**
+     * Which role the picker offers. Null means everybody at the outlet.
+     * @nullable
+     */
+  assignRole?: string | null;
+  /** The module screen, for anyone who wants the full picture. */
+  href: string;
+}
+
+export type QueueResultByModuleItem = {
+  module: QueueModule;
+  count: number;
+};
+
+export interface QueueResult {
+  items: QueueItem[];
+  /** The leading number — everything waiting on a person, across every module this role may read. */
+  total: number;
+  mine: number;
+  unassigned: number;
+  outlet: number;
+  byModule: QueueResultByModuleItem[];
+}
+
 export type ShowroomSummaryDmsAccountsItem = {
   oemCode: string;
   dealerCode: string;
