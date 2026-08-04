@@ -1012,6 +1012,106 @@ export interface ServiceWorklistSummary {
 }
 
 /**
+ * Resolved on the last ten digits of a mobile number, on a normalised chassis number, and on `dealerCode:empCode` respectively. There is no fuzzy name matching — a dealership has four customers called Sharma, and merging them would be worse than merging none.
+ */
+export type EntityKind = typeof EntityKind[keyof typeof EntityKind];
+
+
+export const EntityKind = {
+  CUSTOMER: 'CUSTOMER',
+  VEHICLE: 'VEHICLE',
+  EMPLOYEE: 'EMPLOYEE',
+} as const;
+
+export type EntityModule = typeof EntityModule[keyof typeof EntityModule];
+
+
+export const EntityModule = {
+  DEAL: 'DEAL',
+  JOB_CARD: 'JOB_CARD',
+  ENQUIRY: 'ENQUIRY',
+  REGISTRATION: 'REGISTRATION',
+} as const;
+
+export interface EntitySearchRow {
+  id: number;
+  kind: EntityKind;
+  naturalKey: string;
+  /** @nullable */
+  displayName?: string | null;
+  /** 1 for a vehicle or a member of staff — a chassis identifies exactly one machine. Lower for a customer, because a mobile number is a probable identity: families share a handset, numbers get reassigned, and switchboard numbers get typed into walk-in records. */
+  confidence: number;
+  /** How many mirror rows touch this entity. The reason to open it. */
+  linkCount: number;
+  modules: EntityModule[];
+}
+
+export type DossierRecordRole = typeof DossierRecordRole[keyof typeof DossierRecordRole];
+
+
+export const DossierRecordRole = {
+  SUBJECT: 'SUBJECT',
+  VEHICLE: 'VEHICLE',
+  ADVISOR: 'ADVISOR',
+  ASSIGNEE: 'ASSIGNEE',
+  AGENT: 'AGENT',
+} as const;
+
+export interface DossierRecord {
+  module: EntityModule;
+  recordKey: string;
+  role: DossierRecordRole;
+  showroomId: number;
+  /** @nullable */
+  showroomCode?: string | null;
+  title: string;
+  /** Taken from the module's own classifier. `GONE_FROM_DMS` means the mirror row vanished since the graph was built — said plainly rather than left blank. */
+  state: string;
+  /** @nullable */
+  note?: string | null;
+  /** @nullable */
+  actionRequired?: string | null;
+  /** @nullable */
+  ageDays?: number | null;
+  href: string;
+}
+
+export type EntityDossierEntity = {
+  id: number;
+  kind: EntityKind;
+  naturalKey: string;
+  /** @nullable */
+  displayName?: string | null;
+  confidence: number;
+};
+
+export type EntityDossierShowroomsItem = {
+  id: number;
+  /** @nullable */
+  code?: string | null;
+};
+
+export type EntityDossierSummary = {
+  total: number;
+  needsAction: number;
+  modules: EntityModule[];
+  /** Outlets this one person or vehicle appears at. Two is the finding. */
+  showroomCount: number;
+};
+
+export interface EntityDossier {
+  entity: EntityDossierEntity;
+  /**
+     * Present when identity is probable rather than certain, so a reader deciding whether to act knows how the match was made.
+     * @nullable
+     */
+  identityNote?: string | null;
+  showrooms: EntityDossierShowroomsItem[];
+  records: DossierRecord[];
+  summary: EntityDossierSummary;
+}
+
+/**
  * AVAILABLE_ELSEWHERE is the one that justifies the module: a customer is waiting for a part the company already owns, on a shelf in another outlet, and neither branch's system can see the other's. Everything else here a good storeman would eventually catch on their own screen.
  * FULLY_RESERVED is the quiet one. The shelf holds four and every one is promised to an open job card, so the counter can issue none — and only the first of those numbers is on the storeman's screen.
  */
@@ -1531,6 +1631,18 @@ includeDisappeared?: boolean;
 export type GetRegistrationWorklist200 = {
   summary: RegistrationWorklistSummary;
   rows: RegistrationWorklistRow[];
+};
+
+export type SearchEntitiesParams = {
+/**
+ * At least 3 characters. Mobile and chassis match exactly after normalisation; names are a substring match.
+ */
+q: string;
+kind?: EntityKind;
+};
+
+export type SearchEntities200 = {
+  rows: EntitySearchRow[];
 };
 
 export type GetSparesWorklistParams = {

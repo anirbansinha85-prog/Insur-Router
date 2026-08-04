@@ -29,6 +29,11 @@
  * The last of those is the only one answering a question a single outlet
  * *cannot* answer, rather than one it merely failed to. That is the difference
  * between a better screen and an owner-level product.
+ *
+ *   entity-graph.ts           one person, one vehicle, one member of staff,
+ *                             resolved across all five — the join the dealer's
+ *                             own system does not have, because a DMS keys
+ *                             everything by module and by dealer code
  */
 
 export {
@@ -61,6 +66,22 @@ export {
   buildSparesWorklist,
   summariseSpares,
 } from "./spares-worklist";
+export {
+  rebuildEntityGraph,
+  searchEntities,
+  buildDossier,
+  normaliseMobile,
+  normaliseChassis,
+} from "./entity-graph";
+export type {
+  EntityKind,
+  EntityModule,
+  EntityRole,
+  EntityGraphResult,
+  EntitySearchRow,
+  EntityDossier,
+  DossierRecord,
+} from "./entity-graph";
 export type {
   SparesSyncResult,
   SparesState,

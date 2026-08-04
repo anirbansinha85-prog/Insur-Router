@@ -7,6 +7,7 @@ import type { SessionUser } from "@workspace/api-client-react"
 import { cn } from "@/lib/utils"
 import { financialYear, useShowroom } from "@/lib/showroom"
 import { NativeSelect } from "@/components/ui/select"
+import { EntitySearch } from "@/pages/Dossier"
 
 /**
  * DDMS's shell, in the shape of a dealer portal rather than an admin console.
@@ -155,6 +156,9 @@ export function Shell({ children, user, onSignOut }: ShellProps) {
           </div>
 
           <div className="flex items-center gap-4 shrink-0">
+            {/* Owner-scoped, so it reaches across outlets rather than searching
+                whichever one the picker happens to be showing. */}
+            <EntitySearch />
             {!isLoading && showrooms.length > 0 && (
               <NativeSelect
                 className="w-56 h-9 text-sm"

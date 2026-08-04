@@ -28,6 +28,7 @@ import type {
   DashboardStats,
   DmsPullInput,
   DuplicateDealError,
+  EntityDossier,
   ErrorResponse,
   ExecutionRequest,
   ExecutionResult,
@@ -56,6 +57,8 @@ import type {
   ProviderInput,
   ProviderUpdate,
   RecentApplication,
+  SearchEntities200,
+  SearchEntitiesParams,
   SessionUser,
   ShowroomSummary,
   SubmissionLog,
@@ -1979,6 +1982,170 @@ export function useGetRegistrationWorklist<TData = Awaited<ReturnType<typeof get
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetRegistrationWorklistQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSearchEntitiesUrl = (params: SearchEntitiesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/dms/entities?${stringifiedParams}` : `/api/dms/entities`
+}
+
+/**
+ * Five modules, five islands. Mrs Kavita Sharma is a job card waiting on a brake shoe; whether she is also an enquiry nobody rang, or owns the vehicle whose certificate has been in a drawer for three weeks, is a question no screen in the dealership can put — because a DMS keys everything by module and by dealer code.
+ * Search by whatever somebody has to hand: a phone number, a chassis, a registration number, a name. Owner-scoped rather than showroom-scoped, which is the point rather than a convenience.
+ * @summary Find a person, a vehicle or a member of staff across every module
+ */
+export const searchEntities = async (params: SearchEntitiesParams, options?: Parameters<typeof customFetch>[1]): Promise<SearchEntities200> => {
+
+  return customFetch<SearchEntities200>(getSearchEntitiesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getSearchEntitiesQueryKey = (params?: SearchEntitiesParams,) => {
+    return [
+    `/api/dms/entities`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getSearchEntitiesQueryOptions = <TData = Awaited<ReturnType<typeof searchEntities>>, TError = ErrorType<ErrorResponse>>(params: SearchEntitiesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchEntities>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getSearchEntitiesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof searchEntities>>> = ({ signal }) => searchEntities(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof searchEntities>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type SearchEntitiesQueryResult = NonNullable<Awaited<ReturnType<typeof searchEntities>>>
+export type SearchEntitiesQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Find a person, a vehicle or a member of staff across every module
+ */
+
+export function useSearchEntities<TData = Awaited<ReturnType<typeof searchEntities>>, TError = ErrorType<ErrorResponse>>(
+ params: SearchEntitiesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchEntities>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getSearchEntitiesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetEntityDossierUrl = (entityId: number,) => {
+
+
+
+
+  return `/api/dms/entities/${entityId}`
+}
+
+/**
+ * Each record carries the derived state from **its own module's builder**, never a second implementation here, so a dossier can never disagree with the screen its row came from.
+ * @summary Everything the five mirrors know about one entity
+ */
+export const getEntityDossier = async (entityId: number, options?: Parameters<typeof customFetch>[1]): Promise<EntityDossier> => {
+
+  return customFetch<EntityDossier>(getGetEntityDossierUrl(entityId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetEntityDossierQueryKey = (entityId: number,) => {
+    return [
+    `/api/dms/entities/${entityId}`
+    ] as const;
+    }
+
+
+export const getGetEntityDossierQueryOptions = <TData = Awaited<ReturnType<typeof getEntityDossier>>, TError = ErrorType<ErrorResponse>>(entityId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEntityDossier>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetEntityDossierQueryKey(entityId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getEntityDossier>>> = ({ signal }) => getEntityDossier(entityId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: entityId !== null && entityId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getEntityDossier>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetEntityDossierQueryResult = NonNullable<Awaited<ReturnType<typeof getEntityDossier>>>
+export type GetEntityDossierQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Everything the five mirrors know about one entity
+ */
+
+export function useGetEntityDossier<TData = Awaited<ReturnType<typeof getEntityDossier>>, TError = ErrorType<ErrorResponse>>(
+ entityId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEntityDossier>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetEntityDossierQueryOptions(entityId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

@@ -15,6 +15,7 @@
 
 import { and, eq } from "drizzle-orm";
 import { ownerDb, showroomDmsAccountsTable, showroomsTable } from "@workspace/db";
+import { rebuildEntityGraph } from "./entity-graph";
 import { logger } from "../logger";
 import { isDmsConfigured } from "./client";
 import { syncShowroomEnquiries } from "./lead-worklist";
@@ -45,9 +46,9 @@ function readMs(name: string, fallback: number): number {
  * must never do. Naming the unrestricted handle here makes that a decision
  * somebody took rather than a scope somebody forgot to open.
  */
-async function syncableShowroomIds(): Promise<number[]> {
+async function syncableShowrooms(): Promise<Array<{ id: number; ownerId: number }>> {
   const rows = await ownerDb
-    .selectDistinct({ id: showroomsTable.id })
+    .selectDistinct({ id: showroomsTable.id, ownerId: showroomsTable.ownerId })
     .from(showroomsTable)
     .innerJoin(
       showroomDmsAccountsTable,
@@ -59,7 +60,7 @@ async function syncableShowroomIds(): Promise<number[]> {
         eq(showroomDmsAccountsTable.isActive, true),
       ),
     );
-  return rows.map((r) => r.id);
+  return rows;
 }
 
 /**
@@ -70,7 +71,8 @@ async function syncableShowroomIds(): Promise<number[]> {
  * at it in parallel would be us causing the outage we then retry around.
  */
 async function runOnce(): Promise<void> {
-  const showroomIds = await syncableShowroomIds();
+  const showrooms = await syncableShowrooms();
+  const showroomIds = showrooms.map((s) => s.id);
   if (showroomIds.length === 0) {
     logger.debug("Scheduled DMS sync: no showrooms have an active DMS account");
     return;
@@ -96,6 +98,20 @@ async function runOnce(): Promise<void> {
       logger.error(
         { err: err instanceof Error ? err.message : String(err), showroomId },
         "Scheduled DMS sync failed for one showroom",
+      );
+    }
+  }
+
+  // Once per owner, after every showroom of theirs has been pulled. The graph
+  // spans outlets, so rebuilding it inside the loop would repeatedly build it
+  // from a half-synced picture.
+  for (const ownerId of new Set(showrooms.map((s) => s.ownerId))) {
+    try {
+      await rebuildEntityGraph(ownerId);
+    } catch (err) {
+      logger.error(
+        { err: err instanceof Error ? err.message : String(err), ownerId },
+        "Entity graph rebuild failed",
       );
     }
   }

@@ -14,6 +14,7 @@ import Worklist from '@/pages/Worklist';
 import ServiceWorklist from '@/pages/ServiceWorklist';
 import Registrations from '@/pages/Registrations';
 import Spares from '@/pages/Spares';
+import Dossier from '@/pages/Dossier';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -76,6 +77,9 @@ function Gate() {
           <Route path="/registrations" component={Registrations} />
           <Route path="/service" component={ServiceWorklist} />
           <Route path="/spares" component={Spares} />
+          {/* Not in the sidebar: you arrive here from the search box or from a
+              row, never by browsing. It is a lens on one record, not a screen. */}
+          <Route path="/who/:entityId" component={Dossier} />
           <Route component={NotFound} />
         </Switch>
       </Shell>

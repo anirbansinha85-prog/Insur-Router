@@ -66,11 +66,16 @@ Status: **✅ done** · **◑ partial** · **○ not started**
 
 | # | Requirement | Status |
 |---|---|---|
-| R-20 | **Dual role**: a control panel *with action buttons*, not a report | ○ **all actions are text** |
+| R-20 | **Dual role**: a control panel *with action buttons*, not a report | ◑ one button in five screens — **the weakest cell in this register**, and OBJ-10 is now next but one |
 | R-21 | Action buttons call the real `/api` pipeline — *locked decision, after the owner tier* | ○ |
-| R-22 | Multi-agent automation orchestration — agents propose, rules dispose, actions execute | ○ |
+| R-22 | Multi-agent automation orchestration — agents propose, rules dispose, actions execute | ○ split into OBJ-10 / 11 / 12 |
 | R-23 | Deterministic if/else rules where the logic is knowable, not a model guessing | ◑ derivations are rules |
 | R-24 | What the software cannot do becomes an explicit tracked task with the exact value to copy | ✅ |
+| R-46 | **Our record of a contact is ours, and does not stop the manufacturer's clock.** The DMS is read-only, so a call logged in DDMS cannot write `firstContactAt` in their CRM. The row shows both and states the limit, with the exact value to key in | ○ |
+| R-47 | **Identity resolved on a mobile number is probable, not certain** — families share a handset, numbers are reassigned, switchboard numbers get typed into walk-in records. Confidence travels with the entity and nothing irreversible is driven by it alone. **And an explicit reference beats a probable one**: a registration file names its deal, so that wins over a matching number | ✅ |
+| R-48 | Nothing leaves the building without either a rule permitting it or a person approving it | ○ |
+| R-49 | **The agent proposes, explains and drafts. Rules authorise.** A model may never decide whether an action is permitted or whether a record is in breach — that logic is knowable, and a rule that is right every time beats a model that is right most of the time | ○ |
+| R-50 | Internal notifications before customer-facing ones. Emailing staff their own workload is low risk; messaging a dealership's customers is not | ○ |
 
 ### How it looks
 
@@ -218,7 +223,7 @@ forty.
 > asks it to. Retiring the owner connection from the running server needs
 > InsurRouter to have a sign-in of its own — OBJ-8.
 
-### OBJ-8 — One credential, and it is not the owner's  ← **next**
+### OBJ-8 — One credential, and it is not the owner's  · *replanned to last, see 3a*
 *Follows OBJ-7. Covers R-7 and the rest of R-42.*
 
 InsurRouter and VeloDocs still run on the connection that bypasses RLS, because
@@ -230,7 +235,7 @@ string with `bypassrls`, and InsurRouter's application list shows only the
 signed-in owner's applications — proven by signing in as the second owner and
 getting an empty list rather than by reading the code.
 
-### OBJ-4 — The remaining modules  ◑ **2 of 5, 4 Aug**
+### OBJ-4 — The remaining modules  ◑ **2 of 5, 4 Aug** · *moved after OBJ-10*
 *Covers R-16, R-17, R-18.*
 
 Spares, receivables, inventory ageing, registration workflow, invoicing. Each
@@ -313,20 +318,145 @@ Decision field `transferRequestedAt` proven load-bearing (needsAction 6 → 5).
 cross-branch lookup working in both directions, and the screen driven through a
 browser.
 
-#### Still to do
+#### Still to do — and deliberately not next
 
-Receivables, inventory ageing, invoicing.
+Receivables, inventory ageing, invoicing. Replanned on 4 August to sit after the
+action layer: five modules that report and one button that acts is a worse
+product than five modules that act. See section 3a.
 
-### OBJ-5 — Agent orchestration
-*Covers R-22, R-23.*
+---
 
-Agents draft the contact — the WhatsApp message to the customer whose bike is
-ready, the follow-up to the lead nobody rang. Rules decide whether it may be
-sent. A human approves until trust is earned.
+## 3a. Replanned 4 August, after the design conversation on actions and agents
+
+Anirban's questions changed the shape of what is left, in three ways.
+
+**OBJ-5 was one phrase doing four jobs.** "Agent orchestration" bundled the
+buttons, the drafting, the sending and the explaining — and three of those four
+need no model at all. Bundling them is precisely the mistake OBJ-1 was split to
+avoid, and it would have produced an objective that never finished.
+
+**A prerequisite appeared that was not on the list.** The agent's usefulness
+depends on answering *what else is true about this customer*, and nothing could:
+five modules, five islands. That is now OBJ-9, and it sits ahead of the agent
+rather than inside it.
+
+**OBJ-4 lost its claim on being next.** Five modules that report and one button
+that acts is a worse product than five modules that act. R-20 — the dual role —
+is the weakest cell in the whole register, and three more read-only screens make
+it weaker rather than better. The remaining modules move after the action layer.
+
+| Order | Objective | Model? | Why here |
+|---|---|---|---|
+| 1 | **OBJ-9** Entity resolution | no | prerequisite for anything cross-module |
+| 2 | **OBJ-10** The screens act | no | R-20, and it is what makes an agent worth having |
+| 3 | **OBJ-11** Composer + approval gate | yes, gated | the first outbound surface |
+| 4 | **OBJ-12** The panel that explains | yes, read-only | needs 9 and 10 to have anything to say |
+| 5 | **OBJ-4** receivables, ageing, invoicing | no | after the product acts |
+| 6 | **OBJ-6** a dealership that reads as real | no | partly falls out of the above |
+| 7 | **OBJ-8** one credential | no | unchanged, and now also gates outbound |
+
+> An agent with nothing to invoke is a chatbot. That is the whole argument for
+> this order.
+
+### OBJ-9 — One customer, one vehicle, one person across five modules  ✅ **done 4 Aug**
+*Covers R-47.*
+
+`entities` and `entity_links`: a person resolved on the last ten digits of a
+mobile number, a vehicle on its chassis, a member of staff on `dealerCode:empCode`.
+Owner-scoped, not showroom-scoped — a customer who buys at Saraswati and
+services at Deccan is one person, and saying so is the point.
+
+Built by rules and stored as rows, **not** as a retrieval index. GraphRAG exists
+to impose structure on unstructured text because there is no schema to read;
+we have the schema, and indexing exact data probabilistically converts a certain
+answer into a likely one. Retrieval earns its place later, over the free text
+these mirrors already carry and nothing reads — complaint descriptions, RTO
+objections, lost-enquiry reasons.
+
+**Done when:** searching one mobile number returns every deal, job card,
+enquiry and registration file touching that person across showrooms in one
+call — and somebody who bought at one outlet and services at another comes back
+as one person rather than two.
+
+**Verified.** 61 entities and 95 links across two outlets. Mr Rohit Bansal
+returns as one record spanning a deal, an enquiry and a registration file, with
+each row carrying the state its own module's screen shows. Tenant isolation
+holds at both layers — Malhotra's search returns `[]`, the dossier 404s, and
+`ddms_app` holding Malhotra's session reads 0 of 61 entities.
+
+Two things it caught, both real:
+
+> **The same person came back twice.** The registration fixtures gave Devender
+> Singh Rathee a different mobile from his sales record — a fixture bug, but it
+> exposed a design error underneath: a registration file *names its deal*, and
+> matching on a phone number when an explicit reference is available is the
+> wrong way round. The named deal now wins; the number is the fallback.
+>
+> **Entity ids were not stable.** The first version deleted and re-inserted
+> everything, so the scheduler silently reassigned every id fifteen minutes
+> after anyone opened a dossier — and reset `firstSeenAt` on every pass, making
+> "known since June" a claim that refreshed itself. Found by opening a URL that
+> had been valid a minute earlier and getting a 404. Entities are upserted now;
+> links stay wholesale, because they have no identity worth keeping.
+
+Also 13× faster after batching the writes: 4,942ms → 382ms for the same graph.
+The cost was never Postgres, it was 160 round trips to a pooler in another
+region.
+
+### OBJ-10 — The screens act
+*Covers R-20, R-21, R-46.*
+
+Every "what to do" that can be resolved deterministically becomes a control. No
+model is involved in any of it:
+
+| Screen | Controls |
+|---|---|
+| Enquiries | call · WhatsApp · **reassign** to an active member of staff |
+| Deals | start application (exists) · copy the policy number to key in |
+| Service | call — vehicle ready · chase the part · request approval |
+| Registration | **assign to the RTO agent** · chase the RTO · call — RC ready |
+| Spares | request transfer from the branch that has it · raise reorder |
+
+Each control writes a decision field that already changes the derived state, so
+pressing it moves the row rather than logging a note nobody reads.
+
+**Done when:** no row on any of the five screens says "call the customer"
+without a way to call them and record it, and pressing a control changes that
+row's derived state on the next render.
+
+### OBJ-11 — Nothing leaves the building unapproved
+*Covers R-22 in part, R-48, R-50.*
+
+The composer drafts the contact — the message to the customer whose vehicle is
+ready, the note to the lead nobody rang, the email telling an RTO agent a file
+is theirs. Rules decide whether it may be sent. A person approves until trust is
+earned.
+
+**Internal notifications before customer-facing ones.** Emailing a member of
+staff their own workload is low risk and immediately useful; messaging a
+dealership's customers is the first thing this product does that leaves the
+building, and it goes behind the gate.
 
 **Done when:** a drafted message exists against a worklist row, and no message
-can leave the system without either a rule permitting it or a person approving
-it.
+can leave without either a rule permitting it or a person approving — proven by
+attempting to send one that neither permits and watching it be refused.
+
+### OBJ-12 — The panel that explains
+*Covers R-22, R-23, R-49.*
+
+One panel, on every tab, reading through typed tools over the entity graph and
+the projections that already exist. It answers what the row cannot: *why is this
+stuck, who else is affected, what happens if this waits another week.*
+
+What it must never do is decide whether something is wrong. `classify()` already
+does that — deterministically, auditably, for free — and replacing a rule that
+is right every time with a model that is right most of the time would be a
+downgrade dressed as an upgrade. The agent resolves, composes and explains. It
+does not authorise.
+
+**Done when:** on any row, the panel answers a question the screen does not
+already display, and every claim in its answer traces to rows a query returned
+rather than to prose it generated.
 
 ### OBJ-6 — A dealership that reads as real
 *Covers R-6, R-33. Replaces "get real DMS access", which Anirban ruled out on

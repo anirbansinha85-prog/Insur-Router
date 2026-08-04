@@ -42,6 +42,8 @@ const SCOPED_TABLES = [
   "dms_enquiries",
   "dms_registrations",
   "dms_part_stock",
+  "entities",
+  "entity_links",
   "showrooms",
   "owners",
 ];

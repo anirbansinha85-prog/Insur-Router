@@ -31,10 +31,14 @@ import {
   fetchDeal,
   resolveTenantByDealerCode,
   buildLeadWorklist,
+  buildDossier,
   buildRegistrationWorklist,
   buildServiceWorklist,
   buildSparesWorklist,
   buildWorklist,
+  rebuildEntityGraph,
+  searchEntities,
+  type EntityKind,
   isDmsConfigured,
   panelForShowroom,
   summarise,
@@ -159,6 +163,13 @@ router.post("/dms/showrooms/:showroomId/sync", async (req, res): Promise<void> =
     const registrationResults = await syncShowroomRegistrations(showroomId);
     const partsResults = await syncShowroomParts(showroomId);
 
+    // The graph is a projection of everything above it, so it is rebuilt last
+    // and for the whole owner rather than this showroom. Rebuilding one outlet
+    // would be cheaper and wrong: the finding this exists for is a customer who
+    // bought at one branch and services at another, and half a graph cannot see
+    // them.
+    const entityGraph = await rebuildEntityGraph(req.sessionUser!.ownerId);
+
     if (results.length === 0) {
       // The showroom exists but has no active DMS account, which is a
       // configuration gap rather than a fault. Say which.
@@ -170,7 +181,14 @@ router.post("/dms/showrooms/:showroomId/sync", async (req, res): Promise<void> =
       return;
     }
 
-    res.json({ results, jobCardResults, enquiryResults, registrationResults, partsResults });
+    res.json({
+      results,
+      jobCardResults,
+      enquiryResults,
+      registrationResults,
+      partsResults,
+      entityGraph,
+    });
   } catch (err) {
     if (err instanceof DmsError) {
       const status = err.kind === "bad_response" ? 502 : 503;
@@ -335,6 +353,57 @@ router.get("/dms/spares-worklist", async (req, res): Promise<void> => {
   });
 
   res.json({ summary: summariseSpares(rows), rows });
+});
+
+/**
+ * Find a person, a vehicle or a member of staff.
+ *
+ * Search by whatever somebody actually has to hand — a phone number, a chassis,
+ * a registration number, a name. Owner-scoped rather than showroom-scoped, and
+ * that is the point rather than a convenience: a customer who bought at one
+ * outlet and services at another is one person, and an outlet-scoped search
+ * would rebuild the islands this exists to join.
+ */
+router.get("/dms/entities", async (req, res): Promise<void> => {
+  const q = String(req.query.q ?? "");
+  if (q.trim().length < 3) {
+    res.status(400).json({ error: "q must be at least 3 characters" });
+    return;
+  }
+
+  const kindRaw = typeof req.query.kind === "string" ? req.query.kind : undefined;
+  const kind =
+    kindRaw === "CUSTOMER" || kindRaw === "VEHICLE" || kindRaw === "EMPLOYEE"
+      ? (kindRaw as EntityKind)
+      : undefined;
+
+  res.json({ rows: await searchEntities(req.sessionUser!.ownerId, q, kind) });
+});
+
+/**
+ * Everything the five mirrors know about one entity.
+ *
+ * Each record carries the derived state from **its own module's builder**, so
+ * this can never disagree with the screen the row came from. Reimplementing the
+ * classification here would be faster and would drift the first time a rule
+ * changed in one place and not the other.
+ */
+router.get("/dms/entities/:entityId", async (req, res): Promise<void> => {
+  const entityId = Number(req.params.entityId);
+  if (!Number.isInteger(entityId) || entityId <= 0) {
+    res.status(400).json({ error: "entityId must be a positive integer" });
+    return;
+  }
+
+  const dossier = await buildDossier(req.sessionUser!.ownerId, entityId);
+  if (!dossier) {
+    // 404 rather than 403, for the same reason as assertShowroomAccess: a 403
+    // confirms the entity exists and belongs to somebody else.
+    res.status(404).json({ error: `No entity ${entityId}` });
+    return;
+  }
+
+  res.json(dossier);
 });
 
 /**

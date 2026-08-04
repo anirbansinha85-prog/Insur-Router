@@ -118,8 +118,8 @@ artifacts/            deployable apps
   api-server/         Express 5 API — the only backend
     src/routes/       health, providers, applications, dashboard, dms, ingest
     src/lib/          api-executor.ts, browser-executor.ts, auth.ts, logger.ts
-    src/lib/dms/      client, adapters, mirror sync, five worklists, panel,
-                      scheduler
+    src/lib/dms/      client, adapters, mirror sync, five worklists, the
+                      entity graph, panel, scheduler
   insur-router/       React 19 + Vite — InsurRouter frontend
   doc-ingest/         React 19 + Vite — VeloDocs frontend
   rc-capture/         Expo mobile app
@@ -148,7 +148,7 @@ pnpm run typecheck:libs                         # before checking leaf packages
 
 ## Data model
 
-Seventeen tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
+Nineteen tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
 which of them `ddms_app` may read, and on what terms, is in `lib/db/sql/rls.sql`.
 
 **The owner tier** — who the data belongs to:
@@ -176,6 +176,13 @@ which of them `ddms_app` may read, and on what terms, is in `lib/db/sql/rls.sql`
   `(dealerCode, partNo)` unlike the rest: stock is physically at an outlet, not
   at a dealer code, and one showroom may carry two brands' codes over one set
   of shelves.
+- **entities** + **entity_links** — one person, one vehicle, one member of
+  staff, resolved across all five mirrors. **Owner-scoped, not showroom-scoped**:
+  a customer who buys at one outlet and services at another is one row, and
+  saying so is the point. The two are rebuilt *differently* — links wholesale,
+  entities upserted — because an entity id is addressable (it is in a URL) and
+  `firstSeenAt` is a claim about how long the dealership has known somebody.
+  Deleting both reassigned every id on each scheduled sync.
 - **insurer_panel_entries** — one insurer on one outlet's panel: quota, payout,
   turnaround, integration surface. Hangs off the *DMS account*, not the
   showroom. `route` is deliberately absent — it is the account's
@@ -196,6 +203,16 @@ reads across every outlet the *session's owner* holds — the scope comes from
 one query is the product's whole premise: a DMS keeps the parts ledger against a
 dealer code, so an owner with three outlets gets three ledgers and no way to ask
 whether the part a customer is waiting for is on a shelf in the next branch.
+
+**Identity: prefer an explicit reference over a probable one.** A registration
+file *names* its deal, so the customer resolves through that named deal before
+falling back to a matching phone number. Getting this the wrong way round
+produced the same person twice. The fallback stays probable and says so —
+`confidence` travels with the entity and an `identityNote` travels with the
+dossier, because families share a handset and numbers get reassigned. Chained
+inference is deliberately *not* done: chassis → deal → customer would attribute
+a service visit to whoever originally bought the vehicle, and second-hand
+vehicles are most of a workshop's book.
 
 **Derived state describes a cause, not a consequence.** `registration-worklist.ts`
 has the counter-example written into it: a lapsed temporary registration was
@@ -529,7 +546,8 @@ assignment (`VAR=x cmd`) and depends on `$REPLIT_EXPO_DEV_DOMAIN`,
 
 DDMS (`artifacts/ddms/src/pages/`): `Leads` (`/`), `Worklist` (`/worklist`),
 `Registrations` (`/registrations`), `ServiceWorklist` (`/service`),
-`Spares` (`/spares`). Its own `Shell` — an owner looking across showrooms,
+`Spares` (`/spares`), `Dossier` (`/who/:entityId`, reached from the header
+search rather than the sidebar). Its own `Shell` — an owner looking across showrooms,
 rather than an agent working one
 application — with outbound links to the other two products rather than
 embedded copies of them.

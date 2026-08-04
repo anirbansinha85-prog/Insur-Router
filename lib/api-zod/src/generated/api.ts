@@ -731,6 +731,72 @@ export const GetRegistrationWorklistResponse = zod.object({
 
 
 /**
+ * Five modules, five islands. Mrs Kavita Sharma is a job card waiting on a brake shoe; whether she is also an enquiry nobody rang, or owns the vehicle whose certificate has been in a drawer for three weeks, is a question no screen in the dealership can put — because a DMS keys everything by module and by dealer code.
+ * Search by whatever somebody has to hand: a phone number, a chassis, a registration number, a name. Owner-scoped rather than showroom-scoped, which is the point rather than a convenience.
+ * @summary Find a person, a vehicle or a member of staff across every module
+ */
+export const SearchEntitiesQueryParams = zod.object({
+  "q": zod.coerce.string().describe('At least 3 characters. Mobile and chassis match exactly after normalisation; names are a substring match.'),
+  "kind": zod.enum(['CUSTOMER', 'VEHICLE', 'EMPLOYEE']).optional()
+})
+
+export const SearchEntitiesResponse = zod.object({
+  "rows": zod.array(zod.object({
+  "id": zod.number().int(),
+  "kind": zod.enum(['CUSTOMER', 'VEHICLE', 'EMPLOYEE']).describe('Resolved on the last ten digits of a mobile number, on a normalised chassis number, and on `dealerCode:empCode` respectively. There is no fuzzy name matching — a dealership has four customers called Sharma, and merging them would be worse than merging none.\n'),
+  "naturalKey": zod.string(),
+  "displayName": zod.string().nullish(),
+  "confidence": zod.number().describe('1 for a vehicle or a member of staff — a chassis identifies exactly one machine. Lower for a customer, because a mobile number is a probable identity: families share a handset, numbers get reassigned, and switchboard numbers get typed into walk-in records.\n'),
+  "linkCount": zod.number().int().describe('How many mirror rows touch this entity. The reason to open it.'),
+  "modules": zod.array(zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION']))
+}))
+})
+
+
+/**
+ * Each record carries the derived state from **its own module's builder**, never a second implementation here, so a dossier can never disagree with the screen its row came from.
+ * @summary Everything the five mirrors know about one entity
+ */
+export const GetEntityDossierParams = zod.object({
+  "entityId": zod.coerce.number().int()
+})
+
+export const GetEntityDossierResponse = zod.object({
+  "entity": zod.object({
+  "id": zod.number().int(),
+  "kind": zod.enum(['CUSTOMER', 'VEHICLE', 'EMPLOYEE']).describe('Resolved on the last ten digits of a mobile number, on a normalised chassis number, and on `dealerCode:empCode` respectively. There is no fuzzy name matching — a dealership has four customers called Sharma, and merging them would be worse than merging none.\n'),
+  "naturalKey": zod.string(),
+  "displayName": zod.string().nullish(),
+  "confidence": zod.number()
+}),
+  "identityNote": zod.string().nullish().describe('Present when identity is probable rather than certain, so a reader deciding whether to act knows how the match was made.\n'),
+  "showrooms": zod.array(zod.object({
+  "id": zod.number().int(),
+  "code": zod.string().nullish()
+})),
+  "records": zod.array(zod.object({
+  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION']),
+  "recordKey": zod.string(),
+  "role": zod.enum(['SUBJECT', 'VEHICLE', 'ADVISOR', 'ASSIGNEE', 'AGENT']),
+  "showroomId": zod.number().int(),
+  "showroomCode": zod.string().nullish(),
+  "title": zod.string(),
+  "state": zod.string().describe('Taken from the module\'s own classifier. `GONE_FROM_DMS` means the mirror row vanished since the graph was built — said plainly rather than left blank.\n'),
+  "note": zod.string().nullish(),
+  "actionRequired": zod.string().nullish(),
+  "ageDays": zod.number().int().nullish(),
+  "href": zod.string()
+})),
+  "summary": zod.object({
+  "total": zod.number().int(),
+  "needsAction": zod.number().int(),
+  "modules": zod.array(zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION'])),
+  "showroomCount": zod.number().int().describe('Outlets this one person or vehicle appears at. Two is the finding.')
+})
+})
+
+
+/**
  * The only DDMS read that deliberately looks outside the showroom in the query string, and the reason is the product's whole premise. A DMS keeps the stock ledger against a dealer code, because a dealer code is what it thinks a business is. An owner with three outlets gets three ledgers and no way to ask whether the part a customer has been waiting three days for is on a shelf in the next branch.
  * The cross-branch scope comes from the session, never from the request, so widening the read cannot widen it past the owner. Row-level security is the backstop underneath that.
  * @summary The parts counter, read across every outlet the owner holds

@@ -795,6 +795,82 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /dms/entities:
+    get:
+      operationId: searchEntities
+      tags: [dms]
+      summary: Find a person, a vehicle or a member of staff across every module
+      description: >
+        Five modules, five islands. Mrs Kavita Sharma is a job card waiting on a
+        brake shoe; whether she is also an enquiry nobody rang, or owns the
+        vehicle whose certificate has been in a drawer for three weeks, is a
+        question no screen in the dealership can put — because a DMS keys
+        everything by module and by dealer code.
+
+        Search by whatever somebody has to hand: a phone number, a chassis, a
+        registration number, a name. Owner-scoped rather than showroom-scoped,
+        which is the point rather than a convenience.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: At least 3 characters. Mobile and chassis match exactly after normalisation; names are a substring match.
+          schema:
+            type: string
+        - name: kind
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/EntityKind"
+      responses:
+        "200":
+          description: Matching entities, most-connected first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/EntitySearchRow"
+                required: [rows]
+        "400":
+          description: Query too short
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /dms/entities/{entityId}:
+    get:
+      operationId: getEntityDossier
+      tags: [dms]
+      summary: Everything the five mirrors know about one entity
+      description: >
+        Each record carries the derived state from **its own module's builder**,
+        never a second implementation here, so a dossier can never disagree with
+        the screen its row came from.
+      parameters:
+        - name: entityId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: The dossier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntityDossier"
+        "404":
+          description: No such entity for this owner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /dms/spares-worklist:
     get:
       operationId: getSparesWorklist
@@ -2079,6 +2155,112 @@ components:
         worstDaysLate: { type: integer }
         lastSyncedAt: { type: ["string", "null"] }
       required: [total, byState, needsAction, readyUncollected, worstDaysLate]
+
+    EntityKind:
+      type: string
+      enum: [CUSTOMER, VEHICLE, EMPLOYEE]
+      description: >
+        Resolved on the last ten digits of a mobile number, on a normalised
+        chassis number, and on `dealerCode:empCode` respectively. There is no
+        fuzzy name matching — a dealership has four customers called Sharma, and
+        merging them would be worse than merging none.
+
+    EntityModule:
+      type: string
+      enum: [DEAL, JOB_CARD, ENQUIRY, REGISTRATION]
+
+    EntitySearchRow:
+      type: object
+      properties:
+        id: { type: integer }
+        kind:
+          $ref: "#/components/schemas/EntityKind"
+        naturalKey: { type: string }
+        displayName: { type: ["string", "null"] }
+        confidence:
+          type: number
+          description: >
+            1 for a vehicle or a member of staff — a chassis identifies exactly
+            one machine. Lower for a customer, because a mobile number is a
+            probable identity: families share a handset, numbers get reassigned,
+            and switchboard numbers get typed into walk-in records.
+        linkCount:
+          type: integer
+          description: How many mirror rows touch this entity. The reason to open it.
+        modules:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntityModule"
+      required: [id, kind, naturalKey, confidence, linkCount, modules]
+
+    DossierRecord:
+      type: object
+      properties:
+        module:
+          $ref: "#/components/schemas/EntityModule"
+        recordKey: { type: string }
+        role:
+          type: string
+          enum: [SUBJECT, VEHICLE, ADVISOR, ASSIGNEE, AGENT]
+        showroomId: { type: integer }
+        showroomCode: { type: ["string", "null"] }
+        title: { type: string }
+        state:
+          type: string
+          description: >
+            Taken from the module's own classifier. `GONE_FROM_DMS` means the
+            mirror row vanished since the graph was built — said plainly rather
+            than left blank.
+        note: { type: ["string", "null"] }
+        actionRequired: { type: ["string", "null"] }
+        ageDays: { type: ["integer", "null"] }
+        href: { type: string }
+      required: [module, recordKey, role, showroomId, title, state, href]
+
+    EntityDossier:
+      type: object
+      properties:
+        entity:
+          type: object
+          properties:
+            id: { type: integer }
+            kind:
+              $ref: "#/components/schemas/EntityKind"
+            naturalKey: { type: string }
+            displayName: { type: ["string", "null"] }
+            confidence: { type: number }
+          required: [id, kind, naturalKey, confidence]
+        identityNote:
+          type: ["string", "null"]
+          description: >
+            Present when identity is probable rather than certain, so a reader
+            deciding whether to act knows how the match was made.
+        showrooms:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              code: { type: ["string", "null"] }
+            required: [id]
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/DossierRecord"
+        summary:
+          type: object
+          properties:
+            total: { type: integer }
+            needsAction: { type: integer }
+            modules:
+              type: array
+              items:
+                $ref: "#/components/schemas/EntityModule"
+            showroomCount:
+              type: integer
+              description: Outlets this one person or vehicle appears at. Two is the finding.
+          required: [total, needsAction, modules, showroomCount]
+      required: [entity, showrooms, records, summary]
 
     SparesState:
       type: string

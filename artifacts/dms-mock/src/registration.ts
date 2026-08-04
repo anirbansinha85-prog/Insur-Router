@@ -25,6 +25,12 @@
  * are earlier sales — a registration desk is always carrying files from months
  * nobody is talking about any more, and that backlog is the point.
  *
+ * The five files that name a live deal carry that deal's own customer mobile.
+ * They did not at first, and the entity graph immediately reported Devender
+ * Singh Rathee twice — which was a fixture bug, but it did expose a real design
+ * error underneath it: a registration file *names* its deal, and matching on a
+ * phone number when an explicit reference is available is the wrong way round.
+ *
  * Dates are relative to now and resolved at seed time, for the same reason as
  * the workshop: a file untouched for 47 days is the fixture, and letting it
  * drift with the calendar would turn it into a file untouched for a year, which
@@ -94,7 +100,7 @@ export const REGN_FILE_SEEDS: RegnFileSeed[] = [
     dealId: "HMC-DL-2026-000181",
     chassisNo: "MBLHAR0748NK41694",
     custName: "Mr Rohit Bansal",
-    mobileNo: "9811443320",
+    mobileNo: "9873310482",
     modelDesc: "Splendor Plus",
     // Two blockages at once, and only one of them is the customer's fault.
     status: "PENDING_DOCS",
@@ -127,7 +133,7 @@ export const REGN_FILE_SEEDS: RegnFileSeed[] = [
     dealId: "HMC-DL-2026-000182",
     chassisNo: "MBLKAR0921NK18337",
     custName: "Mr Imran Qureshi",
-    mobileNo: "9871220054",
+    mobileNo: "9711250934",
     modelDesc: "Xpulse 200 4V",
     // The sharpest row in the fixture. Paperwork is complete, road tax is paid,
     // and the file cannot move because there is no policy — while the customer
@@ -162,7 +168,7 @@ export const REGN_FILE_SEEDS: RegnFileSeed[] = [
     dealId: "HMC-DL-2026-000183",
     chassisNo: "MBLVDA0114NK07219",
     custName: "Ms Ananya Iyer",
-    mobileNo: "9899017762",
+    mobileNo: "9004471123",
     modelDesc: "Vida V2 Plus",
     // Nothing is blocking this one. Tax paid six days ago, file simply never
     // walked to the counter.
@@ -196,7 +202,7 @@ export const REGN_FILE_SEEDS: RegnFileSeed[] = [
     dealId: "HMC-MH-2026-000184",
     chassisNo: "MBLDST0125NK55210",
     custName: "M/s Greenmile Logistics Private Limited",
-    mobileNo: "9822440091",
+    mobileNo: "9820117733",
     modelDesc: "Destini 125",
     // Corporate buyer: two extra documents, and the board resolution is the one
     // that always arrives last.
@@ -230,7 +236,7 @@ export const REGN_FILE_SEEDS: RegnFileSeed[] = [
     dealId: "HMC-DL-2026-000185",
     chassisNo: "MBLHFD0097NK30118",
     custName: "Mr Devender Singh Rathee",
-    mobileNo: "9871004412",
+    mobileNo: "9868112047",
     modelDesc: "HF Deluxe",
     // The DMS calls this deal DELIVERED and stops caring. The registration
     // certificate has been in the drawer for three weeks.

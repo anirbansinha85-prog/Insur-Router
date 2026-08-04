@@ -186,6 +186,24 @@ create policy dms_part_stock_own on public.dms_part_stock
   using (showroom_id in (select app.owned_showroom_ids()))
   with check (showroom_id in (select app.owned_showroom_ids()));
 
+/*
+ * The entity graph. Scoped on `owner_id` directly rather than through
+ * `owned_showroom_ids`, because an entity belongs to the owner and not to any
+ * one of their outlets — a customer who buys at Saraswati and services at
+ * Deccan is one row, and that is the whole reason the table exists.
+ */
+drop policy if exists entities_own on public.entities;
+create policy entities_own on public.entities
+  for all to ddms_app
+  using (owner_id = app.current_owner_id())
+  with check (owner_id = app.current_owner_id());
+
+drop policy if exists entity_links_own on public.entity_links;
+create policy entity_links_own on public.entity_links
+  for all to ddms_app
+  using (owner_id = app.current_owner_id())
+  with check (owner_id = app.current_owner_id());
+
 drop policy if exists insurer_panel_own on public.insurer_panel_entries;
 create policy insurer_panel_own on public.insurer_panel_entries
   for select to ddms_app
@@ -256,12 +274,22 @@ grant select, insert, update on
   public.dms_employees,
   public.dms_registrations,
   public.dms_part_stock,
+  public.entities,
+  public.entity_links,
   public.applications,
   public.submission_logs
 to ddms_app;
 
 -- `serial` columns draw from a sequence, and a role that may insert but may not
 -- touch the sequence gets "permission denied for sequence" on every insert.
+/*
+ * The graph is rebuilt wholesale rather than reconciled — see the note on
+ * `entities` — so this is the one pair the request path may delete from.
+ * Deliberately granted by name rather than added to the block above, so that
+ * "which tables can this role delete from" stays a one-line answer.
+ */
+grant delete on public.entities, public.entity_links to ddms_app;
+
 grant usage, select on all sequences in schema public to ddms_app;
 
 /*
