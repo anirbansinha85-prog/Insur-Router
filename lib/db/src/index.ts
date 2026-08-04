@@ -10,11 +10,15 @@
 export {
   db,
   ownerDb,
+  loginDb,
+  workerDb,
   pool,
   withSessionScope,
+  withWorkerScope,
   inSessionScope,
   isAppRoleConfigured,
   requireAppRoleConfigured,
+  refuseOwnerCredential,
   type Db,
 } from "./scope";
 

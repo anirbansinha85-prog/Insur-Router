@@ -14,7 +14,7 @@
  */
 
 import { and, eq } from "drizzle-orm";
-import { ownerDb, showroomDmsAccountsTable, showroomsTable } from "@workspace/db";
+import { db, showroomDmsAccountsTable, showroomsTable, withWorkerScope } from "@workspace/db";
 import { rebuildEntityGraph } from "./entity-graph";
 import { logger } from "../logger";
 import { isDmsConfigured } from "./client";
@@ -43,14 +43,18 @@ function readMs(name: string, fallback: number): number {
 /**
  * Showrooms worth syncing: active, and holding at least one active DMS account.
  *
- * `ownerDb` rather than `db`, spelled out rather than inherited. This runs on a
- * timer with nobody signed in, and it is cross-tenant by definition — it syncs
- * every owner's showrooms, which is the one thing a tenant-scoped connection
- * must never do. Naming the unrestricted handle here makes that a decision
- * somebody took rather than a scope somebody forgot to open.
+ * Reached through `db` inside `withWorkerScope`, which is what makes this the
+ * scheduler's own credential rather than the table owner's. It runs on a timer
+ * with nobody signed in and is cross-tenant by definition — it syncs every
+ * owner's showrooms, the one thing a tenant-scoped connection must never do.
+ *
+ * That used to be a reason to reach for the handle that bypasses RLS. It is
+ * not: "cross-tenant" is a reason to name a role, and `ddms_worker` is that
+ * role. It holds the mirror and the graph for every dealership, and cannot
+ * read a user, a session, an application or anything a person decided.
  */
 async function syncableShowrooms(): Promise<Array<{ id: number; ownerId: number }>> {
-  const rows = await ownerDb
+  const rows = await db
     .selectDistinct({ id: showroomsTable.id, ownerId: showroomsTable.ownerId })
     .from(showroomsTable)
     .innerJoin(
@@ -74,6 +78,14 @@ async function syncableShowrooms(): Promise<Array<{ id: number; ownerId: number 
  * at it in parallel would be us causing the outage we then retry around.
  */
 async function runOnce(): Promise<void> {
+  // One decision, in one place. Everything below — the seven syncs, the graph
+  // rebuild, the state detection — reaches for `db` and should not have to know
+  // whether a person or a timer started it. What differs is the credential
+  // underneath, and this is where that is chosen.
+  return withWorkerScope(runPass);
+}
+
+async function runPass(): Promise<void> {
   const showrooms = await syncableShowrooms();
   const showroomIds = showrooms.map((s) => s.id);
   if (showroomIds.length === 0) {

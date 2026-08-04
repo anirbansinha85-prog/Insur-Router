@@ -22,6 +22,11 @@ import pg from "pg";
 import { ownerDb, sessionsTable, usersTable } from "@workspace/db";
 
 const TABLES = [
+  // InsurRouter's own table, here since OBJ-8. It is the one that used to be
+  // readable by anybody holding the shared service key, so it is the one worth
+  // watching: a non-zero row on a login that should not have it is the whole
+  // objective failing.
+  "applications",
   "dms_deals",
   "dms_enquiries",
   "dms_job_cards",

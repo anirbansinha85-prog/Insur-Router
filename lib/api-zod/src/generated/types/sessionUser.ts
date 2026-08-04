@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { SessionUserRole } from './sessionUserRole';
+import type { SessionUserShowroomsItem } from './sessionUserShowroomsItem';
 
 /**
  * Where tenant scope comes from. `ownerId` is never accepted from a request — it is read from the session, which is the whole point.
@@ -15,7 +16,10 @@ export interface SessionUser {
   ownerId: number;
   email: string;
   name: string;
-  /** OWNER and MANAGER are DDMS's own. The rest are the dealer's own role names, mirrored from `dms_employees.role`, so a login's role and the role on the work assigned to it are the same string. */
+  /**
+     * OWNER and MANAGER are DDMS's own. The rest are the dealer's own role names, mirrored from `dms_employees.role`, so a login's role and the role on the work assigned to it are the same string.
+     * PLATFORM_ADMIN is not a dealership role at all: it is whoever runs the platform, and it exists so that insurers and OCR engines — the same rows for every dealership — have somebody who may edit them without that being an owner editing another owner's reference data. It can read no dealership module.
+     */
   role: SessionUserRole;
   /**
      * The dealer's own employee code, when this login is a member of staff. The same code already sits on the enquiries, registration files and job cards assigned to them — which is what makes "my work" mean anything. Null for an owner.
@@ -29,4 +33,6 @@ export interface SessionUser {
   showroomId?: number | null;
   /** What this role may read, so the console can show a sidebar that matches what the database will answer. Cosmetic — the row policies are what actually refuse. */
   modules?: string[];
+  /** The outlets this session may act for, in the order they should be offered. One entry for a member of staff; the owner's whole set for an owner. Here rather than on a DDMS route because it is a fact about the person, not about the console — InsurRouter and VeloDocs both have to ask which outlet a new record belongs to, and neither should have to call the other product to find out. */
+  showrooms?: SessionUserShowroomsItem[];
 }

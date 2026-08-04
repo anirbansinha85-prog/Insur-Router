@@ -58,6 +58,7 @@ import {
 } from "../lib/ocr-engines";
 import { EMPTY_MSA_FIELDS } from "../lib/document-extraction";
 import { logger } from "../lib/logger";
+import { requireModule, requireUser, resolveOwningShowroom, sessionScope } from "../lib/session";
 
 // ─── SSRF protection ─────────────────────────────────────────────────────────
 
@@ -209,6 +210,18 @@ async function validateUrlSsrf(
 }
 
 const router: IRouter = Router();
+
+/**
+ * Behind a session since OBJ-8, mounted on the prefix rather than path-less —
+ * a path-less `router.use` here is precisely the bug that made these routes
+ * answer 401 for a whole session once before.
+ *
+ * Ingest is where somebody else's data physically enters this system: a deal
+ * pulled from a dealer's DMS, a scraped portal, an Aadhaar card photographed on
+ * a counter. Running it unauthenticated meant the shared service key was the
+ * only thing between a caller and a draft holding a stranger's KYC.
+ */
+router.use("/ingest", requireUser, sessionScope, requireModule("DEAL"));
 
 // MsaFields / IngestResult are defined alongside the engine registry in
 // lib/ocr-engines.ts and imported above — they are shared by all ingest sources.
@@ -611,12 +624,31 @@ router.post("/ingest/push", async (req, res): Promise<void> => {
   const { fields } = parsed.data;
 
   // A DMS pull hands back `tenant` and `dealContext`; the caller passes both
-  // straight through. OCR and scrape send neither and the columns stay null,
-  // which is the honest answer — a scanned Aadhaar cannot say which showroom
-  // it belongs to or what the engine capacity is.
-  const tenant = parsed.data.tenant ?? null;
+  // straight through. OCR and scrape send neither, and the engine-capacity
+  // columns stay null, which is the honest answer — a scanned Aadhaar cannot
+  // say what the cubic capacity is.
   const ctx = (parsed.data.dealContext ?? null) as DmsDealContext | null;
   const doc = parsed.data.document;
+
+  // The showroom is the one thing that can no longer stay null. It used to,
+  // and the row was then invisible to every session including the one that
+  // created it. A pulled deal names its outlet through the dealer code; a
+  // photographed document cannot, so the person holding the phone does.
+  const tenant = parsed.data.tenant ?? null;
+  let owningShowroomId = tenant?.showroomId ?? null;
+  if (owningShowroomId === null) {
+    const owning = await resolveOwningShowroom(req, res, parsed.data.showroomId);
+    if (!owning.ok) return;
+    if (owning.showroomId === null) {
+      res.status(400).json({
+        error:
+          "Which outlet is this document for? You hold more than one, and a " +
+          "draft that names none belongs to none.",
+      });
+      return;
+    }
+    owningShowroomId = owning.showroomId;
+  }
 
   logger.info(
     {
@@ -630,7 +662,7 @@ router.post("/ingest/push", async (req, res): Promise<void> => {
 
   const result = await createDraftApplication({
     fields: fields as unknown as MsaFields,
-    tenant,
+    tenant: { showroomId: owningShowroomId },
     ctx,
     document: doc ? (doc as unknown as Record<string, unknown>) : null,
     sourceDesc: doc

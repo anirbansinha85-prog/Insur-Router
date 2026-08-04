@@ -29,7 +29,17 @@ export type DealershipRole =
   | "SERVICE_ADVISOR"
   | "RTO_AGENT"
   | "ACCOUNTS"
-  | "TECHNICIAN";
+  | "TECHNICIAN"
+  /**
+   * Not a dealership role at all — whoever runs the platform.
+   *
+   * Added in OBJ-8 for one narrow job: insurers and OCR engines are the same
+   * rows for every dealership, so no owner's session may write them, and until
+   * then the only thing that could was the connection that bypassed every
+   * policy. This is the account that may, and it reads no dealership module —
+   * see the empty list below, and `app.is_platform_admin()` in rls.sql.
+   */
+  | "PLATFORM_ADMIN";
 
 /** The modules a screen or a policy can be gated on. */
 export type AccessModule =
@@ -74,6 +84,9 @@ const BY_ROLE: Record<DealershipRole, AccessModule[]> = {
   RTO_AGENT: ["REGISTRATION", "OUTBOX"],
   ACCOUNTS: ["RECEIVABLE", "DEAL", "OUTBOX"],
   TECHNICIAN: ["JOB_CARD"],
+  // Deliberately empty, and it is the point rather than an omission: the
+  // account that may edit reference data can read nobody's customers.
+  PLATFORM_ADMIN: [],
 };
 
 export function modulesFor(role: string): AccessModule[] {

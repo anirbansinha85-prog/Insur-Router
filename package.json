@@ -8,6 +8,7 @@
     "db:push": "pnpm --filter @workspace/db run push",
     "db:seed": "pnpm --filter @workspace/scripts run seed",
     "db:seed-owners": "pnpm --filter @workspace/scripts run seed-owners",
+    "db:seed-applications": "pnpm --filter @workspace/scripts run seed-applications",
     "db:seed-users": "pnpm --filter @workspace/scripts run seed-users",
     "db:rls": "pnpm --filter @workspace/scripts run rls",
     "db:probe": "pnpm --filter @workspace/scripts run probe",

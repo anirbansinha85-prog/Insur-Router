@@ -44,7 +44,7 @@ Status: **✅ done** · **◑ partial** · **○ not started**
 | R-4 | DDMS sits on top of the OEM's DMS and does not replace it | ✅ |
 | R-5 | The DMS integration is **read-only, permanently**. Design around that rather than around a write-back that may never be granted | ✅ |
 | R-6 | Works irrespective of OEM — the adapter absorbs per-OEM differences | ◑ one adapter (Hero) |
-| R-7 | Each product is complete on its own; DDMS, InsurRouter and VeloDocs usable individually and as a whole | ◑ frontends split, API still one process |
+| R-7 | Each product is complete on its own; DDMS, InsurRouter and VeloDocs usable individually and as a whole | ◑ frontends split and each now has its own sign-in; API still one process |
 | R-8 | InsurRouter and VeloDocs are API capabilities reachable from DDMS | ○ linked, not called |
 
 ### What it shows
@@ -115,8 +115,8 @@ refused, are in section 3b.*
 |---|---|---|
 | R-40 | Never write to the OEM's DMS | ✅ |
 | R-41 | Never present simulated output as real. **Narrower than R-33 and it survives it**: dealership records may read as real because they stand in for real ones, but a policy number no insurer issued stays marked on the policy itself, because somebody could otherwise believe they are covered | ✅ |
-| R-42 | Per-user authentication before any real customer | ✅ |
-| R-45 | Isolation enforced by the database, not only by application code. The DDMS request path connects as a role that cannot bypass RLS and cannot read a session token | ✅ |
+| R-42 | Per-user authentication before any real customer | ✅ all three products, since OBJ-8 |
+| R-45 | Isolation enforced by the database, not only by application code. Every request path connects as a role that cannot bypass RLS and cannot read a session token — and since OBJ-8 the server holds no credential that could, so the restricted role is not a choice it makes but the only one it has | ✅ |
 | R-43 | Deccan stays parked; Saraswati is the working showroom | ✅ |
 | R-44 | Remote-desktop access (AnyDesk-style) is **not** the integration route | ✅ ruled out |
 
@@ -246,22 +246,83 @@ forty.
 > asks it to. Retiring the owner connection from the running server needs
 > InsurRouter to have a sign-in of its own — OBJ-8.
 
-### OBJ-8 — One credential, and it is not the owner's  · *sequenced in 3b, third*
-*Follows OBJ-7. Covers R-7 and the rest of R-42.*
+### OBJ-8 — One credential, and it is not the owner's  ✅ **done 4 Aug**
+*Follows OBJ-7. Covers R-7 and the rest of R-42, and finishes R-45.*
 
-> **Moved up on 4 August.** It sits beside OBJ-14 rather than at the end:
+> **Moved up on 4 August.** It sat beside OBJ-14 rather than at the end:
 > roles inside a dealership and credentials held by the process are the same
 > question — *who may see what* — asked twice, and answering them apart would
-> mean touching the same code twice.
+> have meant touching the same code twice.
 
-InsurRouter and VeloDocs still run on the connection that bypasses RLS, because
-they have no sign-in and no tenant to scope by. Until they do, the server holds
-a credential that sees every dealership.
+InsurRouter and VeloDocs ran on the connection that bypasses RLS, because they
+had no sign-in and no tenant to scope by. While they did, the server held a
+credential that sees every dealership and every password hash.
 
 **Done when:** the running API server's environment contains no connection
 string with `bypassrls`, and InsurRouter's application list shows only the
 signed-in owner's applications — proven by signing in as the second owner and
 getting an empty list rather than by reading the code.
+
+**Verified, both halves.**
+
+The server refuses to start with the owner's credential in its environment
+rather than merely declining to use it — because choosing the restricted role
+is not isolation while the other one is one import away, and that mistake would
+be a query that silently works:
+
+```
+$ node --env-file=.env artifacts/api-server/dist/index.mjs
+Error: DATABASE_URL is set. That is the table owner's connection and it
+bypasses row-level security … Start it with `--env-file=.env.api`.
+```
+
+And the list, through HTTP with a real cookie:
+
+| | |
+|---|---|
+| Anirban → applications | 200, **18** |
+| Malhotra owner → applications | 200, **0** |
+| Malhotra owner → dashboard | every figure zero, no provider rows |
+| Service advisor → applications | **403** — *"A service advisor does not see sales deals. Yours covers job cards and the parts counter."* |
+| RTO agent → applications | 403 |
+| Accounts, sales exec → applications | 200 |
+| Any of them with the service key but no session | **401** on applications, dashboard, providers and ingest |
+
+`pnpm run db:probe` now counts `applications` per login, which is the check
+rather than the claim — the second owner reads zero rows at the database, not
+just at the route.
+
+**Three credentials, because there were three jobs.** One role could not do it:
+two of the jobs happen with nobody signed in and so cannot be scoped by a
+session, which is exactly why they had been left on the table owner.
+
+| | reaches | |
+|---|---|---|
+| `ddms_app` | every request, scoped by its session | nothing at all without one |
+| `ddms_login` | `users`, `sessions`, the staff master | may write one column, `last_login_at` |
+| `ddms_worker` | the mirror and the graph, every tenant | no users, no sessions, no writes to anything a person decided |
+
+> **The scheduler found the widening I had not planned for.** Detection failed
+> on every pass with a permission error: a deal's derived state is a *statement
+> about the insurance record* — AHEAD, BEHIND and IN_SYNC compare the DMS's
+> policy number with ours — so the detector cannot rebuild the projection
+> without reading `applications`. It now may, select-only, and the grant says
+> why. A narrower claim in a comment would have been the easier fix and the
+> wrong one.
+
+**And a fourth role that is not a credential: `PLATFORM_ADMIN`.** Insurers and
+OCR engines are the same rows for every dealership, so no owner's session may
+write them — an owner editing an insurer's endpoint would be editing it for
+every other owner. Until now the only thing that could was the connection that
+bypassed everything. It reads no dealership module at all.
+
+**The five applications that belonged to nobody.** `showroom_id` is nullable
+and a null belongs to no owner, so the moment InsurRouter moved behind the
+policies, five rows left over from the Replit export became invisible to
+everybody — including the login that created them. Data that silently
+disappears is the failure this product refuses everywhere else, so they were
+repaired rather than deleted, and `db:seed-applications` reports the count of
+unattributed rows every time it runs. It is zero.
 
 ### OBJ-4 — The remaining modules  ✅ **done 4 Aug**
 *Covers R-16, R-17, R-18.*
@@ -729,9 +790,9 @@ short-staffed dealership does not employ. So:
 
 | Order | Objective | Model? | Why here |
 |---|---|---|---|
-| 1 | **OBJ-13** The mirror emits events | no | invisible, small, and four things are blocked behind it |
-| 2 | **OBJ-14** People, and what each may see | no | the queue needs a *me*; and it is half of the access story |
-| 3 | **OBJ-8** One credential | no | the other half. Doing 14 and 8 together is one piece of work about who sees what, and it has been outstanding since 3 August |
+| 1 | ~~**OBJ-13** The mirror emits events~~ ✅ | no | invisible, small, and four things are blocked behind it |
+| 2 | ~~**OBJ-14** People, and what each may see~~ ✅ | no | the queue needs a *me*; and it is half of the access story |
+| 3 | ~~**OBJ-8** One credential~~ ✅ | no | the other half. Doing 14 and 8 together was one piece of work about who sees what, and it had been outstanding since 3 August |
 | 4 | **OBJ-15** The queue | no | the capacity thesis, finally operational |
 | 5 | **OBJ-16** Rules that run themselves | no | needs 13 for the trigger and 15 for somewhere to put the work |
 | 6 | **OBJ-17** The agent operates the registry | yes, gated | almost free by then: the registry, the refusals, the gate and the audit trail all exist |
@@ -1035,10 +1096,11 @@ and no rule that runs on its own. That is what **section 3b** is for, and it is
 the difference between a product that shows a short-staffed dealership its
 problems and one that absorbs some of them.
 
-**The blocker before a customer has moved.** Sign-in exists and the database
-enforces the boundary rather than trusting the code to. What is left is that the
-server still holds a credential that can see every dealership, because the other
-two products have nothing to scope by yet — OBJ-8.
+**The blocker before a customer is gone.** Sign-in exists in all three
+products, the database enforces the boundary rather than trusting the code to,
+and since OBJ-8 the server holds no credential that could bypass it — it refuses
+to start with one. What is left is not a safety question any more; it is the
+queue, and the rules that fill it.
 
 ---
 

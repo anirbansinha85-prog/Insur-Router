@@ -32,6 +32,7 @@ node_modules
 .env
 .env.*
 !.env.example
+!.env.api.example
 
 # drizzle-kit generate output — this workspace uses `push`, not migration files
 lib/db/drizzle/

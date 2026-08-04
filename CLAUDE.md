@@ -63,27 +63,63 @@ leaves a hole the other two cannot cover.
 | Role | what does that person do here? | `lib/dms/access.ts`, `users.role` |
 | Row-level security | what may their connection see? | `lib/db/sql/rls.sql` |
 
+Since OBJ-8 all three apply to **all three products**. InsurRouter and VeloDocs
+had only the first of them, which is why their routes returned every
+dealership's applications to anybody holding the shared key.
+
 **Sessions.** `POST /api/auth/login` verifies a scrypt password and issues an
 httpOnly cookie. Only the SHA-256 of the token is stored, so the table is not a
 list of usable credentials. `attachSession` runs app-wide and never rejects;
 `requireUser` rejects. `assertShowroomAccess` answers **404, not 403**, on a
 showroom the session's owner does not hold — a 403 confirms it exists.
 
-**The two database roles**, and they are not interchangeable:
+**Four database roles**, and they are not interchangeable. One per job, because
+two of the jobs happen with nobody signed in and so cannot be scoped by a
+session — which is exactly why they used to run as the table owner:
 
-| | `DATABASE_URL` (`postgres`) | `DATABASE_URL_APP` (`ddms_app`) |
-|---|---|---|
-| Owns the tables | yes | no |
-| `bypassrls` | **yes** | no |
-| Grants on `users` / `sessions` | all | **none** |
-| Used by | drizzle-kit, seeds, InsurRouter and VeloDocs routes, the sync scheduler | the DDMS request path |
+| | `DATABASE_URL`<br>`postgres` | `DATABASE_URL_APP`<br>`ddms_app` | `DATABASE_URL_LOGIN`<br>`ddms_login` | `DATABASE_URL_WORKER`<br>`ddms_worker` |
+|---|---|---|---|---|
+| Owns the tables | yes | no | no | no |
+| `bypassrls` | **yes** | no | no | no |
+| `users` / `sessions` | all | **none** | select, and one column of update | **none** |
+| Used by | drizzle-kit, the seeds, `db:rls`, `db:probe` | every request path | sign-in | the sync scheduler |
 
-The DMS router mounts `sessionScope`, which checks out a connection from the
-`ddms_app` pool and sets `app.session_token` on it for the life of the request.
-`db` from `@workspace/db` is an `AsyncLocalStorage`-backed proxy: inside a scope
-it is that connection, outside one it is the owner pool. **No caller passes a
-handle around**, which is the whole reason it is a proxy — `lib/db/src/scope.ts`
-has the argument.
+**The API server is not given `DATABASE_URL` and refuses to start with it set.**
+`refuseOwnerCredential()` in `lib/db/src/scope.ts` is what refuses, and the
+reason it exists rather than a comment saying "don't use the owner pool" is that
+choosing the restricted role is not isolation while the unrestricted one is one
+import away — the mistake would be a query that silently works. So the server
+runs from `.env.api`, which is `.env` minus that one line, and the command-line
+tools keep theirs. See `.env.api.example`.
+
+`ddms_login` exists because `lib/session.ts` runs *before* a scope exists — it
+is working out whose scope to open — and reads the two tables `ddms_app` is
+denied. It may write exactly one column, `users.last_login_at`, so a leak of the
+credential that can see password hashes cannot rewrite one or change a role.
+
+`ddms_worker` exists because syncing every dealership on a timer is cross-tenant
+by definition. `withWorkerScope()` opens it once around the whole pass, so the
+seven sync functions keep reaching for `db` and do not know or care whether a
+person or a timer started them. It reads `applications` and `policies` —
+select-only, and not by original intent: a deal's derived state is a *statement
+about* the insurance record, so the detector cannot rebuild the projection
+without them. It holds nothing about people and writes nothing anybody decided.
+
+`PLATFORM_ADMIN` is a user role rather than a credential, and the only one that
+may write `providers` and `ocr_engines`. Those are the same rows for every
+dealership, so an owner editing an insurer's endpoint would be editing it for
+every other owner; `app.is_platform_admin()` is what refuses. It reads no
+dealership module at all.
+
+Every product router mounts `sessionScope`, which checks out a connection from
+the `ddms_app` pool and sets `app.session_token` on it for the life of the
+request. `db` from `@workspace/db` is an `AsyncLocalStorage`-backed proxy: inside
+a scope it is that connection, outside one it falls back to the owner handle —
+which in the API server has no credential behind it and throws. That is the
+intended shape: unscoped database access from a request path used to work
+silently and now cannot happen at all. **No caller passes a handle around**,
+which is the whole reason it is a proxy — `lib/db/src/scope.ts` has the
+argument.
 
 Policies resolve the tenant through `app.current_owner_id()`, a `security
 definer` function that reads `sessions` and `users`. `ddms_app` has no grants on
@@ -96,20 +132,32 @@ holding its credentials gets you exactly as far as holding no session at all.
   signed-in owner's rows. That is the point, not a coincidence to rely on
   silently — write the filter anyway, and let RLS be the backstop.
 - `applications.showroom_id` is nullable, and a null belongs to **nobody**
-  under RLS. Hand, OCR and scrape applications are invisible to DDMS by design.
-  They are still reachable through InsurRouter, which runs on the owner pool.
+  under RLS — so since OBJ-8 a null is a *failure state* rather than a standing
+  condition. Every create path takes the outlet from the session:
+  `resolveOwningShowroom()` uses what the caller asked for (checked), then the
+  outlet on their login, then the owner's only outlet, and asks rather than
+  guessing when an owner holds several. `db:seed-applications` prints the count
+  of unattributed rows; it should stay zero.
 - A new table arrives with RLS enabled and no policy, so `ddms_app` cannot read
   it at all. **Run `pnpm run db:rls` after every `db:push`**, and add the table
   to `rls.sql` first. A blank DDMS screen is the intended failure.
-- Anything genuinely cross-tenant — the sync scheduler is the only one today —
-  imports `ownerDb` by name rather than `db`, so reaching past a tenant is a
-  visible decision instead of a missing scope.
+- Anything genuinely cross-tenant runs inside `withWorkerScope`, which is a
+  visible decision in one place instead of a missing scope in seven. `ownerDb`
+  has no callers left in the server — only the command-line tools, which run as
+  somebody who already has the password.
 
 **Mount router-wide gates on their path prefix**, never path-less.
 `router.use(requireUser)` inside the DMS router runs for every request that
 *reaches* that router, including ones destined for a router mounted after it —
 which is how VeloDocs's ingest routes silently answered 401 for a whole
 session. Use `router.use("/dms", requireUser, sessionScope)`.
+
+InsurRouter and VeloDocs mount `requireModule("DEAL")` behind that, because
+every screen in both is about one module and an application carries the
+customer's Aadhaar number, address and date of birth. A technician closing job
+cards has no reason to hold any of that; owners, managers, sales and accounts
+do. The row policy carries the same gate, which is what makes the refusal true
+rather than merely legible.
 
 ## Workspace layout
 
@@ -723,18 +771,29 @@ the API refuses to boot without it, and each Vite dev server throws when it
 creates its `/api` proxy. Generate one with
 `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
 
-`DATABASE_URL_APP` must be there too, for the same reason and with the same
-failure mode — the API refuses to boot without it rather than falling back to
-the connection that bypasses row-level security. Copy `DATABASE_URL`, change the
-user to `ddms_app.<project-ref>`, pick a password, then `pnpm run db:rls`, which
-creates the role with whatever password that URL says.
+`DATABASE_URL_APP`, `DATABASE_URL_LOGIN` and `DATABASE_URL_WORKER` must be there
+too, for the same reason and with the same failure mode — the API refuses to
+boot without them rather than falling back to the connection that bypasses
+row-level security. Copy `DATABASE_URL` three times, change the user to
+`ddms_app.<project-ref>` / `ddms_login.…` / `ddms_worker.…`, pick a password for
+each, then `pnpm run db:rls`, which creates all three with whatever passwords
+those URLs say and then proves what each can and cannot reach.
+
+**`DATABASE_URL` itself must be in `.env` and must NOT be in `.env.api`.** The
+CLI tools need the table owner; the server refuses to start with it. See
+`.env.api.example`.
 
 ```powershell
-# API — build once, then run node directly so --env-file loads .env.
+# API — build once, then run node directly so --env-file loads the env file.
 # (Don't use the package's `dev` script on Windows: it starts with POSIX
 #  `export NODE_ENV=... &&`, and it wouldn't load .env anyway.)
+#
+# .env.api, NOT .env — the server refuses to start while DATABASE_URL is set,
+# because that credential bypasses every row policy. Regenerate it from .env
+# whenever .env changes:
+#   Get-Content .env | Where-Object { $_ -notmatch '^DATABASE_URL=' } | Set-Content .env.api
 pnpm --filter @workspace/api-server run build
-$env:PORT=8080; node --env-file=.env --enable-source-maps artifacts/api-server/dist/index.mjs
+$env:PORT=8080; node --env-file=.env.api --enable-source-maps artifacts/api-server/dist/index.mjs
 
 # DDMS         → http://localhost:31280/ddms/
 $env:PORT=31280; $env:BASE_PATH="/ddms/";       pnpm --filter @workspace/ddms run dev
@@ -767,7 +826,8 @@ pnpm run db:push        # push schema changes (dev only, destructive)
 pnpm run db:seed        # insert the 6 starter providers, idempotent
 pnpm run db:seed-owners # owner, showrooms, DMS accounts + insurer panel
 pnpm run db:seed-users  # sign-in accounts, plus a second owner to isolate from
-pnpm run db:rls         # create the ddms_app role and apply RLS policies
+pnpm run db:seed-applications  # a book of applications across both outlets
+pnpm run db:rls         # create the three restricted roles and apply RLS
 pnpm run db:probe       # print what each login can actually read, as ddms_app
 ```
 
@@ -811,6 +871,12 @@ InsurRouter (`artifacts/insur-router/src/pages/`), routed by Wouter under
 `BASE_URL`: `Dashboard` (`/`), `ApplicationsList`, `ApplicationNew`,
 `ApplicationDetail` (renders the log timeline incl. inline browser screenshots),
 `ProvidersList`, `ProviderEdit`. Wrapped in `components/layout/Shell.tsx`.
+
+All three products now open on `SignIn` until `/auth/me` answers, and the same
+cookie works across them — one login, three screens. The Shell shows whoever is
+signed in; it said "John Doe / Agent" until OBJ-8, which was harmless while
+there was no sign-in and is not once there is, because the name in the corner is
+how somebody notices they are looking at the wrong dealership's work.
 
 Note `Select` in DDMS and InsurRouter is a **native** select (`NativeSelect`),
 not the Radix composite VeloDocs uses. DDMS carries its own copy of the handful

@@ -1,5 +1,15 @@
+/**
+ * InsurRouter's landing figures.
+ *
+ * Behind a session since OBJ-8, and the counts below carry no owner filter of
+ * their own on purpose: inside a scope they are already the signed-in owner's,
+ * because `applications` is scoped by policy. Before that they were every
+ * dealership's, added together, on a screen that said "your applications".
+ */
+
 import { Router, type IRouter } from "express";
 import { eq, count, sql } from "drizzle-orm";
+import { requireModule, requireUser, sessionScope } from "../lib/session";
 import {
   db,
   applicationsTable,
@@ -12,6 +22,8 @@ import {
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
+
+router.use("/dashboard", requireUser, sessionScope, requireModule("DEAL"));
 
 router.get("/dashboard/stats", async (_req, res): Promise<void> => {
   // Total and status counts

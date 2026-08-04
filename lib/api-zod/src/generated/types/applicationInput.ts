@@ -11,6 +11,11 @@ import type { RtoDetails } from './rtoDetails';
 import type { VehicleDetails } from './vehicleDetails';
 
 export interface ApplicationInput {
+  /**
+     * Which outlet this application belongs to, and therefore which owner. Only needed when the signed-in person works across more than one outlet: a member of staff has exactly one, and an owner holding a single showroom has no ambiguity to resolve. Rejected with a 404 — never a 403 — if it is not one of the session's own.
+     * @nullable
+     */
+  showroomId?: number | null;
   /** @nullable */
   providerId?: number | null;
   executionMode: ApplicationInputExecutionMode;

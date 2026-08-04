@@ -1,8 +1,23 @@
 import { Link, useLocation } from "wouter"
-import { LayoutDashboard, FileText, Building2, Bell, Search, Settings } from "lucide-react"
+import { LayoutDashboard, FileText, Building2, Bell, LogOut, Search, Settings } from "lucide-react"
+import type { SessionUser } from "@workspace/api-client-react"
 import { cn } from "@/lib/utils"
 
-export function Shell({ children }: { children: React.ReactNode }) {
+/** Initials for the avatar. Two at most, from the first and last word. */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/)
+  return ((parts[0]?.[0] ?? "") + (parts.length > 1 ? parts[parts.length - 1]![0] : "")).toUpperCase()
+}
+
+export function Shell({
+  children,
+  user,
+  onSignOut,
+}: {
+  children: React.ReactNode
+  user: SessionUser
+  onSignOut: () => void
+}) {
   const [location] = useLocation()
 
   // InsurRouter is the insurance product and nothing else. The DDMS screens
@@ -43,15 +58,28 @@ export function Shell({ children }: { children: React.ReactNode }) {
             )
           })}
         </div>
+        {/* Whoever is actually signed in. This said "John Doe / Agent" until
+            OBJ-8, which was harmless while there was no sign-in and is not
+            once there is: the name in the corner is how somebody notices they
+            are looking at the wrong dealership's work. */}
         <div className="p-4 border-t border-slate-800 shrink-0">
-          <div className="flex items-center gap-3 px-2 py-2 rounded-md hover:bg-slate-800 transition-colors cursor-pointer">
-            <div className="w-8 h-8 rounded-full bg-slate-700 border border-slate-600 flex items-center justify-center text-sm font-medium text-white shadow-inner">
-              JD
+          <div className="flex items-center gap-3 px-2 py-2 rounded-md">
+            <div className="w-8 h-8 rounded-full bg-slate-700 border border-slate-600 flex items-center justify-center text-sm font-medium text-white shadow-inner shrink-0">
+              {initials(user.name)}
             </div>
-            <div className="flex flex-col">
-              <span className="text-sm font-semibold text-white">John Doe</span>
-              <span className="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">Agent</span>
+            <div className="flex flex-col min-w-0 flex-1">
+              <span className="text-sm font-semibold text-white truncate">{user.name}</span>
+              <span className="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">
+                {user.role.replace(/_/g, " ")}
+              </span>
             </div>
+            <button
+              onClick={onSignOut}
+              title="Sign out"
+              className="text-slate-500 hover:text-white transition-colors shrink-0"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </aside>

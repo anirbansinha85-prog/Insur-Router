@@ -25,6 +25,14 @@
 -- `ddms_app` credentials therefore gets you exactly as far as holding no
 -- session: zero rows.
 --
+-- **Three roles, not one.** Two jobs happen with nobody signed in — working out
+-- who is signing in, and syncing every dealership on a timer — and neither can
+-- be scoped by a session. They ran on the table owner for want of anywhere else
+-- to run, which kept a bypassrls credential in the server's environment long
+-- after the request path had stopped needing one. `ddms_login` and
+-- `ddms_worker` are those two jobs, each holding only the tables it touches.
+-- See *The other two connections* below.
+--
 -- Idempotent. Run it as the table owner:  pnpm run db:rls
 
 -- ── The helper schema ───────────────────────────────────────────────────────
@@ -130,10 +138,15 @@ $$;
  * Applications the owner holds.
  *
  * `showroom_id` is nullable, and a null is deliberately **not** owned by
- * anybody. Applications created by hand, by OCR or by a portal scrape predate
- * the owner tier and have no showroom to attribute them to; making them visible
- * to whoever asked first would be worse than making them visible to nobody.
- * They remain reachable through InsurRouter, which does not run on this role.
+ * anybody: making an unattributed application visible to whoever asked first
+ * would be worse than making it visible to nobody.
+ *
+ * That used to be a standing condition — hand, OCR and scrape applications had
+ * no showroom, and were reachable only because InsurRouter ran on a connection
+ * this role's policies did not apply to. Since OBJ-8 it is a failure state
+ * instead: every create path takes the outlet from the session, so a null here
+ * means something went in without one, and the row is invisible to everybody
+ * including whoever created it. `db:seed-applications` reports the count.
  */
 create or replace function app.owned_application_ids()
   returns setof integer
@@ -230,6 +243,30 @@ as $$
     when 'TECHNICIAN'      then module in ('JOB_CARD')
     else false
   end
+$$;
+
+/*
+ * Whether this session administers the platform rather than a dealership.
+ *
+ * Insurers and OCR engines are the same rows for every dealership, so no
+ * dealer's session may write them: an owner editing an insurer's endpoint would
+ * be editing it for every other owner too. But somebody has to, and until now
+ * that somebody was the connection that bypasses RLS.
+ *
+ * `PLATFORM_ADMIN` is deliberately not a dealership role. `app.can_read()`
+ * returns false for it on every module, so the account that can edit reference
+ * data can read no customer, deal or policy anywhere. The two jobs are separate
+ * logins on purpose — an owner who is also the operator holds both, and each
+ * session does one of them.
+ */
+create or replace function app.is_platform_admin()
+  returns boolean
+  language sql
+  stable
+  security definer
+  set search_path = pg_catalog, public, pg_temp
+as $$
+  select coalesce(app.current_role() = 'PLATFORM_ADMIN', false)
 $$;
 
 -- ── Policies ────────────────────────────────────────────────────────────────
@@ -407,11 +444,22 @@ create policy insurer_panel_own on public.insurer_panel_entries
 -- The application pipeline. `with check` on insert is what stops the action
 -- button writing a row into somebody else's tenant: the showroom id it carries
 -- must be one this session actually owns, whatever the request body said.
+--
+-- Read across the group, write only to the outlet you are at — the same
+-- asymmetry as every mirror table above, and it arrived here in OBJ-8 when
+-- InsurRouter got a sign-in. An insurance desk reasonably looks at the group's
+-- whole book; nobody reasonably creates a policy against a branch they do not
+-- work at.
+--
+-- Gated on `DEAL` because that is what an application is: the insurance side of
+-- a vehicle somebody bought. It carries the customer's Aadhaar number, their
+-- address and their date of birth, and a technician closing job cards has no
+-- reason to hold any of that. Owners, managers, sales and accounts do.
 drop policy if exists applications_own on public.applications;
 create policy applications_own on public.applications
   for all to ddms_app
-  using (showroom_id in (select app.owned_showroom_ids()))
-  with check (showroom_id in (select app.owned_showroom_ids()));
+  using (showroom_id in (select app.owned_showroom_ids()) and app.can_read('DEAL'))
+  with check (showroom_id in (select app.visible_showroom_ids()) and app.can_read('DEAL'));
 
 drop policy if exists submission_logs_own on public.submission_logs;
 create policy submission_logs_own on public.submission_logs
@@ -426,17 +474,159 @@ create policy policies_own on public.policies
 
 -- Reference data belonging to nobody. Insurers and OCR engines are the same
 -- rows for every dealership, so scoping them would be a lie about what they
--- are. Read-only: an operator changing engine priority does it from VeloDocs,
--- which runs on the owner connection.
+-- are. Every session may read them; only a platform administrator may write
+-- them, because a write here lands on every other dealership's screen too.
+--
+-- Two policies rather than one `for all`, and the pair is the point: permissive
+-- policies OR together, so `select` passes on the first and `insert`/`update`
+-- can only pass on the second. A single `for all using (app.is_platform_admin())`
+-- would have made insurers unreadable to everybody who is not the operator.
 drop policy if exists providers_readable on public.providers;
 create policy providers_readable on public.providers
   for select to ddms_app
   using (true);
 
+drop policy if exists providers_admin on public.providers;
+create policy providers_admin on public.providers
+  for all to ddms_app
+  using (app.is_platform_admin())
+  with check (app.is_platform_admin());
+
 drop policy if exists ocr_engines_readable on public.ocr_engines;
 create policy ocr_engines_readable on public.ocr_engines
   for select to ddms_app
   using (true);
+
+drop policy if exists ocr_engines_admin on public.ocr_engines;
+create policy ocr_engines_admin on public.ocr_engines
+  for all to ddms_app
+  using (app.is_platform_admin())
+  with check (app.is_platform_admin());
+
+-- ── The other two connections ───────────────────────────────────────────────
+--
+-- `ddms_app` answers requests, and it cannot do the two jobs that happen with
+-- nobody signed in: work out *who* is signing in, and sync every dealership on
+-- a timer. Both used to run on the table owner, which is how a credential that
+-- bypasses RLS and can read every password hash stayed in the server's
+-- environment long after the request path had stopped needing it.
+--
+-- So: one role per job, each holding the smallest set of tables that job
+-- touches, and none of them able to bypass anything.
+--
+--   ddms_login   users, sessions, and the staff master the departure check
+--                reads. No customer, deal, policy or application — the
+--                credential that can see password hashes can see nothing else.
+--   ddms_worker  the mirror and the graph, every tenant, because that is what
+--                syncing on a timer *is*, plus read-only sight of the
+--                applications a deal's state is defined against. No users, no
+--                sessions, no decision log, no outbox — nothing about people
+--                and nothing anybody decided.
+--
+-- Neither is scoped by a session, and neither pretends to be. Their scope is
+-- the table list below, which is a thing somebody can read in one place.
+
+drop policy if exists users_login on public.users;
+create policy users_login on public.users
+  for all to ddms_login
+  using (true)
+  with check (true);
+
+drop policy if exists sessions_login on public.sessions;
+create policy sessions_login on public.sessions
+  for all to ddms_login
+  using (true)
+  with check (true);
+
+-- The departure check joins the staff master, so sign-in needs to read it.
+-- Select only: this role must never be able to mark somebody as having left.
+drop policy if exists dms_employees_login on public.dms_employees;
+create policy dms_employees_login on public.dms_employees
+  for select to ddms_login
+  using (true);
+
+-- The scheduler. Every tenant by definition, so `true` rather than a session
+-- predicate — and the honesty of that depends entirely on the grant list
+-- further down being short.
+drop policy if exists mirror_worker on public.dms_deals;
+create policy mirror_worker on public.dms_deals
+  for all to ddms_worker using (true) with check (true);
+
+drop policy if exists mirror_worker on public.dms_job_cards;
+create policy mirror_worker on public.dms_job_cards
+  for all to ddms_worker using (true) with check (true);
+
+drop policy if exists mirror_worker on public.dms_enquiries;
+create policy mirror_worker on public.dms_enquiries
+  for all to ddms_worker using (true) with check (true);
+
+drop policy if exists mirror_worker on public.dms_employees;
+create policy mirror_worker on public.dms_employees
+  for all to ddms_worker using (true) with check (true);
+
+drop policy if exists mirror_worker on public.dms_registrations;
+create policy mirror_worker on public.dms_registrations
+  for all to ddms_worker using (true) with check (true);
+
+drop policy if exists mirror_worker on public.dms_part_stock;
+create policy mirror_worker on public.dms_part_stock
+  for all to ddms_worker using (true) with check (true);
+
+drop policy if exists mirror_worker on public.dms_receivables;
+create policy mirror_worker on public.dms_receivables
+  for all to ddms_worker using (true) with check (true);
+
+drop policy if exists mirror_worker on public.dms_vehicle_stock;
+create policy mirror_worker on public.dms_vehicle_stock
+  for all to ddms_worker using (true) with check (true);
+
+drop policy if exists graph_worker on public.entities;
+create policy graph_worker on public.entities
+  for all to ddms_worker using (true) with check (true);
+
+drop policy if exists graph_worker on public.entity_links;
+create policy graph_worker on public.entity_links
+  for all to ddms_worker using (true) with check (true);
+
+drop policy if exists events_worker on public.record_events;
+create policy events_worker on public.record_events
+  for all to ddms_worker using (true) with check (true);
+
+drop policy if exists tenancy_worker on public.owners;
+create policy tenancy_worker on public.owners
+  for select to ddms_worker using (true);
+
+drop policy if exists tenancy_worker on public.showrooms;
+create policy tenancy_worker on public.showrooms
+  for select to ddms_worker using (true);
+
+drop policy if exists tenancy_worker on public.showroom_dms_accounts;
+create policy tenancy_worker on public.showroom_dms_accounts
+  for select to ddms_worker using (true);
+
+/*
+ * And the two the scheduler needs to *read* but must never write.
+ *
+ * This was not in the first version of this file, and the scheduler told me so:
+ * derived-state detection rebuilds the same projections the screens use, and a
+ * deal's state is defined against our insurance record — AHEAD, BEHIND,
+ * IN_SYNC are statements about the DMS's policy number versus ours. Without
+ * these the detector failed on every pass with a permission error, which is a
+ * better failure than a wrong event but is still a failure.
+ *
+ * `for select` only, and stated plainly because it widens what a leak of this
+ * credential would reach: the scheduler can read a customer's application, and
+ * cannot create, alter or delete one. It still holds nothing about people —
+ * no users, no sessions — and nothing anybody decided: not the decision log,
+ * not the outbox.
+ */
+drop policy if exists applications_worker on public.applications;
+create policy applications_worker on public.applications
+  for select to ddms_worker using (true);
+
+drop policy if exists policies_worker on public.policies;
+create policy policies_worker on public.policies
+  for select to ddms_worker using (true);
 
 -- ── Grants ──────────────────────────────────────────────────────────────────
 -- Policies decide which rows; grants decide which tables and verbs. Both are
@@ -456,6 +646,7 @@ grant execute on function app.owned_application_ids() to ddms_app;
 grant execute on function app.current_role()          to ddms_app;
 grant execute on function app.visible_showroom_ids()  to ddms_app;
 grant execute on function app.can_read(text)          to ddms_app;
+grant execute on function app.is_platform_admin()     to ddms_app;
 
 grant select on
   public.owners,
@@ -499,14 +690,87 @@ to ddms_app;
  */
 grant delete on public.entities, public.entity_links to ddms_app;
 
+-- Reference data: readable by every session, writable only by the platform
+-- policies above. The grant is what allows the verb at all; the policy is what
+-- decides whose session it works for. Both are needed and neither is enough.
+grant insert, update on public.providers, public.ocr_engines to ddms_app;
+
 grant usage, select on all sequences in schema public to ddms_app;
 
+-- ── The login role's grants ─────────────────────────────────────────────────
+-- Deliberately the shortest list in this file. This credential is the one that
+-- can see a password hash, so every table it does *not* have is a table that a
+-- leak of it cannot reach.
+
+grant usage on schema public to ddms_login;
+
+grant select on public.users to ddms_login;
+-- Column-level, because `update` on the whole row would let this credential
+-- rewrite a password hash or hand somebody a different role. Sign-in stamps
+-- when somebody last signed in; that is all it may write.
+--
+-- `updated_at` is in the list because the schema carries `$onUpdate` on it, so
+-- drizzle writes it alongside whatever you asked for. Granting only
+-- `last_login_at` made every sign-in fail with *permission denied for table
+-- users* — which is the right kind of failure to have, but the wrong answer.
+grant update (last_login_at, updated_at) on public.users to ddms_login;
+
+grant select, insert, update, delete on public.sessions to ddms_login;
+grant select on public.dms_employees to ddms_login;
+grant usage, select on sequence public.sessions_id_seq to ddms_login;
+
+-- ── The worker role's grants ────────────────────────────────────────────────
+-- Every tenant's mirror, and nothing else. No users, no sessions, no
+-- applications, no decision log, no outbound messages: the scheduler pulls from
+-- the dealer's system and writes what it pulled, and has never had a reason to
+-- touch anything a person decided.
+
+grant usage on schema public to ddms_worker;
+
+grant select on
+  public.owners,
+  public.showrooms,
+  public.showroom_dms_accounts
+to ddms_worker;
+
+grant select, insert, update on
+  public.dms_deals,
+  public.dms_job_cards,
+  public.dms_enquiries,
+  public.dms_employees,
+  public.dms_registrations,
+  public.dms_part_stock,
+  public.dms_receivables,
+  public.dms_vehicle_stock,
+  public.entities,
+  public.entity_links
+to ddms_worker;
+
+grant select, insert on public.record_events to ddms_worker;
+
+-- Read-only, and only because a deal's derived state is a statement about the
+-- insurance record. See the policy above.
+grant select on public.applications, public.policies to ddms_worker;
+
+-- Same reason as `ddms_app`: the entity graph is rebuilt wholesale rather than
+-- reconciled, so these two are the only tables the worker may delete from.
+grant delete on public.entities, public.entity_links to ddms_worker;
+
+grant usage, select on all sequences in schema public to ddms_worker;
+
 /*
- * The two tables this role must never touch.
+ * The two tables these roles must never touch.
  *
  * Explicit rather than relying on the default, because the default is what a
  * later `grant ... on all tables in schema public` would quietly overwrite.
- * Everything above rests on `ddms_app` being unable to read a session token.
+ * Everything above rests on `ddms_app` being unable to read a session token,
+ * and on the scheduler having no reason to know that people exist.
+ *
+ * `ddms_login` is the one role deliberately absent from this list — reading
+ * those two tables is its entire job, and the grants above are the whole of
+ * what it may do anywhere else.
  */
 revoke all on public.users    from ddms_app;
 revoke all on public.sessions from ddms_app;
+revoke all on public.users    from ddms_worker;
+revoke all on public.sessions from ddms_worker;

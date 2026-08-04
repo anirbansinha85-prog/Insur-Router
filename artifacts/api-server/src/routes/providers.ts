@@ -1,6 +1,19 @@
+/**
+ * Insurers — the same rows for every dealership.
+ *
+ * Behind a session like everything else since OBJ-8, and reference data is the
+ * one place where that is not only about isolation: a write here lands on every
+ * other dealership's screen, so the policies in `rls.sql` let any session read
+ * these and only a `PLATFORM_ADMIN` session write them. The route does not
+ * check that itself. It cannot be the thing that decides — the database refuses
+ * the write and this returns the refusal, which is the same division of labour
+ * as every other module.
+ */
+
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, providersTable } from "@workspace/db";
+import { requireUser, sessionScope } from "../lib/session";
 import {
   CreateProviderBody,
   UpdateProviderBody,
@@ -14,6 +27,12 @@ import {
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
+
+// Mounted on the prefix, never path-less: a `router.use(requireUser)` here runs
+// for every request that *reaches* this router, including ones destined for a
+// router mounted after it. That is how VeloDocs's ingest routes once answered
+// 401 for a whole session.
+router.use("/providers", requireUser, sessionScope);
 
 router.get("/providers", async (_req, res): Promise<void> => {
   const providers = await db

@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { MsaFields, IngestResult, MsaFieldsOwnerIdProofType, useIngestPush } from "@workspace/api-client-react"
+import { MsaFields, IngestResult, MsaFieldsOwnerIdProofType, useGetCurrentUser, useIngestPush } from "@workspace/api-client-react"
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
@@ -35,6 +35,17 @@ export function ReviewCorrect({ result, onReset }: ReviewCorrectProps) {
   const [duplicate, setDuplicate] = useState<DuplicateDeal | null>(null)
   
   const { mutate: pushToRouter, isPending: isPushing } = useIngestPush()
+
+  // Which outlet the draft belongs to, when the source could not say.
+  //
+  // A DMS pull carries `tenant` — the dealer code names the outlet, which is a
+  // stronger statement than any picker. A photographed document carries
+  // nothing, so the answer comes from the person holding the phone: their own
+  // outlet if they have one, and this choice if they work across several.
+  const { data: me } = useGetCurrentUser({ query: { queryKey: ['/api/auth/me'] } })
+  const outlets = me?.showrooms ?? []
+  const mustChooseOutlet = !result.tenant && outlets.length > 1
+  const [showroomId, setShowroomId] = useState<string>("")
 
   // Export the whole picture, not just the MSA form: the document as read, the
   // mapped fields, and which document label fed each one.
@@ -74,6 +85,7 @@ export function ReviewCorrect({ result, onReset }: ReviewCorrectProps) {
           fields: formData,
           document: result.document ?? null,
           tenant: result.tenant ?? null,
+          showroomId: showroomId ? Number(showroomId) : null,
           dealContext: result.dealContext ?? undefined,
         },
       },
@@ -375,7 +387,32 @@ export function ReviewCorrect({ result, onReset }: ReviewCorrectProps) {
             )}
           </CardContent>
           <CardFooter className="flex-col gap-3 p-4 border-t bg-muted/10">
-            <Button onClick={handlePush} disabled={isPushing} className="w-full gap-2">
+            {/* Only when the source could not say and the person works across
+                more than one outlet. A draft that names no outlet belongs to
+                nobody once the row policies apply, so this is required rather
+                than a refinement. */}
+            {mustChooseOutlet && (
+              <div className="w-full space-y-1.5">
+                <Label className="text-xs">Outlet this document belongs to</Label>
+                <select
+                  value={showroomId}
+                  onChange={(e) => setShowroomId(e.target.value)}
+                  className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm"
+                >
+                  <option value="">-- Select an outlet --</option>
+                  {outlets.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <Button
+              onClick={handlePush}
+              disabled={isPushing || (mustChooseOutlet && !showroomId)}
+              className="w-full gap-2"
+            >
               {isPushing ? "Pushing..." : "Push to InsurRouter"}
               {!isPushing && <Send className="h-4 w-4" />}
             </Button>

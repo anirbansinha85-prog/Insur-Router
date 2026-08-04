@@ -8,6 +8,7 @@
 
 /**
  * OWNER and MANAGER are DDMS's own. The rest are the dealer's own role names, mirrored from `dms_employees.role`, so a login's role and the role on the work assigned to it are the same string.
+ * PLATFORM_ADMIN is not a dealership role at all: it is whoever runs the platform, and it exists so that insurers and OCR engines — the same rows for every dealership — have somebody who may edit them without that being an owner editing another owner's reference data. It can read no dealership module.
  */
 export type SessionUserRole = typeof SessionUserRole[keyof typeof SessionUserRole];
 
@@ -20,4 +21,5 @@ export const SessionUserRole = {
   RTO_AGENT: 'RTO_AGENT',
   ACCOUNTS: 'ACCOUNTS',
   TECHNICIAN: 'TECHNICIAN',
+  PLATFORM_ADMIN: 'PLATFORM_ADMIN',
 } as const;

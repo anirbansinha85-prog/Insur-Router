@@ -1,5 +1,6 @@
 import { useState } from "react"
-import { IngestResult } from "@workspace/api-client-react"
+import { LogOut } from "lucide-react"
+import { IngestResult, type SessionUser } from "@workspace/api-client-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DmsPull } from "@/components/dms-pull"
 import { BrowserScrape } from "@/components/browser-scrape"
@@ -7,7 +8,13 @@ import { OcrUpload } from "@/components/ocr-upload"
 import { OcrEngineSettings } from "@/components/ocr-engine-settings"
 import { ReviewCorrect } from "@/components/review-correct"
 
-export function Workspace() {
+export function Workspace({
+  user,
+  onSignOut,
+}: {
+  user: SessionUser
+  onSignOut: () => void
+}) {
   const [ingestResult, setIngestResult] = useState<IngestResult & { previewUrl?: string; sourceName?: string } | null>(null)
 
   return (
@@ -19,6 +26,23 @@ export function Workspace() {
             <span className="text-xs text-muted-foreground font-medium mt-1">
               Document Ingestion Agent
             </span>
+          </div>
+          {/* Who a draft will be created as, said before it is created rather
+              than discovered afterwards on somebody else's screen. */}
+          <div className="flex items-center gap-3">
+            <div className="text-right leading-tight">
+              <div className="text-sm font-semibold">{user.name}</div>
+              <div className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">
+                {user.role.replace(/_/g, " ")}
+              </div>
+            </div>
+            <button
+              onClick={onSignOut}
+              title="Sign out"
+              className="text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </header>

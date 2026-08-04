@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useCreateApplication, useListProviders } from "@workspace/api-client-react"
+import { useCreateApplication, useGetCurrentUser, useListProviders } from "@workspace/api-client-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,6 +16,19 @@ export default function ApplicationNew() {
   
   const createMutation = useCreateApplication()
   const { data: providers } = useListProviders()
+
+  // Which outlet this application will belong to.
+  //
+  // A member of staff has exactly one and is never asked. An owner holding a
+  // single showroom is not asked either — there is nothing to choose. Only an
+  // owner with several sees this, and then it is required, because a row with
+  // no showroom belongs to nobody under the row policies and would be
+  // invisible to the person who just created it.
+  const { data: me } = useGetCurrentUser({ query: { queryKey: ['/api/auth/me'] } })
+  const outlets = me?.showrooms ?? []
+  const mustChooseOutlet = outlets.length > 1
+  const [showroomId, setShowroomId] = useState<string>("")
+  const outletId = mustChooseOutlet ? showroomId : String(outlets[0]?.id ?? "")
 
   const [formData, setFormData] = useState({
     vehicleDetails: {
@@ -64,6 +77,10 @@ export default function ApplicationNew() {
       setStepError("Please select a provider before submitting.")
       return
     }
+    if (currentStep === 3 && mustChooseOutlet && !showroomId) {
+      setStepError("Which outlet is this application for?")
+      return
+    }
     if (currentStep < STEPS.length - 1) {
       setCurrentStep(s => s + 1)
     } else {
@@ -73,7 +90,8 @@ export default function ApplicationNew() {
         ownerKyc: formData.ownerKyc,
         rtoDetails: formData.rtoDetails,
         executionMode: formData.executionMode,
-        providerId: formData.providerId ? Number(formData.providerId) : null
+        providerId: formData.providerId ? Number(formData.providerId) : null,
+        showroomId: outletId ? Number(outletId) : null
       }
       
       createMutation.mutate({ data: payload as any }, {
@@ -204,7 +222,33 @@ export default function ApplicationNew() {
           {currentStep === 3 && (
             <div className="grid grid-cols-1 gap-8 animate-in slide-in-from-right-4 fade-in">
               <div className="text-lg font-semibold border-b pb-2 mb-2">Routing Strategy</div>
-              
+
+              {/* Only when there is genuinely something to choose. A member of
+                  staff works at one outlet and an owner may hold one, and in
+                  both cases asking would be a question with a single answer. */}
+              {mustChooseOutlet && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Label className="text-base">Outlet</Label>
+                    <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-semibold">REQUIRED</span>
+                  </div>
+                  <p className="text-sm text-slate-500 pb-2">
+                    Which of your showrooms sold this vehicle. It decides who the application
+                    belongs to, and it cannot be left blank.
+                  </p>
+                  <NativeSelect
+                    value={showroomId}
+                    onChange={e => { setStepError(null); setShowroomId(e.target.value) }}
+                    className="h-12 text-base"
+                  >
+                    <option value="">-- Select an outlet --</option>
+                    {outlets.map(s => (
+                      <option key={s.id} value={s.id}>{s.name} ({s.code})</option>
+                    ))}
+                  </NativeSelect>
+                </div>
+              )}
+
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <Label className="text-base">Target Provider</Label>

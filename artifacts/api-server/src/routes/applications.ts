@@ -30,8 +30,21 @@ import {
 } from "@workspace/api-zod";
 import { executeWithApi } from "../lib/api-executor";
 import { executeWithBrowser } from "../lib/browser-executor";
+import { requireModule, requireUser, resolveOwningShowroom, sessionScope } from "../lib/session";
 
 const router: IRouter = Router();
+
+/**
+ * Behind a session since OBJ-8.
+ *
+ * Every query below is unchanged and every one of them now returns less: they
+ * carry no owner filter, and inside a scope they do not need one, because
+ * `applications` is scoped by policy on the connection. Before this the list
+ * endpoint returned every dealership's applications to anybody holding the
+ * shared service key — the same defect DDMS closed in OBJ-3, still open here
+ * because InsurRouter had no sign-in to scope by.
+ */
+router.use("/applications", requireUser, sessionScope, requireModule("DEAL"));
 
 /** Convert a Date or ISO string to YYYY-MM-DD for date columns */
 function toDateStr(val: Date | string): string {
@@ -91,9 +104,24 @@ router.post("/applications", async (req, res): Promise<void> => {
   const { vehicleDetails, ownerKyc, rtoDetails, executionMode, providerId } =
     parsed.data;
 
+  // Which outlet this belongs to, before anything is written. A row with no
+  // showroom is a row nobody can see afterwards, so an owner working across
+  // several outlets is asked rather than guessed for.
+  const owning = await resolveOwningShowroom(req, res, parsed.data.showroomId);
+  if (!owning.ok) return;
+  if (owning.showroomId === null) {
+    res.status(400).json({
+      error:
+        "Which outlet is this application for? You hold more than one, and an " +
+        "application that names none belongs to none.",
+    });
+    return;
+  }
+
   const [app] = await db
     .insert(applicationsTable)
     .values({
+      showroomId: owning.showroomId,
       executionMode,
       providerId: providerId ?? null,
       vehicleMake: vehicleDetails.make,

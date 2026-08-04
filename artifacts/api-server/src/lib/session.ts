@@ -9,6 +9,20 @@
  * something they **claim**. `assertShowroomAccess` is the load-bearing part: a
  * showroom id still arrives in the request, but it is now checked against the
  * session's owner before a single row is read.
+ *
+ * ## Which connection this file uses, and why it is its own
+ *
+ * `loginDb`, not `db`. Everything here runs *before* a scope exists — it is
+ * working out whose scope to open — so it cannot be scoped by a session, and it
+ * reads the two tables `ddms_app` is deliberately denied. Until OBJ-8 that meant
+ * running on the table owner, which is how the credential that bypasses every
+ * policy stayed in the server's environment.
+ *
+ * `ddms_login` is that job and only that job: `users`, `sessions`, and the staff
+ * master the departure check joins. It cannot read a customer, a deal or an
+ * application, and it may write exactly one column of `users` —
+ * `last_login_at` — so a leak of it cannot rewrite a password hash or hand
+ * somebody a different role. The grants are in `lib/db/sql/rls.sql`.
  */
 
 import { randomBytes, createHash } from "node:crypto";
@@ -16,6 +30,7 @@ import { and, eq, gt, lt } from "drizzle-orm";
 import type { NextFunction, Request, Response } from "express";
 import {
   db,
+  loginDb,
   sessionsTable,
   dmsEmployeesTable,
   showroomsTable,
@@ -85,7 +100,7 @@ export async function departedPerTheDms(
 ): Promise<{ left: true; on: string | null } | null> {
   if (!empCode || showroomId === null) return null;
 
-  const [emp] = await db
+  const [emp] = await loginDb
     .select({
       isActive: dmsEmployeesTable.isActive,
       dateOfLeaving: dmsEmployeesTable.dateOfLeaving,
@@ -110,7 +125,7 @@ export async function createSession(userId: number): Promise<{ token: string; ex
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
 
-  await db.insert(sessionsTable).values({
+  await loginDb.insert(sessionsTable).values({
     userId,
     tokenHash: hashToken(token),
     expiresAt,
@@ -118,13 +133,13 @@ export async function createSession(userId: number): Promise<{ token: string; ex
 
   // Opportunistic cleanup. A sessions table nobody prunes grows forever, and a
   // cron for it would be more machinery than the problem deserves.
-  await db.delete(sessionsTable).where(lt(sessionsTable.expiresAt, new Date()));
+  await loginDb.delete(sessionsTable).where(lt(sessionsTable.expiresAt, new Date()));
 
   return { token, expiresAt };
 }
 
 export async function resolveSession(token: string): Promise<SessionUser | null> {
-  const [row] = await db
+  const [row] = await loginDb
     .select({
       sessionId: sessionsTable.id,
       userId: usersTable.id,
@@ -160,7 +175,7 @@ export async function resolveSession(token: string): Promise<SessionUser | null>
     return null;
   }
 
-  await db
+  await loginDb
     .update(sessionsTable)
     .set({ lastSeenAt: new Date() })
     .where(eq(sessionsTable.id, row.sessionId));
@@ -193,7 +208,7 @@ export async function visibleShowroomIds(user: SessionUser): Promise<number[]> {
 }
 
 export async function destroySession(token: string): Promise<void> {
-  await db.delete(sessionsTable).where(eq(sessionsTable.tokenHash, hashToken(token)));
+  await loginDb.delete(sessionsTable).where(eq(sessionsTable.tokenHash, hashToken(token)));
 }
 
 // ── Express plumbing ────────────────────────────────────────────────────────
@@ -358,6 +373,72 @@ export async function assertShowroomAccess(
   }
 
   return true;
+}
+
+/**
+ * The module gate as router middleware.
+ *
+ * `assertModuleAccess` answers per route; this is the same answer mounted once
+ * on a prefix, for products where every screen is about one module. InsurRouter
+ * is all `DEAL` — an application is the insurance side of a vehicle somebody
+ * bought — so gating it route by route would be nine copies of one decision.
+ *
+ * Legibility only. The row policies are what refuse; this is what explains.
+ */
+export function requireModule(module: AccessModule) {
+  return function gate(req: Request, res: Response, next: NextFunction): void {
+    if (assertModuleAccess(req, res, module)) next();
+  };
+}
+
+/**
+ * Which outlet a newly created record belongs to.
+ *
+ * An application has to name one. Under the policies in `rls.sql` a row with no
+ * showroom belongs to nobody and is invisible to everybody, including the person
+ * who just created it — so "leave it null and sort it out later" is not a
+ * neutral default, it is a record that silently disappears.
+ *
+ * Three answers, in order, and the order is the whole design:
+ *
+ *   1. What the caller asked for, if they asked — checked against the session
+ *      the same way every other showroom id is, so a number in a request body
+ *      cannot reach another dealership.
+ *   2. The outlet this person works at. A member of staff has exactly one, and
+ *      it is not a guess: it is on their login.
+ *   3. The owner's only outlet, when they hold exactly one. Not a guess either —
+ *      there is nothing else it could be.
+ *
+ * And when an owner holds several and said nothing, no answer: `null` back to
+ * the caller, which asks rather than picking. Attributing a customer's policy to
+ * whichever branch happened to sort first is the kind of quiet wrong answer that
+ * shows up months later in somebody's ledger.
+ */
+export async function resolveOwningShowroom(
+  req: Request,
+  res: Response,
+  asked: number | null | undefined,
+): Promise<{ ok: true; showroomId: number | null } | { ok: false }> {
+  const user = req.sessionUser;
+  if (!user) {
+    res.status(401).json({ error: "Not signed in." });
+    return { ok: false };
+  }
+
+  if (asked != null) {
+    if (!(await assertShowroomAccess(req, res, asked))) return { ok: false };
+    return { ok: true, showroomId: asked };
+  }
+
+  if (user.showroomId !== null) return { ok: true, showroomId: user.showroomId };
+
+  const rows = await db
+    .select({ id: showroomsTable.id })
+    .from(showroomsTable)
+    .where(eq(showroomsTable.ownerId, user.ownerId));
+
+  if (rows.length === 1) return { ok: true, showroomId: rows[0]!.id };
+  return { ok: true, showroomId: null };
 }
 
 /**

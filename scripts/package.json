@@ -9,6 +9,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "seed-owners": "tsx --env-file-if-exists=../.env ./src/seed-owners.ts",
     "seed-users": "tsx --env-file-if-exists=../.env ./src/seed-users.ts",
+    "seed-applications": "tsx --env-file-if-exists=../.env ./src/seed-applications.ts",
     "rls": "tsx --env-file-if-exists=../.env ./src/apply-rls.ts",
     "probe": "tsx --env-file-if-exists=../.env ./src/rls-probe.ts"
   },

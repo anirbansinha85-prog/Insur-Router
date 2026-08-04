@@ -323,6 +323,11 @@ export const ApplicationInputExecutionMode = {
 } as const;
 
 export interface ApplicationInput {
+  /**
+     * Which outlet this application belongs to, and therefore which owner. Only needed when the signed-in person works across more than one outlet: a member of staff has exactly one, and an owner holding a single showroom has no ambiguity to resolve. Rejected with a 404 — never a 403 — if it is not one of the session's own.
+     * @nullable
+     */
+  showroomId?: number | null;
   /** @nullable */
   providerId?: number | null;
   executionMode: ApplicationInputExecutionMode;
@@ -622,6 +627,7 @@ export interface LoginInput {
 
 /**
  * OWNER and MANAGER are DDMS's own. The rest are the dealer's own role names, mirrored from `dms_employees.role`, so a login's role and the role on the work assigned to it are the same string.
+ * PLATFORM_ADMIN is not a dealership role at all: it is whoever runs the platform, and it exists so that insurers and OCR engines — the same rows for every dealership — have somebody who may edit them without that being an owner editing another owner's reference data. It can read no dealership module.
  */
 export type SessionUserRole = typeof SessionUserRole[keyof typeof SessionUserRole];
 
@@ -634,7 +640,14 @@ export const SessionUserRole = {
   RTO_AGENT: 'RTO_AGENT',
   ACCOUNTS: 'ACCOUNTS',
   TECHNICIAN: 'TECHNICIAN',
+  PLATFORM_ADMIN: 'PLATFORM_ADMIN',
 } as const;
+
+export type SessionUserShowroomsItem = {
+  id: number;
+  code: string;
+  name: string;
+};
 
 /**
  * Where tenant scope comes from. `ownerId` is never accepted from a request — it is read from the session, which is the whole point.
@@ -644,7 +657,10 @@ export interface SessionUser {
   ownerId: number;
   email: string;
   name: string;
-  /** OWNER and MANAGER are DDMS's own. The rest are the dealer's own role names, mirrored from `dms_employees.role`, so a login's role and the role on the work assigned to it are the same string. */
+  /**
+     * OWNER and MANAGER are DDMS's own. The rest are the dealer's own role names, mirrored from `dms_employees.role`, so a login's role and the role on the work assigned to it are the same string.
+     * PLATFORM_ADMIN is not a dealership role at all: it is whoever runs the platform, and it exists so that insurers and OCR engines — the same rows for every dealership — have somebody who may edit them without that being an owner editing another owner's reference data. It can read no dealership module.
+     */
   role: SessionUserRole;
   /**
      * The dealer's own employee code, when this login is a member of staff. The same code already sits on the enquiries, registration files and job cards assigned to them — which is what makes "my work" mean anything. Null for an owner.
@@ -658,6 +674,8 @@ export interface SessionUser {
   showroomId?: number | null;
   /** What this role may read, so the console can show a sidebar that matches what the database will answer. Cosmetic — the row policies are what actually refuse. */
   modules?: string[];
+  /** The outlets this session may act for, in the order they should be offered. One entry for a member of staff; the owner's whole set for an owner. Here rather than on a DDMS route because it is a fact about the person, not about the console — InsurRouter and VeloDocs both have to ask which outlet a new record belongs to, and neither should have to call the other product to find out. */
+  showrooms?: SessionUserShowroomsItem[];
 }
 
 export type ShowroomSummaryDmsAccountsItem = {
@@ -2141,8 +2159,13 @@ export interface IngestPushInput {
   fields: MsaFields;
   /** Stage 1 extraction, stored against the application as an audit trail of what the OCR actually read. Optional — non-OCR sources omit it. */
   document?: DocumentExtraction | null;
-  /** Pass back the `tenant` block from a DMS pull so the draft is attributed to a showroom and therefore an owner. Omitted by OCR and scrape, which have no way of knowing which outlet they belong to — those drafts are unattributed until someone says otherwise. */
+  /** Pass back the `tenant` block from a DMS pull so the draft is attributed to a showroom and therefore an owner. Omitted by OCR and scrape, which have no way of knowing which outlet they belong to — those fall back to `showroomId` below, and failing that to the signed-in person's own outlet. */
   tenant?: DmsTenant | null;
+  /**
+     * Which outlet an OCR or scrape draft belongs to. A photographed Aadhaar card cannot say, so the answer comes from the person holding the phone — their own outlet when they have one, and this field when they work across several. Ignored when `tenant` is present, which is a stronger statement than a picker.
+     * @nullable
+     */
+  showroomId?: number | null;
   /** Pass back the `dealContext` block from a DMS pull. Everything the flat MSA payload has no room for — cubic capacity or motor kW, nominee, hypothecation, seating, manufacture date, entity type — lands in its own column from here. Without it the premium engine has no rating input and nothing can be priced. */
   dealContext?: IngestPushInputDealContext;
 }

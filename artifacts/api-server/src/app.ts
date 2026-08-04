@@ -1,7 +1,7 @@
 import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
-import { requireAppRoleConfigured } from "@workspace/db";
+import { refuseOwnerCredential, requireAppRoleConfigured } from "@workspace/db";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import {
@@ -20,6 +20,12 @@ const serviceKey = requireServiceKeyConfigured();
 // would fall back to the connection that bypasses row-level security, and every
 // policy written in lib/db/sql/rls.sql would be inert with nothing saying so.
 requireAppRoleConfigured();
+
+// And the other half of that, which is the one that actually closes it: refuse
+// to start while the unrestricted credential is still in reach. Choosing the
+// restricted role is not isolation if the other one is one import away — the
+// mistake would be a working query, which is the kind nothing reports.
+refuseOwnerCredential();
 
 app.use(
   pinoHttp({

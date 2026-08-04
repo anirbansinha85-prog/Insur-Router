@@ -266,8 +266,9 @@ export async function listEvents(
  *
  * Duplicated from the route layer on purpose: the scheduler calls the detector
  * with nobody signed in, so it cannot reach a session to ask. `db` here is the
- * request-scoped proxy, which resolves to `ownerDb` outside a scope — and the
- * scheduler is outside one by design.
+ * request-scoped proxy, which resolves to whichever scope is open — the
+ * requesting session's connection when an owner pressed Sync, and the
+ * scheduler's own `ddms_worker` connection when a timer started it.
  */
 export async function showroomIdsForOwner(ownerId: number): Promise<number[]> {
   const rows = await db

@@ -53,6 +53,11 @@ export const usersTable = pgTable(
         "RTO_AGENT",
         "ACCOUNTS",
         "TECHNICIAN",
+        // Not a dealership role. Whoever runs the platform, and the only role
+        // that may write the rows every dealership shares — insurers and OCR
+        // engines. It reads no dealership module at all; see `access.ts` and
+        // `app.is_platform_admin()`.
+        "PLATFORM_ADMIN",
       ],
     })
       .notNull()

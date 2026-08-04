@@ -14,8 +14,13 @@ export interface IngestPushInput {
   fields: MsaFields;
   /** Stage 1 extraction, stored against the application as an audit trail of what the OCR actually read. Optional — non-OCR sources omit it. */
   document?: DocumentExtraction | null;
-  /** Pass back the `tenant` block from a DMS pull so the draft is attributed to a showroom and therefore an owner. Omitted by OCR and scrape, which have no way of knowing which outlet they belong to — those drafts are unattributed until someone says otherwise. */
+  /** Pass back the `tenant` block from a DMS pull so the draft is attributed to a showroom and therefore an owner. Omitted by OCR and scrape, which have no way of knowing which outlet they belong to — those fall back to `showroomId` below, and failing that to the signed-in person's own outlet. */
   tenant?: DmsTenant | null;
+  /**
+     * Which outlet an OCR or scrape draft belongs to. A photographed Aadhaar card cannot say, so the answer comes from the person holding the phone — their own outlet when they have one, and this field when they work across several. Ignored when `tenant` is present, which is a stronger statement than a picker.
+     * @nullable
+     */
+  showroomId?: number | null;
   /** Pass back the `dealContext` block from a DMS pull. Everything the flat MSA payload has no room for — cubic capacity or motor kW, nominee, hypothecation, seating, manufacture date, entity type — lands in its own column from here. Without it the premium engine has no rating input and nothing can be priced. */
   dealContext?: IngestPushInputDealContext;
 }

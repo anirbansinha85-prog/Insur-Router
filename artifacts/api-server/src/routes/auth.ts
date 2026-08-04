@@ -8,11 +8,13 @@
 
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
-import { db, usersTable } from "@workspace/db";
+import { db, loginDb, showroomsTable, usersTable } from "@workspace/db";
 import {
   clearSessionCookie,
   createSession,
   destroySession,
+  requireUser,
+  sessionScope,
   sessionTokenFrom,
   setSessionCookie,
   verifyPassword,
@@ -31,7 +33,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     return;
   }
 
-  const [user] = await db
+  const [user] = await loginDb
     .select()
     .from(usersTable)
     .where(eq(usersTable.email, email.trim().toLowerCase()));
@@ -64,7 +66,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   }
 
   const { token, expiresAt } = await createSession(user.id);
-  await db.update(usersTable).set({ lastLoginAt: new Date() }).where(eq(usersTable.id, user.id));
+  await loginDb.update(usersTable).set({ lastLoginAt: new Date() }).where(eq(usersTable.id, user.id));
   setSessionCookie(res, token, expiresAt);
 
   logger.info(
@@ -97,13 +99,34 @@ router.post("/auth/logout", async (req, res): Promise<void> => {
 /**
  * The console calls this on load to decide whether to show the sign-in screen.
  * 401 is a normal answer here, not an error worth logging.
+ *
+ * Scoped, unlike the two routes above, because it answers with the outlets this
+ * person may act for and those come out of `showrooms` — a table `ddms_login`
+ * has no business reading. The narrower credential stays narrow and this one
+ * route opens a session scope to read what the session is already entitled to.
  */
-router.get("/auth/me", (req, res): void => {
-  if (!req.sessionUser) {
-    res.status(401).json({ error: "Not signed in." });
-    return;
-  }
-  res.json({ ...req.sessionUser, modules: modulesFor(req.sessionUser.role) });
+router.use("/auth/me", requireUser, sessionScope);
+
+router.get("/auth/me", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+
+  // The owner's whole set, or the one outlet a member of staff works at. The
+  // policy has already narrowed this to the owner; the filter below is the
+  // second predicate, and like every other one in this product it can only
+  // take away.
+  const rows = await db
+    .select({
+      id: showroomsTable.id,
+      code: showroomsTable.code,
+      name: showroomsTable.name,
+    })
+    .from(showroomsTable)
+    .where(eq(showroomsTable.ownerId, user.ownerId))
+    .orderBy(showroomsTable.id);
+
+  const showrooms = user.showroomId === null ? rows : rows.filter((s) => s.id === user.showroomId);
+
+  res.json({ ...user, modules: modulesFor(user.role), showrooms });
 });
 
 export default router;

@@ -160,6 +160,7 @@ export const ListApplicationsResponse = zod.array(ListApplicationsResponseItem)
  * @summary Create a new insurance application
  */
 export const CreateApplicationBody = zod.object({
+  "showroomId": zod.number().int().nullish().describe('Which outlet this application belongs to, and therefore which owner. Only needed when the signed-in person works across more than one outlet: a member of staff has exactly one, and an owner holding a single showroom has no ambiguity to resolve. Rejected with a 404 — never a 403 — if it is not one of the session\'s own.'),
   "providerId": zod.number().int().nullish(),
   "executionMode": zod.enum(['API', 'BROWSER', 'AUTO']),
   "vehicleDetails": zod.object({
@@ -417,10 +418,15 @@ export const LoginResponse = zod.object({
   "ownerId": zod.number().int(),
   "email": zod.string(),
   "name": zod.string(),
-  "role": zod.enum(['OWNER', 'MANAGER', 'SALES_EXEC', 'SERVICE_ADVISOR', 'RTO_AGENT', 'ACCOUNTS', 'TECHNICIAN']).describe('OWNER and MANAGER are DDMS\'s own. The rest are the dealer\'s own role names, mirrored from `dms_employees.role`, so a login\'s role and the role on the work assigned to it are the same string.\n'),
+  "role": zod.enum(['OWNER', 'MANAGER', 'SALES_EXEC', 'SERVICE_ADVISOR', 'RTO_AGENT', 'ACCOUNTS', 'TECHNICIAN', 'PLATFORM_ADMIN']).describe('OWNER and MANAGER are DDMS\'s own. The rest are the dealer\'s own role names, mirrored from `dms_employees.role`, so a login\'s role and the role on the work assigned to it are the same string.\nPLATFORM_ADMIN is not a dealership role at all: it is whoever runs the platform, and it exists so that insurers and OCR engines — the same rows for every dealership — have somebody who may edit them without that being an owner editing another owner\'s reference data. It can read no dealership module.\n'),
   "empCode": zod.string().nullish().describe('The dealer\'s own employee code, when this login is a member of staff. The same code already sits on the enquiries, registration files and job cards assigned to them — which is what makes \"my work\" mean anything. Null for an owner.\n'),
   "showroomId": zod.number().int().nullish().describe('The outlet they work at. Null means every outlet the owner holds.'),
-  "modules": zod.array(zod.string()).optional().describe('What this role may read, so the console can show a sidebar that matches what the database will answer. Cosmetic — the row policies are what actually refuse.\n')
+  "modules": zod.array(zod.string()).optional().describe('What this role may read, so the console can show a sidebar that matches what the database will answer. Cosmetic — the row policies are what actually refuse.\n'),
+  "showrooms": zod.array(zod.object({
+  "id": zod.number().int(),
+  "code": zod.string(),
+  "name": zod.string()
+})).optional().describe('The outlets this session may act for, in the order they should be offered. One entry for a member of staff; the owner\'s whole set for an owner. Here rather than on a DDMS route because it is a fact about the person, not about the console — InsurRouter and VeloDocs both have to ask which outlet a new record belongs to, and neither should have to call the other product to find out.\n')
 }).describe('Where tenant scope comes from. `ownerId` is never accepted from a request — it is read from the session, which is the whole point.\n')
 
 
@@ -439,10 +445,15 @@ export const GetCurrentUserResponse = zod.object({
   "ownerId": zod.number().int(),
   "email": zod.string(),
   "name": zod.string(),
-  "role": zod.enum(['OWNER', 'MANAGER', 'SALES_EXEC', 'SERVICE_ADVISOR', 'RTO_AGENT', 'ACCOUNTS', 'TECHNICIAN']).describe('OWNER and MANAGER are DDMS\'s own. The rest are the dealer\'s own role names, mirrored from `dms_employees.role`, so a login\'s role and the role on the work assigned to it are the same string.\n'),
+  "role": zod.enum(['OWNER', 'MANAGER', 'SALES_EXEC', 'SERVICE_ADVISOR', 'RTO_AGENT', 'ACCOUNTS', 'TECHNICIAN', 'PLATFORM_ADMIN']).describe('OWNER and MANAGER are DDMS\'s own. The rest are the dealer\'s own role names, mirrored from `dms_employees.role`, so a login\'s role and the role on the work assigned to it are the same string.\nPLATFORM_ADMIN is not a dealership role at all: it is whoever runs the platform, and it exists so that insurers and OCR engines — the same rows for every dealership — have somebody who may edit them without that being an owner editing another owner\'s reference data. It can read no dealership module.\n'),
   "empCode": zod.string().nullish().describe('The dealer\'s own employee code, when this login is a member of staff. The same code already sits on the enquiries, registration files and job cards assigned to them — which is what makes \"my work\" mean anything. Null for an owner.\n'),
   "showroomId": zod.number().int().nullish().describe('The outlet they work at. Null means every outlet the owner holds.'),
-  "modules": zod.array(zod.string()).optional().describe('What this role may read, so the console can show a sidebar that matches what the database will answer. Cosmetic — the row policies are what actually refuse.\n')
+  "modules": zod.array(zod.string()).optional().describe('What this role may read, so the console can show a sidebar that matches what the database will answer. Cosmetic — the row policies are what actually refuse.\n'),
+  "showrooms": zod.array(zod.object({
+  "id": zod.number().int(),
+  "code": zod.string(),
+  "name": zod.string()
+})).optional().describe('The outlets this session may act for, in the order they should be offered. One entry for a member of staff; the owner\'s whole set for an owner. Here rather than on a DDMS route because it is a fact about the person, not about the console — InsurRouter and VeloDocs both have to ask which outlet a new record belongs to, and neither should have to call the other product to find out.\n')
 }).describe('Where tenant scope comes from. `ownerId` is never accepted from a request — it is read from the session, which is the whole point.\n')
 
 
@@ -1720,7 +1731,8 @@ export const IngestPushBody = zod.object({
   "ownerCode": zod.string(),
   "ownerName": zod.string(),
   "insuranceChannel": zod.union([zod.literal('BROKER'),zod.literal('DIRECT_AGENT'),zod.literal(null)]).nullish().describe('How this showroom reaches insurers for deals from this DMS account. Held per account rather than per showroom because the arrangement belongs to the legal entity — one outlet may go through a broker platform while another holds its own agency code.\n')
-}).describe('Resolved from the OEM\'s dealer code via showroom_dms_accounts. Null when that dealer code is not mapped to a showroom — a configuration gap, and reported as one rather than guessed at.\n'),zod.null()]).optional().describe('Pass back the `tenant` block from a DMS pull so the draft is attributed to a showroom and therefore an owner. Omitted by OCR and scrape, which have no way of knowing which outlet they belong to — those drafts are unattributed until someone says otherwise.'),
+}).describe('Resolved from the OEM\'s dealer code via showroom_dms_accounts. Null when that dealer code is not mapped to a showroom — a configuration gap, and reported as one rather than guessed at.\n'),zod.null()]).optional().describe('Pass back the `tenant` block from a DMS pull so the draft is attributed to a showroom and therefore an owner. Omitted by OCR and scrape, which have no way of knowing which outlet they belong to — those fall back to `showroomId` below, and failing that to the signed-in person\'s own outlet.'),
+  "showroomId": zod.number().int().nullish().describe('Which outlet an OCR or scrape draft belongs to. A photographed Aadhaar card cannot say, so the answer comes from the person holding the phone — their own outlet when they have one, and this field when they work across several. Ignored when `tenant` is present, which is a stronger statement than a picker.'),
   "dealContext": zod.record(zod.string(), zod.unknown()).optional().describe('Pass back the `dealContext` block from a DMS pull. Everything the flat MSA payload has no room for — cubic capacity or motor kW, nominee, hypothecation, seating, manufacture date, entity type — lands in its own column from here. Without it the premium engine has no rating input and nothing can be priced.')
 })
 
