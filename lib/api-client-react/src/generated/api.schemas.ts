@@ -799,6 +799,32 @@ export interface QueueResult {
   byModule: QueueResultByModuleItem[];
 }
 
+export type AutomationRuleModule = typeof AutomationRuleModule[keyof typeof AutomationRuleModule];
+
+
+export const AutomationRuleModule = {
+  REGISTRATION: 'REGISTRATION',
+  JOB_CARD: 'JOB_CARD',
+  ENQUIRY: 'ENQUIRY',
+  RECEIVABLE: 'RECEIVABLE',
+} as const;
+
+export interface AutomationRule {
+  /** Stable. Lands in `outbound_messages.authorisedRule` and the decision log. */
+  id: string;
+  title: string;
+  module: AutomationRuleModule;
+  /** The state whose presence triggers it. Leaving it is the goal. */
+  on: string;
+  template: string;
+  /** How long before it may raise the same thing again while the record has not moved. The cadence and the de-duplication are one number, so the two cannot disagree. */
+  cadenceDays: number;
+  /** Why it stops, in words. The mechanism is leaving `on`. */
+  goal: string;
+  /** True when the rule carries an extra condition over the row beyond the state — shown because "fires on every one of these" and "fires on some of these" are different promises. */
+  conditional: boolean;
+}
+
 export type ShowroomSummaryDmsAccountsItem = {
   oemCode: string;
   dealerCode: string;
@@ -2463,6 +2489,12 @@ limit?: number;
 
 export type ListDmsEvents200 = {
   rows: RecordEvent[];
+};
+
+export type ListDmsRules200 = {
+  rules: AutomationRule[];
+  /** The ceiling. Import fails if the set exceeds it. */
+  max: number;
 };
 
 export type ListShowroomStaffParams = {

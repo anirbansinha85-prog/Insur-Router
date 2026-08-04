@@ -98,7 +98,10 @@ denied. It may write exactly one column, `users.last_login_at`, so a leak of the
 credential that can see password hashes cannot rewrite one or change a role.
 
 `ddms_worker` exists because syncing every dealership on a timer is cross-tenant
-by definition. `withWorkerScope()` opens it once around the whole pass, so the
+by definition. Since OBJ-16 it also holds the outbox and the decision log,
+because the rules run there and rules draft — the widening that changed what
+that role *is*: it no longer only mirrors, it proposes. What may actually leave
+is still `authoriseSend()`'s decision. `withWorkerScope()` opens it once around the whole pass, so the
 seven sync functions keep reaching for `db` and do not know or care whether a
 person or a timer started them. It reads `applications` and `policies` —
 select-only, and not by original intent: a deal's derived state is a *statement
@@ -456,6 +459,45 @@ the screen it came from is worse than no event stream.
 > at the other. Keyed on the part number alone, the two outlets overwrote each
 > other and the log flapped between the two states on every pass, for ever. Any
 > key on a record has to be the key that record actually has.
+
+## Rules that run themselves
+
+`lib/dms/rules.ts` is the whole automation layer, and its length is the design.
+One ordered list, in code, capped at twelve — `assertRuleSetFits` throws at
+import above the ceiling. No rule builder and no per-dealership flows: the
+failure mode being designed against is eighty active flows on one object and an
+automation layer nobody can predict, and **DDMS's customer has no administrator
+at all** to untangle one. Readable at `GET /api/dms/rules` and on the Outbox
+under *What runs itself*, because an automation layer nobody can see is where an
+automation layer nobody can predict starts.
+
+**A rule fires on a record *being* in a state, not on the transition into it.**
+The newest row per record in `record_events` is its state (OBJ-13), so reading
+the state means a missed scheduler pass loses nothing — and the cadence falls
+out of the same query. *While the record is still in this state, and the last
+message about it was more than N days ago* is one condition, and it is also the
+whole of R-57: the chase stops because the record moved.
+
+**It drafts and presses send; `authoriseSend()` decides the rest.** An internal
+note to somebody who still works here is permitted by rule; every customer
+message without exception waits for a person. The same code path therefore
+produces two very different things, and that asymmetry is R-48.
+
+> **Stopping the cadence is not enough.** A draft raised last week about a
+> certificate in a drawer is still in the Outbox after the customer collects it,
+> waiting for somebody to approve telling them to come and collect it. A rule
+> withdraws its own open drafts when the record leaves the state that raised
+> them — `DRAFT` only, rule-raised only (`createdByUserId` null), cancelled
+> rather than deleted.
+
+> **No rule writes a decision field.** R-56 permits it, and every decision field
+> in this product encodes a claim about something a *person* did — the customer
+> was told, the RTO was chased. A rule writing one would assert work that never
+> happened. When a field appears that records something the system did, a rule
+> may write it.
+
+Rules run in the scheduler after detection, on `ddms_worker` — which is why that
+role now holds the outbox and the decision log.
 
 ## One queue, worked one at a time
 

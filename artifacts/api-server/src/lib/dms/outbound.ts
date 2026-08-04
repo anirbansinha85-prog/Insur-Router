@@ -254,7 +254,13 @@ export async function authoriseSend(
 
 export interface DraftInput {
   ownerId: number;
-  userId: number;
+  /**
+   * Who is drafting. **Null means a rule did**, which is R-60's convention and
+   * the reason the column was made nullable before anything could write null to
+   * it: the system acting has to be distinguishable from having lost track of
+   * who acted.
+   */
+  userId: number | null;
   showroomId: number;
   /**
    * Every outlet this owner holds. Only the statement needs it, and it needs it
@@ -263,6 +269,15 @@ export interface DraftInput {
   ownerShowroomIds: number[];
   template: TemplateId;
   recordKey: string;
+  /**
+   * How long a message about this record counts as *already raised*.
+   *
+   * A day by default, for the reason set out where the window is applied. A
+   * rule with a cadence passes its own: a weekly nudge about an uncollected
+   * certificate must not be blocked by last week's, and must not fire twice on
+   * consecutive scheduler passes. The cadence is the window (R-57).
+   */
+  reuseWindowMs?: number;
 }
 
 export type DraftResult =
@@ -392,7 +407,7 @@ export async function createDraft(input: DraftInput): Promise<DraftResult> {
   // RTO agent being told about the same file twice two minutes apart. The index
   // has to release — a nudge next week is legitimate — so the window belongs
   // here, where "again already?" and "again, later" can be told apart.
-  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1_000);
+  const since = new Date(Date.now() - (input.reuseWindowMs ?? 24 * 60 * 60 * 1_000));
   const [existing] = await db
     .select()
     .from(outboundMessagesTable)
@@ -406,7 +421,7 @@ export async function createDraft(input: DraftInput): Promise<DraftResult> {
         // draft and wants another has said so, and a message that failed to go
         // is the one case where trying again is the whole point.
         inArray(outboundMessagesTable.status, ["DRAFT", "APPROVED", "SENT", "HELD_NO_TRANSPORT"]),
-        gte(outboundMessagesTable.createdAt, dayAgo),
+        gte(outboundMessagesTable.createdAt, since),
       ),
     )
     .orderBy(desc(outboundMessagesTable.createdAt));
@@ -528,7 +543,8 @@ export async function approveMessage(
 /** Decided against. Kept as a row, because "we chose not to" is a fact worth keeping. */
 export async function cancelMessage(
   ownerId: number,
-  userId: number,
+  /** Null when a rule withdrew it because the record it was about moved on. */
+  userId: number | null,
   messageId: number,
   note?: string,
 ): Promise<MessageResult> {
@@ -572,7 +588,9 @@ export async function cancelMessage(
  */
 export async function sendMessage(
   ownerId: number,
-  userId: number,
+  /** Null when a rule is pressing send. `logSend` already nulls it for a rule
+   *  basis, so this only widens what may be passed, not what is recorded. */
+  userId: number | null,
   messageId: number,
 ): Promise<MessageResult> {
   const msg = await loadOwned(ownerId, messageId);
@@ -635,7 +653,7 @@ export async function sendMessage(
 
 function logSend(
   ownerId: number,
-  userId: number,
+  userId: number | null,
   msg: OutboundMessageRow,
   auth: Extract<Authorisation, { ok: true }>,
   outcome: string,

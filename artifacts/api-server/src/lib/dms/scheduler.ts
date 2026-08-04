@@ -26,6 +26,7 @@ import { syncShowroom } from "./sync";
 import { syncShowroomReceivables } from "./receivables-worklist";
 import { syncShowroomInventory } from "./inventory-worklist";
 import { detectStateChanges, showroomIdsForOwner } from "./events";
+import { runRules } from "./rules";
 
 const DEFAULT_INTERVAL_MS = 15 * 60 * 1000;
 const DEFAULT_INITIAL_DELAY_MS = 30 * 1000;
@@ -145,6 +146,43 @@ async function runPass(): Promise<void> {
       for (const showroomId of owned) {
         if (!showroomIds.includes(showroomId)) continue;
         await detectStateChanges(ownerId, showroomId, owned);
+      }
+
+      // And then the rules, over the states that pass just worked out.
+      //
+      // After detection and never beside it: a rule fires on the state a record
+      // is in, so running the two in the other order would have every rule
+      // acting on the picture from fifteen minutes ago. This is the point at
+      // which the product stops only reporting — a certificate that has sat in
+      // a drawer since March produces a draft here, with nobody signed in.
+      //
+      // Its own try, because a rule failing must not lose the detection that
+      // preceded it. The events are the more valuable of the two: a draft can
+      // be raised on the next pass, and a transition nobody recorded is gone.
+      try {
+        let drafted = 0;
+        let waiting = 0;
+        let held = 0;
+        let withdrawn = 0;
+        for (const showroomId of owned) {
+          if (!showroomIds.includes(showroomId)) continue;
+          const r = await runRules(ownerId, showroomId, owned);
+          drafted += r.drafted;
+          waiting += r.awaitingPerson;
+          held += r.held;
+          withdrawn += r.withdrawn;
+        }
+        if (drafted > 0 || withdrawn > 0) {
+          logger.info(
+            { ownerId, drafted, awaitingApproval: waiting, heldNoTransport: held, withdrawn },
+            "Rules ran with nobody signed in",
+          );
+        }
+      } catch (err) {
+        logger.error(
+          { err: err instanceof Error ? err.message : String(err), ownerId },
+          "Rule pass failed",
+        );
       }
     } catch (err) {
       logger.error(

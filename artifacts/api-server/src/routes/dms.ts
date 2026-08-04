@@ -85,6 +85,7 @@ import {
 } from "../lib/session";
 import { seesEveryOutlet } from "../lib/dms/access";
 import { buildQueue } from "../lib/dms/queue";
+import { describeRules, MAX_RULES } from "../lib/dms/rules";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -763,6 +764,23 @@ router.get("/dms/queue", async (req, res): Promise<void> => {
   });
 
   res.json(result);
+});
+
+/**
+ * What runs itself.
+ *
+ * The whole rule set, in the order it is evaluated, with what stops each one.
+ * A screen for it exists because *"the rule set is one ordered list short
+ * enough to read in a sitting"* is only true if somebody can actually read it —
+ * and the failure this product is designed against is an automation layer
+ * nobody can predict, which begins with an automation layer nobody can see.
+ *
+ * Read-only, and there is nothing behind it to write to. The rules live in
+ * `lib/dms/rules.ts` and changing them is a deployment, which is the R-52 line:
+ * no rule builder, no per-dealership flows.
+ */
+router.get("/dms/rules", (_req, res): void => {
+  res.json({ rules: describeRules(), max: MAX_RULES });
 });
 
 /**

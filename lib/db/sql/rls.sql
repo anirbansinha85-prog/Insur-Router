@@ -519,9 +519,11 @@ create policy ocr_engines_admin on public.ocr_engines
 --                credential that can see password hashes can see nothing else.
 --   ddms_worker  the mirror and the graph, every tenant, because that is what
 --                syncing on a timer *is*, plus read-only sight of the
---                applications a deal's state is defined against. No users, no
---                sessions, no decision log, no outbox — nothing about people
---                and nothing anybody decided.
+--                applications a deal's state is defined against, plus the
+--                outbox and the decision log — because since OBJ-16 the rules
+--                run here and rules draft. No users and no sessions: it still
+--                knows nothing about people, and it still cannot decide that
+--                anything may leave.
 --
 -- Neither is scoped by a session, and neither pretends to be. Their scope is
 -- the table list below, which is a thing somebody can read in one place.
@@ -627,6 +629,34 @@ create policy applications_worker on public.applications
 drop policy if exists policies_worker on public.policies;
 create policy policies_worker on public.policies
   for select to ddms_worker using (true);
+
+/*
+ * And the outbox, because since OBJ-16 the scheduler drafts.
+ *
+ * This is the second widening of this role and it is the one that changes what
+ * it *is*: `ddms_worker` no longer only mirrors, it proposes. A rule running
+ * with nobody signed in composes a message about a certificate that has sat in
+ * a drawer since March, and writes it here as a draft.
+ *
+ * What has not changed is what may leave. `authoriseSend()` is the only thing
+ * that writes `sent_at`, and it refuses every customer-facing message without a
+ * person however it was drafted. The grant below lets the scheduler *ask*; it
+ * does not let it answer. No delete, like `ddms_app`: a draft decided against is
+ * CANCELLED, because "we chose not to contact this customer" and "nobody ever
+ * drafted anything" are different facts.
+ *
+ * The decision log follows for the same reason — a send, held or otherwise, is
+ * recorded, and `user_id` null is what says a rule did it (R-60). Insert only:
+ * a record of who decided what is answering a different question if the thing
+ * that writes it can also edit it.
+ */
+drop policy if exists outbound_worker on public.outbound_messages;
+create policy outbound_worker on public.outbound_messages
+  for all to ddms_worker using (true) with check (true);
+
+drop policy if exists decision_log_worker on public.decision_log;
+create policy decision_log_worker on public.decision_log
+  for all to ddms_worker using (true) with check (true);
 
 -- ── Grants ──────────────────────────────────────────────────────────────────
 -- Policies decide which rows; grants decide which tables and verbs. Both are
@@ -751,6 +781,11 @@ grant select, insert on public.record_events to ddms_worker;
 -- Read-only, and only because a deal's derived state is a statement about the
 -- insurance record. See the policy above.
 grant select on public.applications, public.policies to ddms_worker;
+
+-- The outbox, since OBJ-16. Update but not delete, exactly as `ddms_app` has
+-- it. What a draft may *do* is still `authoriseSend()`'s to decide.
+grant select, insert, update on public.outbound_messages to ddms_worker;
+grant select, insert on public.decision_log to ddms_worker;
 
 -- Same reason as `ddms_app`: the entity graph is rebuilt wholesale rather than
 -- reconciled, so these two are the only tables the worker may delete from.

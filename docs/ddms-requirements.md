@@ -86,15 +86,15 @@ refused, are in section 3b.*
 | # | Requirement | Status |
 |---|---|---|
 | R-51 | **A change of derived state is an event, and events are recorded.** Not a field diff — `classify()`'s answer moving from one state to another. A file that crossed into `RC_IN_DRAWER` at 3am must be knowable without anybody having opened a screen | ✅ |
-| R-52 | **Automation is one ordered list, it lives in code, and it is capped.** No rule builder, no per-dealership flows, and a stated ceiling on how many rules may exist. The failure mode being designed against is documented: orgs reach eighty automations on one object, page saves take eight seconds, and nobody can predict what a save will do | ○ |
+| R-52 | ✅ **Automation is one ordered list, it lives in code, and it is capped.** No rule builder, no per-dealership flows, and a stated ceiling on how many rules may exist. The failure mode being designed against is documented: orgs reach eighty automations on one object, page saves take eight seconds, and nobody can predict what a save will do | ○ |
 | R-53 | **A dealership has people, and scope only ever narrows.** Roles inside an owner — advisor, RTO agent, accounts, manager — expressed as an *additional* predicate on top of the owner's, never an alternative one. A bug in the role layer must be able to hide rows and must not be able to reveal them | ✅ |
 | R-54 | **Work is routed by role and capacity, and never becomes unroutable.** Who can do it, who has room, and who is actually in today. When nothing matches, it degrades to a named queue rather than disappearing | ✅ the picker offers only staff still here, each with what they carry; unroutable work lands in the second band rather than vanishing |
 | R-55 | **One queue, worked one at a time.** Seven screens each holding a list is a reporting product. The capacity thesis needs a single ordered queue that can be worked start to finish without returning to a list | ✅ |
-| R-56 | **Automation may write a decision field. Only the gate lets anything leave.** An automated mark is internal, reversible and logged. Anything outbound still passes `authoriseSend()`, unchanged — the line drawn in R-48 does not move because the caller stopped being a person | ○ |
-| R-57 | **A chase stops when its goal state is reached.** The exit condition is a `classify()` state, not a reply or a click. A cadence that cannot stop itself is the mechanism by which automation becomes something a dealership apologises for | ○ |
-| R-58 | **Thresholds are dealer policy, not product logic.** Credit periods, ageing buckets, chase cadence, what counts as the RTO having gone quiet — per owner, stored, and changes to them audited. The rules stay in code; the numbers belong to the dealership | ○ |
+| R-56 | ✅ *(the gate half; no rule writes a decision field yet, and OBJ-16 says why)* **Automation may write a decision field. Only the gate lets anything leave.** An automated mark is internal, reversible and logged. Anything outbound still passes `authoriseSend()`, unchanged — the line drawn in R-48 does not move because the caller stopped being a person | ○ |
+| R-57 | ✅ *(and it withdraws the draft it already raised)* **A chase stops when its goal state is reached.** The exit condition is a `classify()` state, not a reply or a click. A cadence that cannot stop itself is the mechanism by which automation becomes something a dealership apologises for | ○ |
+| R-58 | ○ *moved to OBJ-18, with the severity table — one table of the dealership's numbers, not two* **Thresholds are dealer policy, not product logic.** Credit periods, ageing buckets, chase cadence, what counts as the RTO having gone quiet — per owner, stored, and changes to them audited. The rules stay in code; the numbers belong to the dealership | ○ |
 | R-59 | **The agent invokes the same action registry a person does.** One endpoint, one set of refusals, one decision log. A parallel agent-only path would have to re-earn every refusal and would eventually fail to | ○ |
-| R-60 | **Every automated act is attributable and reversible.** `decision_log.userId` null reads as *the system did this*, never as *we lost track*. Anything a rule set, a person can unset | ○ |
+| R-60 | ✅ **Every automated act is attributable and reversible.** `decision_log.userId` null reads as *the system did this*, never as *we lost track*. Anything a rule set, a person can unset | ○ |
 | R-61 | **A dealership's staff get their own logins, and a login is the dealership's own employee record.** *Locked 4 August.* A user carries an `empCode`, and that code is what already sits on the enquiries, registration files and job cards they are responsible for. Without that join, *my work* has no referent and the queue is only a differently sorted list | ✅ |
 | R-62 | **The mirror may revoke access. It may never grant it.** An owner creates a login and links it to an employee; the DMS saying that person has left closes it. Never the reverse — a name appearing in the staff master must not become a login. And the honest limit travels with it: revocation is only as fresh as the last sync | ✅ at sign-in, on every request, and in `app.session_user_id()` so it holds at the database |
 | R-63 | **See the outlet, act on what is yours or unowned.** A nine-person dealership covers for each other, so hiding a colleague's leads would be wrong and would hide the orphaned-work finding R-19 exists for. Visibility is the outlet; the write is yours, or nobody's | ✅ SELECT owner-scoped, writes narrowed |
@@ -809,7 +809,7 @@ short-staffed dealership does not employ. So:
 | 2 | ~~**OBJ-14** People, and what each may see~~ ✅ | no | the queue needs a *me*; and it is half of the access story |
 | 3 | ~~**OBJ-8** One credential~~ ✅ | no | the other half. Doing 14 and 8 together was one piece of work about who sees what, and it had been outstanding since 3 August |
 | 4 | ~~**OBJ-15** The queue~~ ✅ | no | the capacity thesis, finally operational |
-| 5 | **OBJ-16** Rules that run themselves | no | needs 13 for the trigger and 15 for somewhere to put the work |
+| 5 | ~~**OBJ-16** Rules that run themselves~~ ✅ | no | needs 13 for the trigger and 15 for somewhere to put the work |
 | 6 | **OBJ-18** The severity table belongs to the dealership | no | *added 4 Aug.* The queue shipped with our opinion of what matters in it |
 | 7 | **OBJ-19** The agent remembers what this dealership did | no | *added 4 Aug.* Precedent from the decision log. Before 17, so the agent that acts acts with it |
 | 8 | **OBJ-17** The agent operates the registry | yes, gated | the registry, the refusals, the gate and the audit trail all exist by then |
@@ -1043,8 +1043,11 @@ next call.
 > written into a file — see **OBJ-18**, which makes it per-owner data an owner
 > or a showroom manager sets.
 
-### OBJ-16 — Rules that run themselves
-*Covers R-52, R-56, R-57, R-58, R-60.*
+### OBJ-16 — Rules that run themselves  ✅ **done 4 Aug**
+*Covers R-52, R-56, R-57, R-60. **R-58 moved to OBJ-18** — thresholds becoming
+per-owner data is the same piece of work as the severity table becoming
+per-owner data, and doing it twice would mean two tables of the dealership's
+numbers.*
 
 ```
 on   <event>        a state transition, or a clock
@@ -1064,6 +1067,51 @@ because the file moved rather than because somebody remembered to stop it.
 produces a queue item and a drafted message; the same file, once the customer
 has collected, produces neither; and the whole rule set is one ordered list
 short enough to read in a sitting.
+
+**Verified, with nobody signed in for either half.**
+
+Three registration files sat in `RC_IN_DRAWER`. One unattended pass produced
+**four drafts** — those three and a job card finished and uncollected — every
+one `created_by_user_id` null, which is R-60's *the system did this*. All four
+were then refused by the gate: *"This is addressed to a customer. No rule
+permits that, so it needs somebody to read it and approve it before it can go."*
+Four drafts, four refusals, nothing sent. That refusal is the product working.
+
+Then the customer collected. Keyed into the mock OEM's own database — DDMS is
+read-only and was not involved — and the next unattended pass:
+
+| | |
+|---|---|
+| `REG-0417-3298` in the RTO agent's queue | **gone** |
+| Its draft | **`CANCELLED`**, `user_id` null, note *"Withdrawn: registration REG-0417-3298 is no longer rc in drawer, so the customer collects it and the file leaves rc_in_drawer"* |
+| `REG-0417-3311`, not collected | still `DRAFT` — the withdrawal is targeted, not a sweep |
+| Drafts raised that pass | **0** |
+
+And the set is five rules with a ceiling of twelve, readable on the Outbox
+under *What runs itself* and at `GET /api/dms/rules`. `assertRuleSetFits`
+throws at import above the ceiling, because a cap nobody enforces is a comment.
+
+> **Stopping the cadence was not the whole of R-57.** The rule correctly
+> stopped raising new drafts once the file moved, and the draft raised last week
+> was still sitting in the Outbox waiting for somebody to approve telling a
+> customer to come and collect a certificate they already had. Nothing about
+> that message was true any more and the person approving it had no way to know.
+> A rule now withdraws its own open drafts when the record leaves the state that
+> raised them — `DRAFT` only, rule-raised only, cancelled rather than deleted.
+
+> **No rule writes a decision field, and that is a finding rather than an
+> omission.** R-56 permits it and `applyAction` would take a null user id, but
+> every decision field in this product encodes a claim about something a person
+> did — *the customer was told*, *the RTO was chased*, *a reorder was raised*. A
+> rule writing one would be the product asserting work that never happened,
+> which is the same defect as a policy number that looks issued. When a field
+> appears that records something the *system* did, a rule may write it.
+
+> **And the scheduler's credential grew again.** Rules draft, so `ddms_worker`
+> now holds insert and update on `outbound_messages` and insert on
+> `decision_log`. It is the widening that changes what that role *is* — it no
+> longer only mirrors, it proposes. What has not changed is what may leave:
+> `authoriseSend()` is still the only thing that writes `sent_at`.
 
 ### OBJ-17 — The agent operates the registry
 *Covers R-59, and finishes R-22.*
@@ -1086,8 +1134,10 @@ did'."*
 is refused for exactly the reasons a person would be, and the decision log
 shows the system did it — with a person able to undo it.
 
-### OBJ-18 — The severity table belongs to the dealership
-*Covers R-65. Extends R-58, which already made thresholds dealer policy.*
+### OBJ-18 — The dealership's own numbers
+*Covers R-65 **and R-58**, which moved here from OBJ-16 on 4 August: the
+severity table and the thresholds are one piece of work, and splitting them
+would leave a dealership with two places to set their own numbers.*
 
 `SEVERITY` in `lib/dms/queue.ts` decides what a short-staffed dealership does
 first, and right now it is one afternoon's judgement written by us into a file.

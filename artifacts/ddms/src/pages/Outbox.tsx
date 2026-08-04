@@ -30,6 +30,7 @@ import {
   useCancelDmsMessage,
   useListDmsMessages,
   useSendDmsMessage,
+  useListDmsRules,
   type OutboxRow,
   type OutboundMessage,
 } from "@workspace/api-client-react"
@@ -224,7 +225,15 @@ function MessageCard({ row }: { row: OutboxRow }) {
         <div className="mt-3 flex items-end justify-between gap-4 flex-wrap">
           <div className="min-w-0 flex-1">
             <Gate row={row} />
-            {m.failureReason && (
+            {/* What happened when send was last attempted, and only when it
+                says something the verdict above does not.
+                
+                They used to differ by construction: `failureReason` was
+                written when somebody pressed send, and most drafts had never
+                been pressed. Since OBJ-16 a rule presses send on every draft it
+                raises, so the two are usually the same sentence — and printing
+                a refusal twice makes the screen look like it is insisting. */}
+            {m.failureReason && m.failureReason !== (row.gate.ok ? null : row.gate.reason) && (
               <div className="flex items-start gap-1.5 text-[11px] text-slate-500 mt-1">
                 <Ban className="w-3.5 h-3.5 shrink-0 mt-px" />
                 <span>{m.failureReason}</span>
@@ -272,6 +281,73 @@ function MessageCard({ row }: { row: OutboxRow }) {
   )
 }
 
+/**
+ * What runs itself, in the order it is evaluated.
+ *
+ * Here rather than on a settings screen, because this is where the drafts these
+ * rules produce arrive: somebody reading an unexpected message wants to know
+ * what raised it without leaving the page. The list is short by construction
+ * and shown whole — an automation layer nobody can predict begins with an
+ * automation layer nobody can see.
+ *
+ * Nothing here is editable. Changing the set is a deployment (R-52).
+ */
+function RulesPanel() {
+  const [open, setOpen] = useState(false)
+  const { data } = useListDmsRules({ query: { queryKey: ["/api/dms/rules"] } })
+  const rules = data?.rules ?? []
+  if (rules.length === 0) return null
+
+  return (
+    <div className="border border-slate-200 rounded-lg bg-white">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full px-4 py-3 flex items-center gap-2 text-left"
+      >
+        <span className="text-sm font-semibold text-slate-800">What runs itself</span>
+        <span className="text-[11px] text-slate-400">
+          {rules.length} rules, ceiling {data?.max}
+        </span>
+        <span className="ml-auto text-[11px] font-medium text-slate-400">
+          {open ? "Hide" : "Show"}
+        </span>
+      </button>
+      {open && (
+        <div className="border-t border-slate-100 divide-y divide-slate-100">
+          {rules.map((r, i) => (
+            <div key={r.id} className="px-4 py-3">
+              <div className="flex items-baseline gap-2">
+                <span className="text-[11px] font-bold text-slate-400 tabular-nums">{i + 1}</span>
+                <span className="text-sm font-medium text-slate-900">{r.title}</span>
+                {r.conditional && (
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                    conditional
+                  </span>
+                )}
+              </div>
+              <div className="text-xs text-slate-500 mt-1 pl-5 space-y-0.5">
+                <div>
+                  <span className="font-medium text-slate-600">When</span> a{" "}
+                  {r.module.replace(/_/g, " ").toLowerCase()} is{" "}
+                  <span className="font-mono text-[11px]">{r.on}</span>, at most every{" "}
+                  {r.cadenceDays} day{r.cadenceDays === 1 ? "" : "s"}
+                </div>
+                <div>
+                  <span className="font-medium text-slate-600">Stops when</span> {r.goal}
+                </div>
+              </div>
+            </div>
+          ))}
+          <div className="px-4 py-2.5 text-[11px] text-slate-400">
+            A rule drafts and presses send. What may actually leave is the gate's decision, and
+            every customer-facing message waits for a person.
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Outbox() {
   const { selected } = useShowroom()
   const params = { showroomId: selected?.id ?? 0 }
@@ -294,6 +370,8 @@ export default function Outbox() {
           permitting it or somebody approving it.
         </p>
       </div>
+
+      <RulesPanel />
 
       <div className="grid gap-4 md:grid-cols-4">
         <StatCard

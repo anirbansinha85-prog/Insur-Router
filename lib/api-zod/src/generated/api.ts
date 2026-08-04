@@ -1261,6 +1261,27 @@ export const GetDmsQueueResponse = zod.object({
 
 
 /**
+ * The whole rule set. One ordered list, in code, capped — no rule builder and no per-dealership flows, because the failure mode being designed against is eighty active flows on one object and an automation layer nobody can predict, and DDMS's customer has no administrator to untangle one.
+ * Every rule fires on a record *being in a state* rather than on the transition into it, so a missed scheduler pass loses nothing and the cadence falls out of the same query. Leaving that state is the goal condition: a chase stops because the record moved, not because somebody remembered to stop it.
+ * A rule drafts and presses send; `authoriseSend()` decides what happens next, and refuses every customer-facing message without a person. Read-only — changing the set is a deployment.
+ * @summary What runs itself, in the order it is evaluated
+ */
+export const ListDmsRulesResponse = zod.object({
+  "rules": zod.array(zod.object({
+  "id": zod.string().describe('Stable. Lands in `outbound_messages.authorisedRule` and the decision log.'),
+  "title": zod.string(),
+  "module": zod.enum(['REGISTRATION', 'JOB_CARD', 'ENQUIRY', 'RECEIVABLE']),
+  "on": zod.string().describe('The state whose presence triggers it. Leaving it is the goal.'),
+  "template": zod.string(),
+  "cadenceDays": zod.number().int().describe('How long before it may raise the same thing again while the record has not moved. The cadence and the de-duplication are one number, so the two cannot disagree.\n'),
+  "goal": zod.string().describe('Why it stops, in words. The mechanism is leaving `on`.'),
+  "conditional": zod.boolean().describe('True when the rule carries an extra condition over the row beyond the state — shown because \"fires on every one of these\" and \"fires on some of these\" are different promises.\n')
+})),
+  "max": zod.number().int().describe('The ceiling. Import fails if the set exceeds it.')
+})
+
+
+/**
  * Behind the reassignment pickers. Departed employees are excluded rather than greyed out — they are the reason the reassignment field exists, and a list containing them invites handing work back to somebody who left in February. `carrying` is included because reassigning an orphaned lead to whoever is already busiest is a decision DDMS would have made worse.
  * @summary Staff who still work at this outlet, and what each already carries
  */

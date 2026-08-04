@@ -1323,6 +1323,43 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /dms/rules:
+    get:
+      operationId: listDmsRules
+      tags: [dms]
+      summary: What runs itself, in the order it is evaluated
+      description: >
+        The whole rule set. One ordered list, in code, capped — no rule builder
+        and no per-dealership flows, because the failure mode being designed
+        against is eighty active flows on one object and an automation layer
+        nobody can predict, and DDMS's customer has no administrator to untangle
+        one.
+
+        Every rule fires on a record *being in a state* rather than on the
+        transition into it, so a missed scheduler pass loses nothing and the
+        cadence falls out of the same query. Leaving that state is the goal
+        condition: a chase stops because the record moved, not because somebody
+        remembered to stop it.
+
+        A rule drafts and presses send; `authoriseSend()` decides what happens
+        next, and refuses every customer-facing message without a person.
+        Read-only — changing the set is a deployment.
+      responses:
+        "200":
+          description: In evaluation order
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rules:
+                    type: array
+                    items: { $ref: "#/components/schemas/AutomationRule" }
+                  max:
+                    type: integer
+                    description: The ceiling. Import fails if the set exceeds it.
+                required: [rules, max]
+
   /dms/staff:
     get:
       operationId: listShowroomStaff
@@ -2553,6 +2590,37 @@ components:
               count: { type: integer }
             required: [module, count]
       required: [items, total, mine, unassigned, outlet, byModule]
+
+    AutomationRule:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Stable. Lands in `outbound_messages.authorisedRule` and the decision log.
+        title: { type: string }
+        module:
+          type: string
+          enum: [REGISTRATION, JOB_CARD, ENQUIRY, RECEIVABLE]
+        on:
+          type: string
+          description: The state whose presence triggers it. Leaving it is the goal.
+        template: { type: string }
+        cadenceDays:
+          type: integer
+          description: >
+            How long before it may raise the same thing again while the record
+            has not moved. The cadence and the de-duplication are one number, so
+            the two cannot disagree.
+        goal:
+          type: string
+          description: Why it stops, in words. The mechanism is leaving `on`.
+        conditional:
+          type: boolean
+          description: >
+            True when the rule carries an extra condition over the row beyond
+            the state — shown because "fires on every one of these" and "fires
+            on some of these" are different promises.
+      required: [id, title, module, on, template, cadenceDays, goal, conditional]
 
     ShowroomSummary:
       type: object

@@ -64,6 +64,7 @@ import type {
   ListDmsEventsParams,
   ListDmsMessages200,
   ListDmsMessagesParams,
+  ListDmsRules200,
   ListShowroomStaff200,
   ListShowroomStaffParams,
   LoginInput,
@@ -2870,6 +2871,86 @@ export function useGetDmsQueue<TData = Awaited<ReturnType<typeof getDmsQueue>>, 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetDmsQueueQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListDmsRulesUrl = () => {
+
+
+
+
+  return `/api/dms/rules`
+}
+
+/**
+ * The whole rule set. One ordered list, in code, capped — no rule builder and no per-dealership flows, because the failure mode being designed against is eighty active flows on one object and an automation layer nobody can predict, and DDMS's customer has no administrator to untangle one.
+ * Every rule fires on a record *being in a state* rather than on the transition into it, so a missed scheduler pass loses nothing and the cadence falls out of the same query. Leaving that state is the goal condition: a chase stops because the record moved, not because somebody remembered to stop it.
+ * A rule drafts and presses send; `authoriseSend()` decides what happens next, and refuses every customer-facing message without a person. Read-only — changing the set is a deployment.
+ * @summary What runs itself, in the order it is evaluated
+ */
+export const listDmsRules = async ( options?: Parameters<typeof customFetch>[1]): Promise<ListDmsRules200> => {
+
+  return customFetch<ListDmsRules200>(getListDmsRulesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListDmsRulesQueryKey = () => {
+    return [
+    `/api/dms/rules`
+    ] as const;
+    }
+
+
+export const getListDmsRulesQueryOptions = <TData = Awaited<ReturnType<typeof listDmsRules>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDmsRules>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListDmsRulesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listDmsRules>>> = ({ signal }) => listDmsRules({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listDmsRules>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListDmsRulesQueryResult = NonNullable<Awaited<ReturnType<typeof listDmsRules>>>
+export type ListDmsRulesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary What runs itself, in the order it is evaluated
+ */
+
+export function useListDmsRules<TData = Awaited<ReturnType<typeof listDmsRules>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDmsRules>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListDmsRulesQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

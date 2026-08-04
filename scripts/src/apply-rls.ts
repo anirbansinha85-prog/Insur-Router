@@ -234,10 +234,12 @@ const EXPECTATIONS: Record<string, Record<string, Expectation>> = {
     // the DMS's policy number with ours — so the detector cannot rebuild the
     // projection without it. Select only; the grants have no insert or update.
     applications: "any",
+    // Since OBJ-16 the rules run here, and rules draft. What may actually
+    // leave is still `authoriseSend()`'s decision and not this role's.
+    outbound_messages: "any",
+    decision_log: "any",
     users: "denied",
     sessions: "denied",
-    decision_log: "denied",
-    outbound_messages: "denied",
   },
 };
 
