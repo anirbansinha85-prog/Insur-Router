@@ -171,6 +171,7 @@ export * from './serviceWorklistRowDms';
 export * from './serviceWorklistSummary';
 export * from './serviceWorklistSummaryByState';
 export * from './sessionUser';
+export * from './sessionUserRole';
 export * from './showroomSummary';
 export * from './showroomSummaryDmsAccountsItem';
 export * from './sparesState';

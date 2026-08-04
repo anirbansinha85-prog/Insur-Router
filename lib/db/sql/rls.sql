@@ -50,6 +50,42 @@ revoke all on schema app from public;
  * user. Null makes every policy below false, which is the correct answer to
  * "who is this" when nobody has said.
  */
+/*
+ * The user behind this session, if there is one and they still work here.
+ *
+ * Every helper below resolves through this rather than repeating the join, and
+ * it is where the departure check lives. `lib/session.ts` refuses a departed
+ * employee at sign-in and on every request; this makes the same refusal true at
+ * the database, which is the standard OBJ-7 set — *isolation enforced by the
+ * database, not only by application code*. Without it, holding a session row
+ * for somebody who left in February still read their branch's rows, and the
+ * only thing stopping that was code remembering to check.
+ *
+ * **An absent employee row is not a departure.** A staff master that has not
+ * synced yet, or a code the dealership has retired, must not lock anybody out:
+ * the mirror revokes on a positive statement that somebody left, never on the
+ * absence of evidence. Same rule as the TypeScript side, deliberately.
+ */
+create or replace function app.session_user_id()
+  returns integer
+  language sql
+  stable
+  security definer
+  set search_path = pg_catalog, public, pg_temp
+as $$
+  select u.id
+    from public.sessions s
+    join public.users u on u.id = s.user_id
+    left join public.dms_employees e
+      on e.emp_code = u.emp_code
+     and e.showroom_id = u.showroom_id
+   where s.token_hash = nullif(current_setting('app.session_token', true), '')
+     and s.expires_at > now()
+     and u.is_active
+     and (e.emp_code is null or e.is_active = 'Y')
+   limit 1
+$$;
+
 create or replace function app.current_owner_id()
   returns integer
   language sql
@@ -57,13 +93,7 @@ create or replace function app.current_owner_id()
   security definer
   set search_path = pg_catalog, public, pg_temp
 as $$
-  select u.owner_id
-    from public.sessions s
-    join public.users u on u.id = s.user_id
-   where s.token_hash = nullif(current_setting('app.session_token', true), '')
-     and s.expires_at > now()
-     and u.is_active
-   limit 1
+  select u.owner_id from public.users u where u.id = app.session_user_id()
 $$;
 
 /*
@@ -117,6 +147,91 @@ as $$
    where a.showroom_id in (select app.owned_showroom_ids())
 $$;
 
+/*
+ * The role this session's user holds, and the outlets they may look at.
+ *
+ * Added for OBJ-14, when a dealership's staff got their own logins. Both are
+ * `security definer` for the same reason `current_owner_id` is: they read
+ * `users`, which `ddms_app` has no grants on at all.
+ *
+ * **These narrow and cannot widen.** `visible_showroom_ids` returns the
+ * employee's one outlet when they have one, and the owner's whole set when they
+ * do not — so it is always a subset of `owned_showroom_ids`. Every policy below
+ * ANDs it onto the owner predicate rather than ORing, which means the worst a
+ * mistake in this layer can do is hide a row from somebody entitled to it. The
+ * reverse is not reachable.
+ *
+ * Salesforce's model runs the same way in the opposite direction: a private
+ * baseline, and every later layer can only grant. Here the baseline is the
+ * owner's whole group and every later layer can only take away. The point in
+ * both is that the direction of a mistake is safe.
+ */
+create or replace function app.current_role()
+  returns text
+  language sql
+  stable
+  security definer
+  set search_path = pg_catalog, public, pg_temp
+as $$
+  select u.role from public.users u where u.id = app.session_user_id()
+$$;
+
+create or replace function app.visible_showroom_ids()
+  returns setof integer
+  language sql
+  stable
+  security definer
+  set search_path = pg_catalog, public, pg_temp
+as $$
+  with me as (
+    select u.owner_id, u.showroom_id, u.role
+      from public.users u
+     where u.id = app.session_user_id()
+  )
+  select s.id
+    from public.showrooms s, me
+   where s.owner_id = me.owner_id
+     and (
+       -- An owner or a manager looks across the group. Anybody else is scoped
+       -- to the outlet they work at, and a null there means the account was
+       -- never tied to one, which is treated as the whole group rather than as
+       -- nothing: a login with no outlet is an administrative account, not a
+       -- locked one.
+       me.role in ('OWNER', 'MANAGER')
+       or me.showroom_id is null
+       or s.id = me.showroom_id
+     )
+$$;
+
+/*
+ * Whether this session's role may read a module at all.
+ *
+ * The same table as `lib/dms/access.ts`, written twice on purpose. The
+ * TypeScript copy is what the routes and the sidebar consult so a refusal can
+ * be explained; this copy is what makes the refusal *true* — a service
+ * advisor's connection reads zero rows from the ledger whatever the application
+ * code does. Two copies of a table this small, each doing a different job, is a
+ * better trade than one copy that only one of the two layers can see.
+ */
+create or replace function app.can_read(module text)
+  returns boolean
+  language sql
+  stable
+  security definer
+  set search_path = pg_catalog, public, pg_temp
+as $$
+  select case app.current_role()
+    when 'OWNER'           then true
+    when 'MANAGER'         then true
+    when 'SALES_EXEC'      then module in ('DEAL', 'ENQUIRY', 'VEHICLE', 'OUTBOX')
+    when 'SERVICE_ADVISOR' then module in ('JOB_CARD', 'PART', 'OUTBOX')
+    when 'RTO_AGENT'       then module in ('REGISTRATION', 'OUTBOX')
+    when 'ACCOUNTS'        then module in ('RECEIVABLE', 'DEAL', 'OUTBOX')
+    when 'TECHNICIAN'      then module in ('JOB_CARD')
+    else false
+  end
+$$;
+
 -- ── Policies ────────────────────────────────────────────────────────────────
 -- `drop policy if exists` before each so re-running this file replaces rather
 -- than fails. Every policy names `ddms_app` explicitly: a policy `to public`
@@ -147,20 +262,29 @@ create policy dms_accounts_own on public.showroom_dms_accounts
 drop policy if exists dms_deals_own on public.dms_deals;
 create policy dms_deals_own on public.dms_deals
   for all to ddms_app
-  using (showroom_id in (select app.owned_showroom_ids()))
-  with check (showroom_id in (select app.owned_showroom_ids()));
+  -- Read across the owner's outlets, so the cross-branch findings still
+  -- work for whoever may see this module at all. Write only where the
+  -- person actually works.
+  using (showroom_id in (select app.owned_showroom_ids()) and app.can_read('DEAL'))
+  with check (showroom_id in (select app.visible_showroom_ids()) and app.can_read('DEAL'));
 
 drop policy if exists dms_job_cards_own on public.dms_job_cards;
 create policy dms_job_cards_own on public.dms_job_cards
   for all to ddms_app
-  using (showroom_id in (select app.owned_showroom_ids()))
-  with check (showroom_id in (select app.owned_showroom_ids()));
+  -- Read across the owner's outlets, so the cross-branch findings still
+  -- work for whoever may see this module at all. Write only where the
+  -- person actually works.
+  using (showroom_id in (select app.owned_showroom_ids()) and app.can_read('JOB_CARD'))
+  with check (showroom_id in (select app.visible_showroom_ids()) and app.can_read('JOB_CARD'));
 
 drop policy if exists dms_enquiries_own on public.dms_enquiries;
 create policy dms_enquiries_own on public.dms_enquiries
   for all to ddms_app
-  using (showroom_id in (select app.owned_showroom_ids()))
-  with check (showroom_id in (select app.owned_showroom_ids()));
+  -- Read across the owner's outlets, so the cross-branch findings still
+  -- work for whoever may see this module at all. Write only where the
+  -- person actually works.
+  using (showroom_id in (select app.owned_showroom_ids()) and app.can_read('ENQUIRY'))
+  with check (showroom_id in (select app.visible_showroom_ids()) and app.can_read('ENQUIRY'));
 
 drop policy if exists dms_employees_own on public.dms_employees;
 create policy dms_employees_own on public.dms_employees
@@ -171,8 +295,11 @@ create policy dms_employees_own on public.dms_employees
 drop policy if exists dms_registrations_own on public.dms_registrations;
 create policy dms_registrations_own on public.dms_registrations
   for all to ddms_app
-  using (showroom_id in (select app.owned_showroom_ids()))
-  with check (showroom_id in (select app.owned_showroom_ids()));
+  -- Read across the owner's outlets, so the cross-branch findings still
+  -- work for whoever may see this module at all. Write only where the
+  -- person actually works.
+  using (showroom_id in (select app.owned_showroom_ids()) and app.can_read('REGISTRATION'))
+  with check (showroom_id in (select app.visible_showroom_ids()) and app.can_read('REGISTRATION'));
 
 /*
  * Parts stock, and the one policy that is read across outlets rather than at
@@ -183,8 +310,11 @@ create policy dms_registrations_own on public.dms_registrations
 drop policy if exists dms_part_stock_own on public.dms_part_stock;
 create policy dms_part_stock_own on public.dms_part_stock
   for all to ddms_app
-  using (showroom_id in (select app.owned_showroom_ids()))
-  with check (showroom_id in (select app.owned_showroom_ids()));
+  -- Read across the owner's outlets, so the cross-branch findings still
+  -- work for whoever may see this module at all. Write only where the
+  -- person actually works.
+  using (showroom_id in (select app.owned_showroom_ids()) and app.can_read('PART'))
+  with check (showroom_id in (select app.visible_showroom_ids()) and app.can_read('PART'));
 
 /*
  * The entity graph. Scoped on `owner_id` directly rather than through
@@ -223,14 +353,20 @@ create policy decision_log_own on public.decision_log
 drop policy if exists dms_receivables_own on public.dms_receivables;
 create policy dms_receivables_own on public.dms_receivables
   for all to ddms_app
-  using (showroom_id in (select app.owned_showroom_ids()))
-  with check (showroom_id in (select app.owned_showroom_ids()));
+  -- Read across the owner's outlets, so the cross-branch findings still
+  -- work for whoever may see this module at all. Write only where the
+  -- person actually works.
+  using (showroom_id in (select app.owned_showroom_ids()) and app.can_read('RECEIVABLE'))
+  with check (showroom_id in (select app.visible_showroom_ids()) and app.can_read('RECEIVABLE'));
 
 drop policy if exists dms_vehicle_stock_own on public.dms_vehicle_stock;
 create policy dms_vehicle_stock_own on public.dms_vehicle_stock
   for all to ddms_app
-  using (showroom_id in (select app.owned_showroom_ids()))
-  with check (showroom_id in (select app.owned_showroom_ids()));
+  -- Read across the owner's outlets, so the cross-branch findings still
+  -- work for whoever may see this module at all. Write only where the
+  -- person actually works.
+  using (showroom_id in (select app.owned_showroom_ids()) and app.can_read('VEHICLE'))
+  with check (showroom_id in (select app.visible_showroom_ids()) and app.can_read('VEHICLE'));
 
 /*
  * The event log. Insert and select only, like the decision log and for the same
@@ -311,10 +447,15 @@ create policy ocr_engines_readable on public.ocr_engines
 grant usage on schema public to ddms_app;
 grant usage on schema app to ddms_app;
 
+grant execute on function app.session_user_id()       to ddms_app;
 grant execute on function app.current_owner_id()      to ddms_app;
 grant execute on function app.owned_showroom_ids()    to ddms_app;
 grant execute on function app.owned_dms_account_ids() to ddms_app;
 grant execute on function app.owned_application_ids() to ddms_app;
+
+grant execute on function app.current_role()          to ddms_app;
+grant execute on function app.visible_showroom_ids()  to ddms_app;
+grant execute on function app.can_read(text)          to ddms_app;
 
 grant select on
   public.owners,

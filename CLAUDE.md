@@ -60,7 +60,8 @@ leaves a hole the other two cannot cover.
 |---|---|---|
 | Service key | is this one of our processes? | `lib/auth.ts` |
 | Session | who is signed in? | `lib/session.ts`, `users` + `sessions` |
-| Row-level security | what may that person's connection see? | `lib/db/sql/rls.sql` |
+| Role | what does that person do here? | `lib/dms/access.ts`, `users.role` |
+| Row-level security | what may their connection see? | `lib/db/sql/rls.sql` |
 
 **Sessions.** `POST /api/auth/login` verifies a scrypt password and issues an
 httpOnly cookie. Only the SHA-256 of the token is stored, so the table is not a
@@ -408,6 +409,52 @@ the screen it came from is worse than no event stream.
 > other and the log flapped between the two states on every pass, for ever. Any
 > key on a record has to be the key that record actually has.
 
+## Who the person is, not just which dealership
+
+Since OBJ-14 a dealership's staff have their own logins, and scope is **three
+predicates ANDed onto each other, never ORed**:
+
+| | |
+|---|---|
+| Owner | `app.current_owner_id()` — unchanged, and everything else rests on it |
+| Outlet | `app.visible_showroom_ids()` — the employee's one branch, or the owner's whole set |
+| Module | `app.can_read('RECEIVABLE')` — from their role |
+
+Each one can only take away. Salesforce's sharing model runs the same way in
+the opposite direction — a private baseline that later layers can only widen —
+and the property bought is the same either way: **the direction of a mistake is
+safe.** A bug in the role layer can hide a row from somebody entitled to it and
+cannot reveal one to somebody who is not.
+
+`lib/dms/access.ts` holds the role-to-module table in TypeScript and
+`app.can_read()` holds it in SQL. Two copies on purpose, doing different jobs:
+the first lets a route *explain* a refusal, the second makes it *true*. A
+service advisor's connection reads zero rows from the ledger whatever the
+application code does — `pnpm run db:probe` prints exactly that, per login, and
+is a check rather than a claim.
+
+**SELECT stays owner-scoped; only writes narrow to the visible outlet.** Not an
+oversight: the cross-branch findings are the product, and an advisor has to be
+able to learn that the part their customer is waiting for is free at the other
+branch (R-64). What they cannot do is open that branch's screen or write to its
+rows.
+
+**The mirror may revoke access and may never grant it.** The DMS already records
+`dateOfLeaving`, and it now closes the matching login — at sign-in, on every
+request, *and* inside `app.session_user_id()` so the refusal holds at the
+database rather than only in code. Strictly one-way: a name appearing in a staff
+master never becomes an account, and an employee row that is simply *absent* is
+not treated as a departure. The honest limit is that revocation is only as fresh
+as the last sync; an owner who needs somebody out now deactivates the user,
+which is immediate.
+
+> **A refusal has to look different from an absence.** The first version landed
+> an RTO agent on the Enquiries screen — a module they cannot read — where four
+> zeroes and *"No enquiries mirrored yet"* read as *your dealership has none*.
+> The console now sends people to a screen they can work on, and states the
+> refusal where it cannot. Hiding a menu item is a courtesy; the database is the
+> control.
+
 **Identity: prefer an explicit reference over a probable one.** A registration
 file *names* its deal, so the customer resolves through that named deal before
 falling back to a matching phone number. Getting this the wrong way round
@@ -721,6 +768,7 @@ pnpm run db:seed        # insert the 6 starter providers, idempotent
 pnpm run db:seed-owners # owner, showrooms, DMS accounts + insurer panel
 pnpm run db:seed-users  # sign-in accounts, plus a second owner to isolate from
 pnpm run db:rls         # create the ddms_app role and apply RLS policies
+pnpm run db:probe       # print what each login can actually read, as ddms_app
 ```
 
 Order matters twice. `db:seed-owners` must run **after** `db:seed` — panel

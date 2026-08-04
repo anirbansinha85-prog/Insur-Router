@@ -621,6 +621,22 @@ export interface LoginInput {
 }
 
 /**
+ * OWNER and MANAGER are DDMS's own. The rest are the dealer's own role names, mirrored from `dms_employees.role`, so a login's role and the role on the work assigned to it are the same string.
+ */
+export type SessionUserRole = typeof SessionUserRole[keyof typeof SessionUserRole];
+
+
+export const SessionUserRole = {
+  OWNER: 'OWNER',
+  MANAGER: 'MANAGER',
+  SALES_EXEC: 'SALES_EXEC',
+  SERVICE_ADVISOR: 'SERVICE_ADVISOR',
+  RTO_AGENT: 'RTO_AGENT',
+  ACCOUNTS: 'ACCOUNTS',
+  TECHNICIAN: 'TECHNICIAN',
+} as const;
+
+/**
  * Where tenant scope comes from. `ownerId` is never accepted from a request — it is read from the session, which is the whole point.
  */
 export interface SessionUser {
@@ -628,7 +644,20 @@ export interface SessionUser {
   ownerId: number;
   email: string;
   name: string;
-  role: string;
+  /** OWNER and MANAGER are DDMS's own. The rest are the dealer's own role names, mirrored from `dms_employees.role`, so a login's role and the role on the work assigned to it are the same string. */
+  role: SessionUserRole;
+  /**
+     * The dealer's own employee code, when this login is a member of staff. The same code already sits on the enquiries, registration files and job cards assigned to them — which is what makes "my work" mean anything. Null for an owner.
+     * @nullable
+     */
+  empCode?: string | null;
+  /**
+     * The outlet they work at. Null means every outlet the owner holds.
+     * @nullable
+     */
+  showroomId?: number | null;
+  /** What this role may read, so the console can show a sidebar that matches what the database will answer. Cosmetic — the row policies are what actually refuse. */
+  modules?: string[];
 }
 
 export type ShowroomSummaryDmsAccountsItem = {

@@ -417,7 +417,10 @@ export const LoginResponse = zod.object({
   "ownerId": zod.number().int(),
   "email": zod.string(),
   "name": zod.string(),
-  "role": zod.string()
+  "role": zod.enum(['OWNER', 'MANAGER', 'SALES_EXEC', 'SERVICE_ADVISOR', 'RTO_AGENT', 'ACCOUNTS', 'TECHNICIAN']).describe('OWNER and MANAGER are DDMS\'s own. The rest are the dealer\'s own role names, mirrored from `dms_employees.role`, so a login\'s role and the role on the work assigned to it are the same string.\n'),
+  "empCode": zod.string().nullish().describe('The dealer\'s own employee code, when this login is a member of staff. The same code already sits on the enquiries, registration files and job cards assigned to them — which is what makes \"my work\" mean anything. Null for an owner.\n'),
+  "showroomId": zod.number().int().nullish().describe('The outlet they work at. Null means every outlet the owner holds.'),
+  "modules": zod.array(zod.string()).optional().describe('What this role may read, so the console can show a sidebar that matches what the database will answer. Cosmetic — the row policies are what actually refuse.\n')
 }).describe('Where tenant scope comes from. `ownerId` is never accepted from a request — it is read from the session, which is the whole point.\n')
 
 
@@ -436,7 +439,10 @@ export const GetCurrentUserResponse = zod.object({
   "ownerId": zod.number().int(),
   "email": zod.string(),
   "name": zod.string(),
-  "role": zod.string()
+  "role": zod.enum(['OWNER', 'MANAGER', 'SALES_EXEC', 'SERVICE_ADVISOR', 'RTO_AGENT', 'ACCOUNTS', 'TECHNICIAN']).describe('OWNER and MANAGER are DDMS\'s own. The rest are the dealer\'s own role names, mirrored from `dms_employees.role`, so a login\'s role and the role on the work assigned to it are the same string.\n'),
+  "empCode": zod.string().nullish().describe('The dealer\'s own employee code, when this login is a member of staff. The same code already sits on the enquiries, registration files and job cards assigned to them — which is what makes \"my work\" mean anything. Null for an owner.\n'),
+  "showroomId": zod.number().int().nullish().describe('The outlet they work at. Null means every outlet the owner holds.'),
+  "modules": zod.array(zod.string()).optional().describe('What this role may read, so the console can show a sidebar that matches what the database will answer. Cosmetic — the row policies are what actually refuse.\n')
 }).describe('Where tenant scope comes from. `ownerId` is never accepted from a request — it is read from the session, which is the whole point.\n')
 
 

@@ -9,7 +9,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "seed-owners": "tsx --env-file-if-exists=../.env ./src/seed-owners.ts",
     "seed-users": "tsx --env-file-if-exists=../.env ./src/seed-users.ts",
-    "rls": "tsx --env-file-if-exists=../.env ./src/apply-rls.ts"
+    "rls": "tsx --env-file-if-exists=../.env ./src/apply-rls.ts",
+    "probe": "tsx --env-file-if-exists=../.env ./src/rls-probe.ts"
   },
   "dependencies": {
     "@workspace/db": "workspace:*",

@@ -2337,7 +2337,30 @@ components:
         ownerId: { type: integer }
         email: { type: string }
         name: { type: string }
-        role: { type: string }
+        role:
+          type: string
+          enum: [OWNER, MANAGER, SALES_EXEC, SERVICE_ADVISOR, RTO_AGENT, ACCOUNTS, TECHNICIAN]
+          description: >
+            OWNER and MANAGER are DDMS's own. The rest are the dealer's own role
+            names, mirrored from `dms_employees.role`, so a login's role and the
+            role on the work assigned to it are the same string.
+        empCode:
+          type: ["string", "null"]
+          description: >
+            The dealer's own employee code, when this login is a member of
+            staff. The same code already sits on the enquiries, registration
+            files and job cards assigned to them — which is what makes "my work"
+            mean anything. Null for an owner.
+        showroomId:
+          type: ["integer", "null"]
+          description: The outlet they work at. Null means every outlet the owner holds.
+        modules:
+          type: array
+          items: { type: string }
+          description: >
+            What this role may read, so the console can show a sidebar that
+            matches what the database will answer. Cosmetic — the row policies
+            are what actually refuse.
       required: [userId, ownerId, email, name, role]
 
     ShowroomSummary:

@@ -10,6 +10,7 @@ import {
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { ownersTable } from "./owners";
+import { showroomsTable } from "./showrooms";
 
 /**
  * A person who can log in.
@@ -36,11 +37,49 @@ export const usersTable = pgTable(
     /** `scrypt$<saltHex>$<hashHex>` — the algorithm travels with the value. */
     passwordHash: text("password_hash").notNull(),
     /**
-     * OWNER sees every showroom the owner holds. MANAGER is scoped further in
-     * a later objective; today both see the whole group, and saying so is
-     * better than implying a restriction that does not exist.
+     * What this person does, and therefore what they may see.
+     *
+     * `OWNER` and `MANAGER` are DDMS's own. The rest are the dealer's own role
+     * names, mirrored in `dms_employees.role` — using their vocabulary rather
+     * than inventing a parallel one means a login's role and the role on the
+     * work it is assigned are the same string, and cannot drift.
      */
-    role: text("role", { enum: ["OWNER", "MANAGER"] }).notNull().default("OWNER"),
+    role: text("role", {
+      enum: [
+        "OWNER",
+        "MANAGER",
+        "SALES_EXEC",
+        "SERVICE_ADVISOR",
+        "RTO_AGENT",
+        "ACCOUNTS",
+        "TECHNICIAN",
+      ],
+    })
+      .notNull()
+      .default("OWNER"),
+    /**
+     * The dealer's own employee code for this person, when they are one.
+     *
+     * This is the join that makes *my work* mean anything: the same code is
+     * already on the enquiries, registration files and job cards they are
+     * responsible for. Null for an owner, who is not an employee of the
+     * dealership in the DMS's sense and has no code in the staff master.
+     *
+     * **A login is never created from this.** The mirror may only ever revoke —
+     * see the departure check in `lib/session.ts`. A name appearing in a staff
+     * master must not become an account.
+     */
+    empCode: text("emp_code"),
+    /**
+     * The outlet this person works at. Null means every outlet the owner holds.
+     *
+     * A narrowing, never a widening: `app.visible_showroom_ids()` returns this
+     * one when set and the owner's whole set when not, and the first is always
+     * a subset of the second.
+     */
+    showroomId: integer("showroom_id").references(() => showroomsTable.id, {
+      onDelete: "set null",
+    }),
     isActive: boolean("is_active").notNull().default(true),
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

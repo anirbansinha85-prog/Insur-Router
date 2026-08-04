@@ -77,7 +77,12 @@ import {
   syncShowroomRegistrations,
 } from "../lib/dms";
 import { createDraftApplication } from "../lib/draft-application";
-import { assertShowroomAccess, requireUser, sessionScope } from "../lib/session";
+import {
+  assertModuleAccess,
+  assertShowroomAccess,
+  requireUser,
+  sessionScope,
+} from "../lib/session";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -273,6 +278,7 @@ router.get("/dms/worklist", async (req, res): Promise<void> => {
   }
 
   if (!(await assertShowroomAccess(req, res, showroomId))) return;
+  if (!assertModuleAccess(req, res, "DEAL")) return;
 
   const rows = await buildWorklist({
     showroomId,
@@ -300,6 +306,7 @@ router.get("/dms/service-worklist", async (req, res): Promise<void> => {
   }
 
   if (!(await assertShowroomAccess(req, res, showroomId))) return;
+  if (!assertModuleAccess(req, res, "JOB_CARD")) return;
 
   const rows = await buildServiceWorklist({
     showroomId,
@@ -327,6 +334,7 @@ router.get("/dms/lead-worklist", async (req, res): Promise<void> => {
   }
 
   if (!(await assertShowroomAccess(req, res, showroomId))) return;
+  if (!assertModuleAccess(req, res, "ENQUIRY")) return;
 
   const rows = await buildLeadWorklist({
     showroomId,
@@ -358,6 +366,7 @@ router.get("/dms/registration-worklist", async (req, res): Promise<void> => {
   }
 
   if (!(await assertShowroomAccess(req, res, showroomId))) return;
+  if (!assertModuleAccess(req, res, "REGISTRATION")) return;
 
   const rows = await buildRegistrationWorklist({
     showroomId,
@@ -391,6 +400,7 @@ router.get("/dms/spares-worklist", async (req, res): Promise<void> => {
   }
 
   if (!(await assertShowroomAccess(req, res, showroomId))) return;
+  if (!assertModuleAccess(req, res, "PART")) return;
 
   const owned = await db
     .select({ id: showroomsTable.id })
@@ -430,6 +440,7 @@ router.get("/dms/receivables-worklist", async (req, res): Promise<void> => {
     return;
   }
   if (!(await assertShowroomAccess(req, res, showroomId))) return;
+  if (!assertModuleAccess(req, res, "RECEIVABLE")) return;
 
   const owned = await ownedShowroomIds(req.sessionUser!.ownerId);
   const rows = await buildReceivablesWorklist({ showroomId, ownerShowroomIds: owned });
@@ -450,6 +461,7 @@ router.get("/dms/inventory-worklist", async (req, res): Promise<void> => {
     return;
   }
   if (!(await assertShowroomAccess(req, res, showroomId))) return;
+  if (!assertModuleAccess(req, res, "VEHICLE")) return;
 
   const owned = await ownedShowroomIds(req.sessionUser!.ownerId);
   const rows = await buildInventoryWorklist({ showroomId, ownerShowroomIds: owned });

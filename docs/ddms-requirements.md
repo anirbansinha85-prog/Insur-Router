@@ -87,7 +87,7 @@ refused, are in section 3b.*
 |---|---|---|
 | R-51 | **A change of derived state is an event, and events are recorded.** Not a field diff — `classify()`'s answer moving from one state to another. A file that crossed into `RC_IN_DRAWER` at 3am must be knowable without anybody having opened a screen | ✅ |
 | R-52 | **Automation is one ordered list, it lives in code, and it is capped.** No rule builder, no per-dealership flows, and a stated ceiling on how many rules may exist. The failure mode being designed against is documented: orgs reach eighty automations on one object, page saves take eight seconds, and nobody can predict what a save will do | ○ |
-| R-53 | **A dealership has people, and scope only ever narrows.** Roles inside an owner — advisor, RTO agent, accounts, manager — expressed as an *additional* predicate on top of the owner's, never an alternative one. A bug in the role layer must be able to hide rows and must not be able to reveal them | ○ |
+| R-53 | **A dealership has people, and scope only ever narrows.** Roles inside an owner — advisor, RTO agent, accounts, manager — expressed as an *additional* predicate on top of the owner's, never an alternative one. A bug in the role layer must be able to hide rows and must not be able to reveal them | ✅ |
 | R-54 | **Work is routed by role and capacity, and never becomes unroutable.** Who can do it, who has room, and who is actually in today. When nothing matches, it degrades to a named queue rather than disappearing | ○ |
 | R-55 | **One queue, worked one at a time.** Seven screens each holding a list is a reporting product. The capacity thesis needs a single ordered queue that can be worked start to finish without returning to a list | ○ |
 | R-56 | **Automation may write a decision field. Only the gate lets anything leave.** An automated mark is internal, reversible and logged. Anything outbound still passes `authoriseSend()`, unchanged — the line drawn in R-48 does not move because the caller stopped being a person | ○ |
@@ -95,10 +95,10 @@ refused, are in section 3b.*
 | R-58 | **Thresholds are dealer policy, not product logic.** Credit periods, ageing buckets, chase cadence, what counts as the RTO having gone quiet — per owner, stored, and changes to them audited. The rules stay in code; the numbers belong to the dealership | ○ |
 | R-59 | **The agent invokes the same action registry a person does.** One endpoint, one set of refusals, one decision log. A parallel agent-only path would have to re-earn every refusal and would eventually fail to | ○ |
 | R-60 | **Every automated act is attributable and reversible.** `decision_log.userId` null reads as *the system did this*, never as *we lost track*. Anything a rule set, a person can unset | ○ |
-| R-61 | **A dealership's staff get their own logins, and a login is the dealership's own employee record.** *Locked 4 August.* A user carries an `empCode`, and that code is what already sits on the enquiries, registration files and job cards they are responsible for. Without that join, *my work* has no referent and the queue is only a differently sorted list | ○ |
-| R-62 | **The mirror may revoke access. It may never grant it.** An owner creates a login and links it to an employee; the DMS saying that person has left closes it. Never the reverse — a name appearing in the staff master must not become a login. And the honest limit travels with it: revocation is only as fresh as the last sync | ○ |
-| R-63 | **See the outlet, act on what is yours or unowned.** A nine-person dealership covers for each other, so hiding a colleague's leads would be wrong and would hide the orphaned-work finding R-19 exists for. Visibility is the outlet; the write is yours, or nobody's | ○ |
-| R-64 | **A cross-outlet *finding* survives the narrowing; the other outlet's *rows* do not.** An advisor scoped to one branch still learns that the part their customer is waiting for is free at the other one, and still cannot open that branch's ledger. The finding is the product; the rows are somebody else's business | ○ |
+| R-61 | **A dealership's staff get their own logins, and a login is the dealership's own employee record.** *Locked 4 August.* A user carries an `empCode`, and that code is what already sits on the enquiries, registration files and job cards they are responsible for. Without that join, *my work* has no referent and the queue is only a differently sorted list | ✅ |
+| R-62 | **The mirror may revoke access. It may never grant it.** An owner creates a login and links it to an employee; the DMS saying that person has left closes it. Never the reverse — a name appearing in the staff master must not become a login. And the honest limit travels with it: revocation is only as fresh as the last sync | ✅ at sign-in, on every request, and in `app.session_user_id()` so it holds at the database |
+| R-63 | **See the outlet, act on what is yours or unowned.** A nine-person dealership covers for each other, so hiding a colleague's leads would be wrong and would hide the orphaned-work finding R-19 exists for. Visibility is the outlet; the write is yours, or nobody's | ✅ SELECT owner-scoped, writes narrowed |
+| R-64 | **A cross-outlet *finding* survives the narrowing; the other outlet's *rows* do not.** An advisor scoped to one branch still learns that the part their customer is waiting for is free at the other one, and still cannot open that branch's ledger. The finding is the product; the rows are somebody else's business | ✅ |
 
 ### How it looks
 
@@ -792,7 +792,7 @@ since they were built.
 > a record has to be the key that record actually has, and CLAUDE.md had said so
 > about this exact table since OBJ-4.
 
-### OBJ-14 — People, and what each of them may see
+### OBJ-14 — People, and what each of them may see  ✅ **done 4 Aug**
 *Covers R-53, R-61, R-62, R-63, R-64. Extends OBJ-3 and OBJ-7 down a level.*
 
 **Locked 4 August: a dealership's staff get their own logins.** That answer is
@@ -852,6 +852,50 @@ learns the part is free at Deccan and still cannot open Deccan's books.
 **Done when:** a service advisor signs in and cannot read the receivables
 ledger — proven by a query returning nothing rather than by a hidden menu item —
 and an employee the DMS reports as departed cannot sign in at all.
+
+**Verified**, and `pnpm run db:probe` is the check rather than the claim: it
+mints a short-lived session per login, connects as `ddms_app`, and counts.
+
+```
+login                     role             outlets  deals enq  jc  parts  regn  recv  veh
+anirban@…                 OWNER            1,2          5  10  10     14    12     8    8
+owner@malhotramotors…     OWNER            7            0   0   0      0     0     0    0
+jaswinder.sethi@…         RTO_AGENT        1            0   0   0      0    12     0    0
+sunil.rawat@…             SERVICE_ADVISOR  1            0   0  10     14     0     0    0
+meera.joshi@…             ACCOUNTS         1            5   0   0      0     0     8    0
+vikram.chandel@…          SALES_EXEC       1            5  10   0      0     0     0    8
+imtiaz.khan@…             -                -            0   0   0      0     0     0    0
+```
+
+Through HTTP as well:
+
+| | |
+|---|---|
+| Advisor → the ledger | **403** — *"A service advisor does not see the ledger. Yours covers job cards and the parts counter."* |
+| Accounts → the ledger | 200, 6 rows |
+| Accounts → job cards | 403 |
+| RTO agent → registrations | 200, 10 rows · → enquiries 403 |
+| Advisor → the other branch's spares screen | **404**, the same answer as another dealership's |
+| Advisor → their own branch | 200 — and still *"PUN-DECCAN has 4"* on the part their customer waits for |
+| Accounts → the ledger's group figure | ICICI Lombard owes ₹85,500 across 2 outlets, same as the owner sees |
+| Imtiaz Khan, who left 28-02-2026 | **401** at sign-in, and zero rows at the database |
+| Malhotra owner → Saraswati's ledger | 404, unchanged |
+
+**Two bugs found by running the tools rather than by reading the code.**
+
+> **The departure was enforced only in application code.** `db:probe` showed
+> Imtiaz Khan still reading his branch's rows: `resolveSession` refused him, but
+> the policies did not know he had gone, so a session row obtained any other way
+> would have worked. That fails OBJ-7's own standard — *isolation enforced by
+> the database, not only by application code* — so the check moved into
+> `app.session_user_id()`, which every policy helper now resolves through. He
+> reads nothing at all now.
+>
+> **A refusal looked like an absence.** The RTO agent landed on Enquiries — a
+> module he cannot read — and saw four zeroes and *"No enquiries mirrored yet"*.
+> That is a false claim about somebody's own dealership. The console now lands
+> each role on a screen they can work on and states the refusal where it cannot,
+> which is the same discipline as never showing a simulated policy as issued.
 
 ### OBJ-15 — The queue
 *Covers R-54, R-55. Absorbs the rest of R-19.*

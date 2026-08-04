@@ -17,6 +17,7 @@ import type { NextFunction, Request, Response } from "express";
 import {
   db,
   sessionsTable,
+  dmsEmployeesTable,
   showroomsTable,
   usersTable,
   withSessionScope,
@@ -25,6 +26,7 @@ import {
 // scripts can create users without reaching into this artifact.
 export { hashPassword, verifyPassword } from "@workspace/db";
 import { logger } from "./logger";
+import { canRead, refusalFor, seesEveryOutlet, type AccessModule } from "./dms/access";
 
 const SESSION_COOKIE = "ddms_session";
 /** A working day, then sign in again. */
@@ -43,6 +45,65 @@ export interface SessionUser {
   email: string;
   name: string;
   role: string;
+  /**
+   * The dealer's own employee code, when this login is a member of staff.
+   *
+   * The join that makes *my work* mean something: the same code is already on
+   * the enquiries, registration files and job cards assigned to them. Null for
+   * an owner, who has no row in the dealership's staff master.
+   */
+  empCode: string | null;
+  /** The outlet they work at. Null means every outlet the owner holds. */
+  showroomId: number | null;
+}
+
+/**
+ * Has the dealership's own system said this person has left?
+ *
+ * The DMS already records `dateOfLeaving`, and the reassignment actions have
+ * refused work to departed staff since OBJ-10. The same fact should close their
+ * login, and this is where it does.
+ *
+ * **Strictly one direction.** This can only ever revoke. A login is created by
+ * an owner and linked to an employee; nothing here creates or re-enables one,
+ * so a name appearing in a staff master can never become an account. That is
+ * the same asymmetry as Salesforce's sharing layers, which can only grant
+ * outward from a private baseline — mirrored, because here the safe direction
+ * is to take away.
+ *
+ * **And the honest limit: this is only as fresh as the last sync.** The mirror
+ * is read-only and pulled on a timer, so somebody who left this morning keeps
+ * access until the next pass. That window is the scheduler's interval and it is
+ * the same one the reassignment refusal has always run on. It is a real
+ * weakness of deprovisioning by mirror and is worth stating rather than
+ * implying: an owner who needs somebody out *now* deactivates the user, which
+ * is immediate and is checked on every request.
+ */
+export async function departedPerTheDms(
+  empCode: string | null,
+  showroomId: number | null,
+): Promise<{ left: true; on: string | null } | null> {
+  if (!empCode || showroomId === null) return null;
+
+  const [emp] = await db
+    .select({
+      isActive: dmsEmployeesTable.isActive,
+      dateOfLeaving: dmsEmployeesTable.dateOfLeaving,
+    })
+    .from(dmsEmployeesTable)
+    .where(
+      and(
+        eq(dmsEmployeesTable.showroomId, showroomId),
+        eq(dmsEmployeesTable.empCode, empCode),
+      ),
+    );
+
+  // No row is not a departure. A staff master that has not synced yet, or an
+  // employee code the dealership has since retired, must not lock somebody out
+  // — the mirror revokes on a positive statement that they left, never on an
+  // absence of evidence.
+  if (!emp) return null;
+  return emp.isActive === "Y" ? null : { left: true, on: emp.dateOfLeaving };
 }
 
 export async function createSession(userId: number): Promise<{ token: string; expiresAt: Date }> {
@@ -71,6 +132,8 @@ export async function resolveSession(token: string): Promise<SessionUser | null>
       email: usersTable.email,
       name: usersTable.name,
       role: usersTable.role,
+      empCode: usersTable.empCode,
+      showroomId: usersTable.showroomId,
       isActive: usersTable.isActive,
     })
     .from(sessionsTable)
@@ -84,6 +147,19 @@ export async function resolveSession(token: string): Promise<SessionUser | null>
   // reading customer records this afternoon.
   if (!row || !row.isActive) return null;
 
+  // And the same for a departure the dealership recorded in their own system.
+  // Checked on every request rather than only at sign-in, for the same reason:
+  // a live session outlasting somebody's last day is exactly the hole this is
+  // meant to close.
+  const departed = await departedPerTheDms(row.empCode, row.showroomId);
+  if (departed) {
+    logger.warn(
+      { userId: row.userId, empCode: row.empCode, leftOn: departed.on },
+      "Session refused — the dealer's own system reports this employee has left",
+    );
+    return null;
+  }
+
   await db
     .update(sessionsTable)
     .set({ lastSeenAt: new Date() })
@@ -95,7 +171,25 @@ export async function resolveSession(token: string): Promise<SessionUser | null>
     email: row.email,
     name: row.name,
     role: row.role,
+    empCode: row.empCode,
+    showroomId: row.showroomId,
   };
+}
+
+/**
+ * The outlets this session may look at.
+ *
+ * One when the login is a member of staff, all of the owner's when it is not.
+ * Always a subset of the owner's, which is the property every policy below
+ * depends on — this narrows and cannot widen.
+ */
+export async function visibleShowroomIds(user: SessionUser): Promise<number[]> {
+  if (user.showroomId !== null && !seesEveryOutlet(user.role)) return [user.showroomId];
+  const rows = await db
+    .select({ id: showroomsTable.id })
+    .from(showroomsTable)
+    .where(eq(showroomsTable.ownerId, user.ownerId));
+  return rows.map((r) => r.id);
 }
 
 export async function destroySession(token: string): Promise<void> {
@@ -250,5 +344,46 @@ export async function assertShowroomAccess(
     return false;
   }
 
+  // And then the narrower question: a member of staff works at one outlet, and
+  // asking for another one's screen gets the same 404 as asking for another
+  // dealership's. Same answer on purpose — a different one would tell somebody
+  // which of the two walls they had hit.
+  if (user.showroomId !== null && !seesEveryOutlet(user.role) && user.showroomId !== showroomId) {
+    logger.warn(
+      { userId: user.userId, role: user.role, theirs: user.showroomId, asked: showroomId },
+      "Showroom access denied — outside this employee's outlet",
+    );
+    res.status(404).json({ error: `No showroom ${showroomId}` });
+    return false;
+  }
+
   return true;
+}
+
+/**
+ * The module gate.
+ *
+ * Belt to the row policies' braces. RLS is what makes the refusal true — a
+ * service advisor's connection reads zero rows from the ledger whatever the
+ * code does — and this is what makes it *legible*, because a screen that came
+ * back empty would be indistinguishable from a dealership with no debts.
+ */
+export function assertModuleAccess(
+  req: Request,
+  res: Response,
+  module: AccessModule,
+): boolean {
+  const user = req.sessionUser;
+  if (!user) {
+    res.status(401).json({ error: "Not signed in." });
+    return false;
+  }
+  if (canRead(user.role, module)) return true;
+
+  logger.warn(
+    { userId: user.userId, role: user.role, module },
+    "Module access denied by role",
+  );
+  res.status(403).json({ error: refusalFor(user.role, module) });
+  return false;
 }

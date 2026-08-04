@@ -7,6 +7,7 @@ import {
 } from '@workspace/api-client-react';
 import { Shell } from '@/components/layout/Shell';
 import { ShowroomProvider } from '@/lib/showroom';
+import { Landing, NotYours, ROUTE_MODULE, mayOpen } from '@/lib/permitted';
 
 import SignIn from '@/pages/SignIn';
 import Leads from '@/pages/Leads';
@@ -27,6 +28,18 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+/**
+ * A screen, or the reason it is not yours.
+ *
+ * The server refuses either way; this only decides whether the refusal is
+ * legible. Rendering the page and letting its queries 403 produced four
+ * zeroes and an empty state, which reads as "your dealership has none of
+ * these" — a false claim about somebody's own business.
+ */
+function guard(user: SessionUser, path: string, screen: React.ReactNode) {
+  return mayOpen(user, path) ? screen : <NotYours user={user} module={ROUTE_MODULE[path]!} />;
+}
 
 function NotFound() {
   return (
@@ -69,22 +82,30 @@ function Gate() {
       onSuccess: () => queryClient.clear(),
     });
 
+  const u = user as SessionUser
+
   return (
     <ShowroomProvider>
-      <Shell user={user as SessionUser} onSignOut={signOut}>
+      <Shell user={u} onSignOut={signOut}>
         <Switch>
-          {/* Enquiries at the root: a lead nobody answers never becomes a deal
-              to insure or a bike to service, so it is where the day starts. */}
-          <Route path="/" component={Leads} />
-          <Route path="/worklist" component={Worklist} />
-          <Route path="/registrations" component={Registrations} />
-          <Route path="/service" component={ServiceWorklist} />
-          <Route path="/spares" component={Spares} />
-          <Route path="/receivables" component={Receivables} />
-          <Route path="/inventory" component={Inventory} />
+          {/* Enquiries at the root for anybody who may read them — a lead
+              nobody answers never becomes a deal to insure or a bike to
+              service, so it is where the day starts. For everybody else the
+              root sends them to the first screen they can actually work on:
+              landing an RTO agent on Enquiries and letting the API refuse
+              behind it is how a product teaches people it is broken. */}
+          <Route path="/">
+            {mayOpen(u, "/") ? <Leads /> : <Landing user={u} />}
+          </Route>
+          <Route path="/worklist">{guard(u, "/worklist", <Worklist />)}</Route>
+          <Route path="/registrations">{guard(u, "/registrations", <Registrations />)}</Route>
+          <Route path="/service">{guard(u, "/service", <ServiceWorklist />)}</Route>
+          <Route path="/spares">{guard(u, "/spares", <Spares />)}</Route>
+          <Route path="/receivables">{guard(u, "/receivables", <Receivables />)}</Route>
+          <Route path="/inventory">{guard(u, "/inventory", <Inventory />)}</Route>
           {/* The only screen where DDMS proposes to speak for the dealership,
               which is why it is its own place rather than a panel on a row. */}
-          <Route path="/outbox" component={Outbox} />
+          <Route path="/outbox">{guard(u, "/outbox", <Outbox />)}</Route>
           {/* Not in the sidebar: you arrive here from the search box or from a
               row, never by browsing. It is a lens on one record, not a screen. */}
           <Route path="/who/:entityId" component={Dossier} />

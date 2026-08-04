@@ -25,42 +25,42 @@ import { EntitySearch } from "@/pages/Dossier"
 
 interface NavGroup {
   label: string
-  items: Array<{ href: string; label: string; icon: typeof Users }>
+  items: Array<{ href: string; label: string; icon: typeof Users; module?: string }>
 }
 
 const GROUPS: NavGroup[] = [
   {
     label: "Showroom",
     items: [
-      { href: "/", label: "Enquiries", icon: Users },
-      { href: "/worklist", label: "Deals", icon: ListChecks },
+      { href: "/", label: "Enquiries", icon: Users, module: "ENQUIRY" },
+      { href: "/worklist", label: "Deals", icon: ListChecks, module: "DEAL" },
       // Under Showroom rather than a compliance group of its own: the file is
       // opened by the sale and closed by handing a card to the same customer,
       // and separating it is part of how it stops being anybody's job.
-      { href: "/registrations", label: "Registration & RC", icon: IdCard },
+      { href: "/registrations", label: "Registration & RC", icon: IdCard, module: "REGISTRATION" },
       // The floor sits under Showroom rather than beside spares: a bike
       // standing unsold is a sales problem, and the finding on that screen is
       // an enquiry nobody connected to it.
-      { href: "/inventory", label: "Vehicle stock", icon: Bike },
+      { href: "/inventory", label: "Vehicle stock", icon: Bike, module: "VEHICLE" },
     ],
   },
   {
     label: "Insurance",
-    items: [{ href: "/worklist", label: "Issuance queue", icon: ShieldCheck }],
+    items: [{ href: "/worklist", label: "Issuance queue", icon: ShieldCheck, module: "DEAL" }],
   },
   {
     label: "After sales",
     items: [
-      { href: "/service", label: "Service & warranty", icon: Wrench },
+      { href: "/service", label: "Service & warranty", icon: Wrench, module: "JOB_CARD" },
       // Under After sales rather than beside stock reports: a part matters here
       // because somebody's vehicle is waiting for it, and the two screens read
       // the same job cards from opposite ends.
-      { href: "/spares", label: "Spares", icon: Boxes },
+      { href: "/spares", label: "Spares", icon: Boxes, module: "PART" },
     ],
   },
   {
     label: "Finance",
-    items: [{ href: "/receivables", label: "Receivables", icon: Wallet }],
+    items: [{ href: "/receivables", label: "Receivables", icon: Wallet, module: "RECEIVABLE" }],
   },
   {
     // Its own group, and last. Everything above reads the dealership's data
@@ -68,7 +68,7 @@ const GROUPS: NavGroup[] = [
     // on their behalf, and that difference is worth a heading rather than a row
     // tucked under After sales.
     label: "Outbound",
-    items: [{ href: "/outbox", label: "Outbox", icon: Send }],
+    items: [{ href: "/outbox", label: "Outbox", icon: Send, module: "OUTBOX" }],
   },
 ]
 
@@ -83,6 +83,23 @@ export function Shell({ children, user, onSignOut }: ShellProps) {
   const { showrooms, selected, setShowroomId, isLoading } = useShowroom()
 
   const owner = selected?.ownerName ?? "—"
+
+  /**
+   * Only what this role may read.
+   *
+   * The server sends the list rather than the console deriving it, so the
+   * sidebar and the row policies cannot disagree — and an empty group vanishes
+   * rather than leaving a heading over nothing.
+   *
+   * This is cosmetic, and deliberately so: it is the database that refuses, and
+   * an advisor who typed /receivables into the address bar would still get
+   * nothing. Hiding a menu item is a courtesy, not a control.
+   */
+  const allowed = new Set(user.modules ?? [])
+  const visibleGroups = GROUPS.map((g) => ({
+    ...g,
+    items: g.items.filter((i) => !i.module || allowed.size === 0 || allowed.has(i.module)),
+  })).filter((g) => g.items.length > 0)
 
   return (
     <div className="flex h-screen w-full bg-slate-100 text-slate-900 font-sans">
@@ -102,7 +119,7 @@ export function Shell({ children, user, onSignOut }: ShellProps) {
         </div>
 
         <div className="flex-1 py-4 overflow-y-auto">
-          {GROUPS.map((group) => (
+          {visibleGroups.map((group) => (
             <div key={group.label} className="mb-5">
               <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-5 mb-2">
                 {group.label}
@@ -209,7 +226,8 @@ export function Shell({ children, user, onSignOut }: ShellProps) {
               <div className="leading-tight">
                 <div className="text-xs font-semibold text-slate-800">{user.name}</div>
                 <div className="text-[10px] text-slate-400 uppercase tracking-wider">
-                  {user.role.toLowerCase()}
+                  {user.role.replace(/_/g, " ").toLowerCase()}
+                  {user.empCode ? ` · ${user.empCode}` : ""}
                 </div>
               </div>
               <button

@@ -16,8 +16,10 @@ import {
   sessionTokenFrom,
   setSessionCookie,
   verifyPassword,
+  departedPerTheDms,
 } from "../lib/session";
 import { logger } from "../lib/logger";
+import { modulesFor } from "../lib/dms/access";
 
 const router: IRouter = Router();
 
@@ -44,17 +46,44 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     return;
   }
 
+  // And the dealership's own view of whether this person still works here.
+  // Checked at sign-in as well as on every request: `resolveSession` would
+  // catch it a moment later anyway, but issuing a cookie that stops working on
+  // the next click is a worse answer than not issuing one.
+  //
+  // Same message as a wrong password, deliberately. "That employee has left" to
+  // somebody guessing addresses is a staff directory.
+  const departed = await departedPerTheDms(user.empCode, user.showroomId);
+  if (departed) {
+    logger.warn(
+      { email, empCode: user.empCode, leftOn: departed.on },
+      "Sign-in refused — the dealer's own system reports this employee has left",
+    );
+    res.status(401).json({ error: "Those details are not right." });
+    return;
+  }
+
   const { token, expiresAt } = await createSession(user.id);
   await db.update(usersTable).set({ lastLoginAt: new Date() }).where(eq(usersTable.id, user.id));
   setSessionCookie(res, token, expiresAt);
 
-  logger.info({ userId: user.id, ownerId: user.ownerId }, "Signed in");
+  logger.info(
+    { userId: user.id, ownerId: user.ownerId, role: user.role },
+    "Signed in",
+  );
   res.json({
     userId: user.id,
     ownerId: user.ownerId,
     email: user.email,
     name: user.name,
     role: user.role,
+    empCode: user.empCode,
+    showroomId: user.showroomId,
+    // What this role may see, so the console can show a sidebar that matches
+    // what the database will actually answer. Sent rather than re-derived in
+    // the frontend: two copies of the table would drift, and the one the user
+    // sees would be the wrong one.
+    modules: modulesFor(user.role),
   });
 });
 
@@ -74,7 +103,7 @@ router.get("/auth/me", (req, res): void => {
     res.status(401).json({ error: "Not signed in." });
     return;
   }
-  res.json(req.sessionUser);
+  res.json({ ...req.sessionUser, modules: modulesFor(req.sessionUser.role) });
 });
 
 export default router;
