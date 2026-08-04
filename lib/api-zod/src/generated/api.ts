@@ -992,6 +992,33 @@ export const SendDmsMessageResponse = zod.object({
 
 
 /**
+ * The three questions every worklist row raises and none of them can answer, because each reaches across a boundary the dealer's own system keys everything by — another module, another outlet, another person's workload.
+ * The answer arrives with its evidence attached. `findings` is one sentence per claim, each assembled by a rule from one of the `evidence` rows. `summary` is a model's reading of those findings, present only when one passed a check that every figure in it appears in the evidence. The findings are returned either way: the traceable form of an answer is not the part to drop when a nicer-sounding one exists.
+ * Nothing here classifies. The `state` comes from the module's own derivation and travels through untouched, and no tool in the registry writes anything.
+ * @summary Why is this stuck, who else is affected, what happens if it waits
+ */
+export const ExplainDmsRecordBody = zod.object({
+  "module": zod.enum(['JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART']),
+  "showroomId": zod.number().int(),
+  "recordKey": zod.string().describe('The mirror row\'s own key — jcNo, enqId, regnFileNo, partNo.')
+})
+
+export const ExplainDmsRecordResponse = zod.object({
+  "module": zod.enum(['JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART']),
+  "recordKey": zod.string(),
+  "state": zod.string().nullish().describe('The module\'s own classification, carried through untouched.'),
+  "summary": zod.string().nullish().describe('A model\'s reading of the findings, present only when it passed the citation check. The panel is complete without it.\n'),
+  "findings": zod.array(zod.string()).describe('One sentence per claim, each assembled by a rule from an evidence row.'),
+  "evidence": zod.array(zod.object({
+  "tool": zod.string(),
+  "looked": zod.string().describe('What this tool went and looked at, for the person reading.'),
+  "rows": zod.array(zod.record(zod.string(), zod.unknown()))
+}).describe('One tool call and the rows it returned. This is the citation.')),
+  "narrationRejected": zod.string().nullish().describe('Why a model\'s wording was refused, when one was.')
+})
+
+
+/**
  * Behind the reassignment pickers. Departed employees are excluded rather than greyed out — they are the reason the reassignment field exists, and a list containing them invites handing work back to somebody who left in February. `carrying` is included because reassigning an orphaned lead to whoever is already busiest is a decision DDMS would have made worse.
  * @summary Staff who still work at this outlet, and what each already carries
  */

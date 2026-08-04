@@ -26,6 +26,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatDate } from "@/lib/utils"
 import { ActionButton } from "@/lib/actions"
+import { ExplainButton } from "@/lib/explain"
 import { ArrowLeftRight, Boxes, PackageX, Wallet } from "lucide-react"
 
 const STATE: Record<
@@ -357,6 +358,11 @@ export default function Spares() {
                                   tone="slate"
                                 />
                               )}
+                              <ExplainButton
+                                module="PART"
+                                showroomId={row.showroomId}
+                                recordKey={row.partNo}
+                              />
                             </div>
 
                             {/* Who is actually waiting. A part shortage with no

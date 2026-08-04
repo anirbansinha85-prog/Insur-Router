@@ -37,6 +37,8 @@ import type {
   ErrorResponse,
   ExecutionRequest,
   ExecutionResult,
+  ExplainInput,
+  Explanation,
   GetLeadWorklist200,
   GetLeadWorklistParams,
   GetRegistrationWorklist200,
@@ -2456,6 +2458,80 @@ export const useSendDmsMessage = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getSendDmsMessageMutationOptions(options));
+    }
+
+export const getExplainDmsRecordUrl = () => {
+
+
+
+
+  return `/api/dms/explain`
+}
+
+/**
+ * The three questions every worklist row raises and none of them can answer, because each reaches across a boundary the dealer's own system keys everything by — another module, another outlet, another person's workload.
+ * The answer arrives with its evidence attached. `findings` is one sentence per claim, each assembled by a rule from one of the `evidence` rows. `summary` is a model's reading of those findings, present only when one passed a check that every figure in it appears in the evidence. The findings are returned either way: the traceable form of an answer is not the part to drop when a nicer-sounding one exists.
+ * Nothing here classifies. The `state` comes from the module's own derivation and travels through untouched, and no tool in the registry writes anything.
+ * @summary Why is this stuck, who else is affected, what happens if it waits
+ */
+export const explainDmsRecord = async (explainInput: ExplainInput, options?: Parameters<typeof customFetch>[1]): Promise<Explanation> => {
+
+  return customFetch<Explanation>(getExplainDmsRecordUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(explainInput)
+  }
+);}
+
+
+
+
+
+export const getExplainDmsRecordMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof explainDmsRecord>>, TError,{data: BodyType<ExplainInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof explainDmsRecord>>, TError,{data: BodyType<ExplainInput>}, TContext> => {
+
+const mutationKey = ['explainDmsRecord'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof explainDmsRecord>>, {data: BodyType<ExplainInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  explainDmsRecord(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ExplainDmsRecordMutationResult = NonNullable<Awaited<ReturnType<typeof explainDmsRecord>>>
+    export type ExplainDmsRecordMutationBody = BodyType<ExplainInput>
+    export type ExplainDmsRecordMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Why is this stuck, who else is affected, what happens if it waits
+ */
+export const useExplainDmsRecord = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof explainDmsRecord>>, TError,{data: BodyType<ExplainInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof explainDmsRecord>>,
+        TError,
+        {data: BodyType<ExplainInput>},
+        TContext
+      > => {
+      return useMutation(getExplainDmsRecordMutationOptions(options));
     }
 
 export const getListShowroomStaffUrl = (params: ListShowroomStaffParams,) => {

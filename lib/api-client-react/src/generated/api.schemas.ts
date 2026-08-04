@@ -1256,6 +1256,58 @@ export interface OutboxSummary {
   ruleWouldSend: number;
 }
 
+export type ExplainModule = typeof ExplainModule[keyof typeof ExplainModule];
+
+
+export const ExplainModule = {
+  JOB_CARD: 'JOB_CARD',
+  ENQUIRY: 'ENQUIRY',
+  REGISTRATION: 'REGISTRATION',
+  PART: 'PART',
+} as const;
+
+export interface ExplainInput {
+  module: ExplainModule;
+  showroomId: number;
+  /** The mirror row's own key — jcNo, enqId, regnFileNo, partNo. */
+  recordKey: string;
+}
+
+export type EvidenceRowsItem = { [key: string]: unknown };
+
+/**
+ * One tool call and the rows it returned. This is the citation.
+ */
+export interface Evidence {
+  tool: string;
+  /** What this tool went and looked at, for the person reading. */
+  looked: string;
+  rows: EvidenceRowsItem[];
+}
+
+export interface Explanation {
+  module: ExplainModule;
+  recordKey: string;
+  /**
+     * The module's own classification, carried through untouched.
+     * @nullable
+     */
+  state?: string | null;
+  /**
+     * A model's reading of the findings, present only when it passed the citation check. The panel is complete without it.
+     * @nullable
+     */
+  summary?: string | null;
+  /** One sentence per claim, each assembled by a rule from an evidence row. */
+  findings: string[];
+  evidence: Evidence[];
+  /**
+     * Why a model's wording was refused, when one was.
+     * @nullable
+     */
+  narrationRejected?: string | null;
+}
+
 export interface StaffMember {
   empCode: string;
   empName: string;

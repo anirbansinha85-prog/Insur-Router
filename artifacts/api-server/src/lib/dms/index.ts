@@ -36,6 +36,11 @@
  *                             allowed to rephrase but not to assert
  *   outbound.ts               the approval gate: nothing leaves without either
  *                             a rule permitting it or a person approving it
+ *   tools.ts                  six typed, owner-scoped, read-only lookups —
+ *                             the only things the panel may reach
+ *   explain.ts                why is this stuck, who else is affected, what
+ *                             happens if it waits. Rules answer; a model may
+ *                             narrate over the same rows and no others
  *   entity-graph.ts           one person, one vehicle, one member of staff,
  *                             resolved across all five — the join the dealer's
  *                             own system does not have, because a DMS keys
@@ -93,6 +98,9 @@ export type {
   TemplateId,
 } from "./outbound";
 export { checkRewrite } from "./composer";
+export { explainRecord, citationsHold } from "./explain";
+export type { ExplainInput, Explanation } from "./explain";
+export type { Evidence, ExplainModule, ToolContext } from "./tools";
 export type {
   ComposedDraft,
   MessageAudience,

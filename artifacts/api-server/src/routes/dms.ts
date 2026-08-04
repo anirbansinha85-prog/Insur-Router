@@ -32,12 +32,14 @@ import {
   authoriseSend,
   cancelMessage,
   createDraft,
+  explainRecord,
   listMessages,
   listStaff,
   sendMessage,
   summariseOutbox,
   TEMPLATE_IDS,
   type ActionId,
+  type ExplainModule,
   type TemplateId,
   adapterForDealer,
   fetchDeal,
@@ -367,6 +369,8 @@ router.get("/dms/spares-worklist", async (req, res): Promise<void> => {
   res.json({ summary: summariseSpares(rows), rows });
 });
 
+const EXPLAIN_MODULES = new Set<string>(["JOB_CARD", "ENQUIRY", "REGISTRATION", "PART"]);
+
 const ACTION_IDS = new Set<string>([
   "ENQUIRY_LOG_CONTACT",
   "ENQUIRY_REASSIGN",
@@ -576,6 +580,64 @@ router.post("/dms/messages/:id/send", async (req, res): Promise<void> => {
     return;
   }
   res.json({ message: result.message });
+});
+
+/**
+ * Why is this stuck, who else is affected, what happens if it waits.
+ *
+ * The three questions every worklist row raises and none of them can answer,
+ * because each reaches across a boundary the dealer\'s own system keys
+ * everything by — another module, another outlet, another person\'s workload.
+ *
+ * **The answer arrives with its evidence attached.** `findings` is one sentence
+ * per claim, each assembled by a rule from one of the `evidence` rows, and
+ * `summary` is a model\'s reading of those findings — present only when one
+ * passed a check that every figure in it appears in the evidence. The findings
+ * are returned either way, because the traceable form of an answer is not the
+ * part to drop when a nicer-sounding one exists.
+ *
+ * Nothing here classifies. The state on the row comes from the module\'s own
+ * `classify()` and travels through untouched (R-49).
+ */
+router.post("/dms/explain", async (req, res): Promise<void> => {
+  const body = req.body as Record<string, unknown>;
+  const module = String(body.module ?? "");
+  if (!EXPLAIN_MODULES.has(module)) {
+    res.status(400).json({ error: `Unknown module ${module || "(none)"}` });
+    return;
+  }
+
+  const showroomId = Number(body.showroomId);
+  const recordKey = String(body.recordKey ?? "");
+  if (!Number.isInteger(showroomId) || showroomId <= 0 || !recordKey) {
+    res.status(400).json({ error: "showroomId and recordKey are required" });
+    return;
+  }
+  if (!(await assertShowroomAccess(req, res, showroomId))) return;
+
+  // The cross-outlet lookups read every showroom the *session\'s* owner holds,
+  // never a list from the request. Same rule as the spares worklist, and for
+  // the same reason: the one query that spans outlets is the one worth being
+  // certain about.
+  const owned = await db
+    .select({ id: showroomsTable.id })
+    .from(showroomsTable)
+    .where(eq(showroomsTable.ownerId, req.sessionUser!.ownerId));
+
+  const explanation = await explainRecord({
+    ownerId: req.sessionUser!.ownerId,
+    showroomId,
+    ownerShowroomIds: owned.map((o) => o.id),
+    module: module as ExplainModule,
+    recordKey,
+  });
+
+  if (!explanation) {
+    res.status(404).json({ error: `No ${module.toLowerCase()} ${recordKey} at this showroom` });
+    return;
+  }
+
+  res.json(explanation);
 });
 
 /**

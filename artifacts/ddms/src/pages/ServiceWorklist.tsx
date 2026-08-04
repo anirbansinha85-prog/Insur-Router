@@ -25,6 +25,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { formatDate } from "@/lib/utils"
 import { ActionButton } from "@/lib/actions"
 import { DraftButton } from "@/lib/messages"
+import { ExplainButton } from "@/lib/explain"
 import { AlertTriangle, Clock, PhoneCall, Wrench } from "lucide-react"
 
 const STATE: Record<
@@ -329,6 +330,11 @@ export default function ServiceWorklist() {
                                   label="Draft a message"
                                 />
                               )}
+                              <ExplainButton
+                                module="JOB_CARD"
+                                showroomId={row.showroomId}
+                                recordKey={row.jcNo}
+                              />
                             </div>
                           </div>
                         </div>

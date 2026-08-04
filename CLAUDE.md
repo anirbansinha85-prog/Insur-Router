@@ -120,7 +120,7 @@ artifacts/            deployable apps
     src/lib/          api-executor.ts, browser-executor.ts, auth.ts, logger.ts
     src/lib/dms/      client, adapters, mirror sync, five worklists, the
                       entity graph, actions, composer, the approval gate,
-                      panel, scheduler
+                      the explain tools, insurer panel, scheduler
   insur-router/       React 19 + Vite — InsurRouter frontend
   doc-ingest/         React 19 + Vite — VeloDocs frontend
   rc-capture/         Expo mobile app
@@ -305,6 +305,48 @@ template goes forward — and the *reason* is logged too, because a silent
 fallback and a silent failure look identical from the outside. They looked
 identical for a while: a malformed request made the model path inert and every
 draft came back `RULE`, which is exactly what healthy fallback looks like.
+
+## The panel that explains
+
+Every screen answers *what is wrong*. `POST /api/dms/explain` answers the three
+things the row cannot, because each reaches across a boundary the dealer's own
+system keys everything by:
+
+> why is this stuck · who else is affected · what happens if it waits
+
+**Six typed tools, not query access.** `lib/dms/tools.ts` is a closed set of
+read-only functions. The owner id comes from the session and is never a
+parameter, the cross-outlet lookups read the *session's* showrooms, and anything
+not in the registry is unreachable however the model phrases its request. RLS is
+still the backstop — the difference here is that the caller is not a person.
+
+**The findings are rules; the summary is a model.** `explain.ts` assembles one
+sentence per claim from the rows the tools returned, then offers a model the
+chance to narrate over exactly that evidence. `citationsHold()` accepts the
+narration only if every figure in it appears in the evidence and it ends in a
+finished sentence. **Both survive to the screen.** Replacing the findings with
+the better-sounding paragraph would drop the only part of the answer somebody
+can check, which is the part that makes it worth trusting — so the panel shows
+the summary, then the findings, then the evidence rows themselves under *what
+was looked at*.
+
+With no key, a rate limit or a rejected narration, the findings stand alone and
+the panel still works. That is not a fallback bolted on; it is the design. The
+free tier returned **429** during verification and the answer on screen was
+unchanged apart from the missing paragraph.
+
+**Nothing here classifies and nothing here acts.** The state arrives from the
+module's own `classify()` and travels through untouched (R-49), and no tool
+writes. `recordState` deliberately reads through `build…Worklist` rather than
+the mirror table: of all the places for this product to contradict itself, an
+explanation of *why a row says what it says* is the worst.
+
+> **The check catches figures, not meanings.** A finding that read *"It has not
+> moved for 5 days"* was turned by the model into *"the record has not moved for
+> 5 days"* — a different and wrong claim, about the transfer request rather than
+> the stock, with the figure cited correctly. The fix was to name the subject in
+> the finding. An ambiguous finding is one waiting to be misread, and by a person
+> as easily as by a model.
 
 **Identity: prefer an explicit reference over a probable one.** A registration
 file *names* its deal, so the customer resolves through that named deal before
@@ -649,10 +691,12 @@ assignment (`VAR=x cmd`) and depends on `$REPLIT_EXPO_DEV_DOMAIN`,
 DDMS (`artifacts/ddms/src/pages/`): `Leads` (`/`), `Worklist` (`/worklist`),
 `Registrations` (`/registrations`), `ServiceWorklist` (`/service`),
 `Spares` (`/spares`), `Outbox` (`/outbox`), `Dossier` (`/who/:entityId`,
-reached from the header search rather than the sidebar). Its own `Shell` — an owner looking across showrooms,
-rather than an agent working one
-application — with outbound links to the other two products rather than
-embedded copies of them.
+reached from the header search rather than the sidebar). The explain panel is
+not a page — it is a control on every worklist row, in `src/lib/explain.tsx`.
+
+DDMS has its own `Shell` — an owner looking across showrooms, rather than an
+agent working one application — with outbound links to the other two products
+rather than embedded copies of them.
 
 InsurRouter (`artifacts/insur-router/src/pages/`), routed by Wouter under
 `BASE_URL`: `Dashboard` (`/`), `ApplicationsList`, `ApplicationNew`,

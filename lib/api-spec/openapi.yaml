@@ -1080,6 +1080,53 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /dms/explain:
+    post:
+      operationId: explainDmsRecord
+      tags: [dms]
+      summary: Why is this stuck, who else is affected, what happens if it waits
+      description: >
+        The three questions every worklist row raises and none of them can
+        answer, because each reaches across a boundary the dealer's own system
+        keys everything by — another module, another outlet, another person's
+        workload.
+
+        The answer arrives with its evidence attached. `findings` is one
+        sentence per claim, each assembled by a rule from one of the `evidence`
+        rows. `summary` is a model's reading of those findings, present only
+        when one passed a check that every figure in it appears in the evidence.
+        The findings are returned either way: the traceable form of an answer is
+        not the part to drop when a nicer-sounding one exists.
+
+        Nothing here classifies. The `state` comes from the module's own
+        derivation and travels through untouched, and no tool in the registry
+        writes anything.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExplainInput"
+      responses:
+        "200":
+          description: The explanation, and the rows it came from
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Explanation"
+        "400":
+          description: Unknown module, or a required field missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No such record at a showroom this owner holds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /dms/staff:
     get:
       operationId: listShowroomStaff
@@ -2669,6 +2716,63 @@ components:
           type: integer
           description: Drafts a rule would send right now with nobody reading them.
       required: [drafts, awaitingApproval, approvedNotSent, held, sent, ruleWouldSend]
+
+    ExplainInput:
+      type: object
+      properties:
+        module:
+          $ref: "#/components/schemas/ExplainModule"
+        showroomId: { type: integer }
+        recordKey:
+          type: string
+          description: The mirror row's own key — jcNo, enqId, regnFileNo, partNo.
+      required: [module, showroomId, recordKey]
+
+    ExplainModule:
+      type: string
+      enum: [JOB_CARD, ENQUIRY, REGISTRATION, PART]
+
+    Evidence:
+      type: object
+      description: One tool call and the rows it returned. This is the citation.
+      properties:
+        tool: { type: string }
+        looked:
+          type: string
+          description: What this tool went and looked at, for the person reading.
+        rows:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      required: [tool, looked, rows]
+
+    Explanation:
+      type: object
+      properties:
+        module:
+          $ref: "#/components/schemas/ExplainModule"
+        recordKey: { type: string }
+        state:
+          type: ["string", "null"]
+          description: The module's own classification, carried through untouched.
+        summary:
+          type: ["string", "null"]
+          description: >
+            A model's reading of the findings, present only when it passed the
+            citation check. The panel is complete without it.
+        findings:
+          type: array
+          items: { type: string }
+          description: One sentence per claim, each assembled by a rule from an evidence row.
+        evidence:
+          type: array
+          items:
+            $ref: "#/components/schemas/Evidence"
+        narrationRejected:
+          type: ["string", "null"]
+          description: Why a model's wording was refused, when one was.
+      required: [module, recordKey, findings, evidence]
 
     StaffMember:
       type: object

@@ -31,6 +31,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { formatDate } from "@/lib/utils"
 import { AssignPicker, ContactButtons } from "@/lib/actions"
 import { DraftButton } from "@/lib/messages"
+import { ExplainButton } from "@/lib/explain"
 import { AlertTriangle, PhoneCall, Timer, UserX, Users } from "lucide-react"
 
 const STATE: Record<
@@ -383,6 +384,11 @@ export default function Leads() {
                                   label="Email them"
                                 />
                               )}
+                              <ExplainButton
+                                module="ENQUIRY"
+                                showroomId={row.showroomId}
+                                recordKey={row.enqId}
+                              />
                             </div>
                           </div>
                         </div>

@@ -34,6 +34,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { formatDate } from "@/lib/utils"
 import { ActionButton, AssignPicker } from "@/lib/actions"
 import { DraftButton } from "@/lib/messages"
+import { ExplainButton } from "@/lib/explain"
 import { AlertTriangle, FileText, IdCard, ShieldAlert, Wallet } from "lucide-react"
 
 const STATE: Record<
@@ -427,6 +428,11 @@ export default function Registrations() {
                                   label="Draft a message"
                                 />
                               )}
+                              <ExplainButton
+                                module="REGISTRATION"
+                                showroomId={row.showroomId}
+                                recordKey={row.regnFileNo}
+                              />
                               {/* Recency, not presence — the derived state asks
                                   when it was last chased, so this is worth
                                   pressing again on a file chased a fortnight

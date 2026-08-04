@@ -68,13 +68,13 @@ Status: **✅ done** · **◑ partial** · **○ not started**
 |---|---|---|
 | R-20 | **Dual role**: a control panel *with action buttons*, not a report | ✅ every screen acts |
 | R-21 | Action buttons call the real `/api` pipeline — *locked decision, after the owner tier* | ✅ |
-| R-22 | Multi-agent automation orchestration — agents propose, rules dispose, actions execute | ◑ the composer proposes and the gate disposes; the panel that explains is OBJ-12 |
-| R-23 | Deterministic if/else rules where the logic is knowable, not a model guessing | ✅ derivations *and* actions are rules |
+| R-22 | Multi-agent automation orchestration — agents propose, rules dispose, actions execute | ✅ the composer proposes, the gate disposes, the actions execute, the panel explains — and a model is in exactly two of those, on a leash, in neither of the deciding ones |
+| R-23 | Deterministic if/else rules where the logic is knowable, not a model guessing | ✅ derivations, actions, authorisation and the findings are all rules. A model words two of them and decides none |
 | R-24 | What the software cannot do becomes an explicit tracked task with the exact value to copy | ✅ |
 | R-46 | **Our record of a contact is ours, and does not stop the manufacturer's clock.** The DMS is read-only, so a call logged in DDMS cannot write `firstContactAt` in their CRM. The row shows both and states the limit, with the exact value to key in | ✅ |
 | R-47 | **Identity resolved on a mobile number is probable, not certain** — families share a handset, numbers are reassigned, switchboard numbers get typed into walk-in records. Confidence travels with the entity and nothing irreversible is driven by it alone. **And an explicit reference beats a probable one**: a registration file names its deal, so that wins over a matching number | ✅ |
 | R-48 | Nothing leaves the building without either a rule permitting it or a person approving it | ✅ one function decides, and it is the only thing that may write `sentAt` |
-| R-49 | **The agent proposes, explains and drafts. Rules authorise.** A model may never decide whether an action is permitted or whether a record is in breach — that logic is knowable, and a rule that is right every time beats a model that is right most of the time | ◑ the composer drafts and `checkRewrite()` verifies; the gate never calls a model. Explaining is OBJ-12 |
+| R-49 | **The agent proposes, explains and drafts. Rules authorise.** A model may never decide whether an action is permitted or whether a record is in breach — that logic is knowable, and a rule that is right every time beats a model that is right most of the time | ✅ the composer drafts, the panel explains, and rules verify both. Neither the gate nor `classify()` ever calls a model |
 | R-50 | Internal notifications before customer-facing ones. Emailing staff their own workload is low risk; messaging a dealership's customers is not | ✅ the only rule that sends without a person covers internal email, and no branch can produce one for a customer |
 
 ### How it looks
@@ -350,7 +350,7 @@ it weaker rather than better. The remaining modules move after the action layer.
 | 1 | **OBJ-9** Entity resolution | no | prerequisite for anything cross-module |
 | 2 | **OBJ-10** The screens act | no | R-20, and it is what makes an agent worth having |
 | 3 | **OBJ-11** Composer + approval gate ✅ | yes, gated | the first outbound surface |
-| 4 | **OBJ-12** The panel that explains | yes, read-only | needs 9 and 10 to have anything to say |
+| 4 | **OBJ-12** The panel that explains ✅ | yes, read-only | needs 9 and 10 to have anything to say |
 | 5 | **OBJ-4** receivables, ageing, invoicing | no | after the product acts |
 | 6 | **OBJ-6** a dealership that reads as real | no | partly falls out of the above |
 | 7 | **OBJ-8** one credential | no | unchanged, and now also gates outbound |
@@ -504,12 +504,13 @@ simulated policy number that looks issued (R-41).
 > exactly what a healthy fallback looks like. A silent fallback and a silent
 > failure are indistinguishable unless one of them says so, and now it does.
 
-### OBJ-12 — The panel that explains
+### OBJ-12 — The panel that explains  ✅ **done 4 Aug**
 *Covers R-22, R-23, R-49.*
 
-One panel, on every tab, reading through typed tools over the entity graph and
-the projections that already exist. It answers what the row cannot: *why is this
-stuck, who else is affected, what happens if this waits another week.*
+One panel, on every worklist row, reading through typed tools over the entity
+graph and the projections that already exist. It answers what the row cannot:
+*why is this stuck, who else is affected, what happens if this waits another
+week.*
 
 What it must never do is decide whether something is wrong. `classify()` already
 does that — deterministically, auditably, for free — and replacing a rule that
@@ -520,6 +521,44 @@ does not authorise.
 **Done when:** on any row, the panel answers a question the screen does not
 already display, and every claim in its answer traces to rows a query returned
 rather than to prose it generated.
+
+**Verified**, through the API and then through the browser. What the panel said
+about a registration file the RTO had sent back, none of which is on that screen:
+
+| Finding | Where it came from |
+|---|---|
+| The temporary registration lapsed 3 days ago, so the vehicle is on the road unregistered | `what_the_clock_says`, by subtraction over the dealer's own dates |
+| Jaswinder Sethi is carrying it, along with 9 other open records | `who_is_carrying_it` — the number that turns a staffing anecdote into an argument |
+| 3 decisions recorded against it here | `what_we_have_done` — the decision log, which does not exist in the dealer's system |
+| 1 message drafted about it, none of which has actually been delivered | the outbox, said honestly |
+
+And on a part nobody in the group has: *"Mr Deepak Ahuja has been waiting 9
+days… 1 on order, expected 10-08-2026… this part has not been issued to anybody
+for 41 days."* Three tools, one answer, every figure on screen underneath it.
+
+**The evidence is on the screen, not behind a promise.** Each finding is one
+sentence assembled by a rule from a row a query returned, and every one of those
+rows is in the panel under *what was looked at*, expandable to the raw JSON. The
+model's paragraph sits above them, labelled, and is accepted only when every
+figure in it appears in the evidence.
+
+**The panel works with no model at all**, which is what makes it a feature
+rather than a demo. During verification the free tier returned **429** on one
+record and the answer was unchanged apart from the missing paragraph.
+
+> **Three things found by reading the output.** Every narration was rejected as
+> unfinished, because 1,000 output tokens covered the model's reasoning as well
+> as its reply — the same bug as the composer's, on a prompt four times the size.
+> Two findings said the same thing twice, because the tools overlap on purpose
+> and a module's note is often *about* a deadline the clock then reports again;
+> resolved by de-duplicating the sentences rather than narrowing either tool.
+>
+> **And one the check could not catch.** A finding that read *"It has not moved
+> for 5 days"* became *"the record has not moved for 5 days"* in the model's
+> paragraph — a claim about the transfer request rather than the stock, wrong,
+> and with the figure cited correctly. `citationsHold()` verifies figures, not
+> meanings. The fix was to name the subject in the finding, because an ambiguous
+> finding is one waiting to be misread, by a person as easily as by a model.
 
 ### OBJ-6 — A dealership that reads as real
 *Covers R-6, R-33. Replaces "get real DMS access", which Anirban ruled out on
@@ -549,6 +588,13 @@ in one click, and the row changes state behind you. The other actions on the
 three screens are still sentences, because they still need a person — and
 dressing those as buttons would be the same defect as a simulated policy that
 looks issued.
+
+**And it can be asked why.** A panel on every worklist row answers the three
+questions the row cannot — why it is stuck, who else it touches, what happens if
+it waits — by reading six typed tools over the mirrors and the entity graph, and
+it shows the rows it read underneath the answer. A model words the summary and
+decides nothing; the findings beneath it are assembled by rules and stand on
+their own when there is no model to be had.
 
 **And it has started to speak.** Every screen now drafts the message its rows
 have been describing in words for three sessions, and one gate decides whether
