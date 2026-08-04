@@ -60,7 +60,7 @@ Status: **✅ done** · **◑ partial** · **○ not started**
 | R-16 | Spares, finance/receivables, inventory ageing, registration workflow | ✅ all four |
 | R-17 | Invoice generation, automated | ✅ as a **statement of account** through the approval gate. Generating the dealer's tax invoice would mean two invoices for one debt, and the DMS is read-only |
 | R-18 | DDMS holds every DMS field **plus** its own decision fields for each function | ✅ 7 modules, every decision field proven load-bearing by query |
-| R-19 | Staff shortage made visible from the dealer's own data — attrition, orphaned work | ◑ leads only |
+| R-19 | Staff shortage made visible from the dealer's own data — attrition, orphaned work | ◑ leads only, and orphaned work across every module. The rest is OBJ-15 |
 
 ### What it does
 
@@ -77,12 +77,31 @@ Status: **✅ done** · **◑ partial** · **○ not started**
 | R-49 | **The agent proposes, explains and drafts. Rules authorise.** A model may never decide whether an action is permitted or whether a record is in breach — that logic is knowable, and a rule that is right every time beats a model that is right most of the time | ✅ the composer drafts, the panel explains, and rules verify both. Neither the gate nor `classify()` ever calls a model |
 | R-50 | Internal notifications before customer-facing ones. Emailing staff their own workload is low risk; messaging a dealership's customers is not | ✅ the only rule that sends without a person covers internal email, and no branch can produce one for a customer |
 
+### How it runs itself
+
+*Added 4 August after researching how Salesforce and HubSpot are built as
+platforms rather than as products. The findings, and what was deliberately
+refused, are in section 3b.*
+
+| # | Requirement | Status |
+|---|---|---|
+| R-51 | **A change of derived state is an event, and events are recorded.** Not a field diff — `classify()`'s answer moving from one state to another. A file that crossed into `RC_IN_DRAWER` at 3am must be knowable without anybody having opened a screen | ○ |
+| R-52 | **Automation is one ordered list, it lives in code, and it is capped.** No rule builder, no per-dealership flows, and a stated ceiling on how many rules may exist. The failure mode being designed against is documented: orgs reach eighty automations on one object, page saves take eight seconds, and nobody can predict what a save will do | ○ |
+| R-53 | **A dealership has people, and scope only ever narrows.** Roles inside an owner — advisor, RTO agent, accounts, manager — expressed as an *additional* predicate on top of the owner's, never an alternative one. A bug in the role layer must be able to hide rows and must not be able to reveal them | ○ |
+| R-54 | **Work is routed by role and capacity, and never becomes unroutable.** Who can do it, who has room, and who is actually in today. When nothing matches, it degrades to a named queue rather than disappearing | ○ |
+| R-55 | **One queue, worked one at a time.** Seven screens each holding a list is a reporting product. The capacity thesis needs a single ordered queue that can be worked start to finish without returning to a list | ○ |
+| R-56 | **Automation may write a decision field. Only the gate lets anything leave.** An automated mark is internal, reversible and logged. Anything outbound still passes `authoriseSend()`, unchanged — the line drawn in R-48 does not move because the caller stopped being a person | ○ |
+| R-57 | **A chase stops when its goal state is reached.** The exit condition is a `classify()` state, not a reply or a click. A cadence that cannot stop itself is the mechanism by which automation becomes something a dealership apologises for | ○ |
+| R-58 | **Thresholds are dealer policy, not product logic.** Credit periods, ageing buckets, chase cadence, what counts as the RTO having gone quiet — per owner, stored, and changes to them audited. The rules stay in code; the numbers belong to the dealership | ○ |
+| R-59 | **The agent invokes the same action registry a person does.** One endpoint, one set of refusals, one decision log. A parallel agent-only path would have to re-earn every refusal and would eventually fail to | ○ |
+| R-60 | **Every automated act is attributable and reversible.** `decision_log.userId` null reads as *the system did this*, never as *we lost track*. Anything a rule set, a person can unset | ○ |
+
 ### How it looks
 
 | # | Requirement | Status |
 |---|---|---|
-| R-30 | **A dense dealer portal, in the shape of the Hero portal at `:9090/portal`** — module-grouped sidebar, KPI cards, action buttons on rows, quota bars, an identity header with showroom picker and financial year | ○ **currently a thin admin console** |
-| R-31 | Distinct from the OEM's own system: the owner's group identity, multi-showroom, not one dealer code | ◑ |
+| R-30 | **A dense dealer portal, in the shape of the Hero portal at `:9090/portal`** — module-grouped sidebar, KPI cards, action buttons on rows, quota bars, an identity header with showroom picker and financial year | ✅ OBJ-1, and every screen since has been built to it |
+| R-31 | Distinct from the OEM's own system: the owner's group identity, multi-showroom, not one dealer code | ✅ |
 | R-32 | Never show invented identity — no fake user until there is a login | ✅ |
 | R-33 | **The seeded dealership data must read as real.** No "sandbox", "demo data" or similar labelling on the chrome. The records are invented, but they stand in for a real dealer's, and a demo badge makes the whole product read as a toy | ✅ |
 
@@ -223,8 +242,13 @@ forty.
 > asks it to. Retiring the owner connection from the running server needs
 > InsurRouter to have a sign-in of its own — OBJ-8.
 
-### OBJ-8 — One credential, and it is not the owner's  · *replanned to last, see 3a*
+### OBJ-8 — One credential, and it is not the owner's  · *sequenced in 3b, third*
 *Follows OBJ-7. Covers R-7 and the rest of R-42.*
+
+> **Moved up on 4 August.** It sits beside OBJ-14 rather than at the end:
+> roles inside a dealership and credentials held by the process are the same
+> question — *who may see what* — asked twice, and answering them apart would
+> mean touching the same code twice.
 
 InsurRouter and VeloDocs still run on the connection that bypasses RLS, because
 they have no sign-in and no tenant to scope by. Until they do, the server holds
@@ -425,8 +449,12 @@ it weaker rather than better. The remaining modules move after the action layer.
 | 3 | **OBJ-11** Composer + approval gate ✅ | yes, gated | the first outbound surface |
 | 4 | **OBJ-12** The panel that explains ✅ | yes, read-only | needs 9 and 10 to have anything to say |
 | 5 | **OBJ-4** receivables, ageing, invoicing ✅ | no | after the product acts |
-| 6 | **OBJ-6** a dealership that reads as real | no | partly falls out of the above |
-| 7 | **OBJ-8** one credential | no | unchanged, and now also gates outbound |
+| 6 | **OBJ-6** a dealership that reads as real | no | *reordered — see 3b* |
+| 7 | **OBJ-8** one credential | no | *reordered — see 3b* |
+
+> **Superseded in part on 4 August.** Items 1–5 are done. What was left —
+> OBJ-6 and OBJ-8 — is now sequenced inside **section 3b**, alongside five new
+> objectives that came out of researching how Salesforce and HubSpot are built.
 
 > An agent with nothing to invoke is a chatbot. That is the whole argument for
 > this order.
@@ -633,6 +661,197 @@ record and the answer was unchanged apart from the missing paragraph.
 > meanings. The fix was to name the subject in the finding, because an ambiguous
 > finding is one waiting to be misread, by a person as easily as by a model.
 
+## 3b. Researched 4 August — what an enterprise workflow platform is made of
+
+Anirban asked whether Salesforce and HubSpot had architecture worth borrowing
+rather than features. They do, and the research changed the shape of what is
+left. Sources are listed at the end of this section.
+
+### The finding that matters most
+
+Salesforce's spine is not objects or layouts. It is that **automation binds to a
+record changing state**, and that the chain which then runs has a documented,
+deterministic order — before-save flows, before triggers, after triggers,
+after-save flows, each with an explicit trigger-order number from 1 to 2,000.
+An organisation can reason about what a save will do.
+
+**DDMS has no events at all.** Sync writes the mirror and screens derive on
+read. Everything built so far — actions, gate, composer, panel — is *pull*. A
+registration file crossing into `RC_IN_DRAWER` overnight produces nothing until
+somebody opens a page. An agent workflow needs *push*, and there is nothing to
+push.
+
+The maddening part is that sync already knows. It compares `rawHash` on every
+row on every pull, and throws the answer away.
+
+### What each platform contributes, and what DDMS already has
+
+| Concept | Where it comes from | DDMS today |
+|---|---|---|
+| Automation binds to a state change, in a declared order | Salesforce record-triggered flows | nothing |
+| Business events, not field diffs — publish `RC_IN_DRAWER`, not `rc_received_date changed` | Platform Events vs Change Data Capture | nothing, and the distinction decides the design |
+| One listener, hub-and-spoke, never point-to-point | Salesforce event architecture guidance | n/a yet |
+| Deny by default, then widen deliberately; the later layers **can only grant** | org-wide defaults → role hierarchy → sharing rules | RLS, owner-scoped ✅ — but no tier inside a dealership |
+| Route on required skill **and** spare capacity **and** presence; additional skills prevent dead-ends | Omni-Channel | `listStaff` returns `role` and `carrying` ◑ |
+| An agent is declared as role, data, actions, guardrails, channel — and cannot act outside that closed set | Agentforce | `tools.ts` read-only ✅, `actions.ts` write ✅, but the agent may call neither |
+| Enrol on a trigger, run steps with delays, **unenrol on a goal** | HubSpot workflows and sequences | nothing — and DDMS's version can be better, because the goal is a state it computes rather than a click it hopes for |
+
+### What was refused, and why
+
+The research turned up the failure mode as clearly as the pattern. Salesforce
+orgs reach **eighty active flows on a single object**; page saves take eight
+seconds; recursion appears where the same object shows up repeatedly in a
+dependency tree; and the automation layer becomes, in one practitioner's
+phrase, *a graveyard of decisions nobody documented and behaviours nobody can
+predict*. It is not caused by bad administrators — it is caused by good ones
+working without a governance layer.
+
+That is a warning aimed directly at this product, because **DDMS's customer has
+no administrator at all**. Every configuration surface is a person a
+short-staffed dealership does not employ. So:
+
+- **No rule builder.** Rules live in code, in one ordered list, reviewed like
+  any other change (R-52).
+- **A cap, stated out loud.** A ceiling on active rules, with the number
+  written down and a reason next to it.
+- **Thresholds are the only thing that becomes data** (R-58) — the numbers
+  belong to the dealership, the logic does not.
+- **No mass send, no campaigns, no lead scoring by model, and no record
+  creation.** The first two are what R-48 and R-50 exist to prevent; the third
+  is R-49; the fourth would make DDMS a second system of record, which is the
+  precise thing it was built to expose.
+
+### The revised order, and why
+
+| Order | Objective | Model? | Why here |
+|---|---|---|---|
+| 1 | **OBJ-13** The mirror emits events | no | invisible, small, and four things are blocked behind it |
+| 2 | **OBJ-14** People, and what each may see | no | the queue needs a *me*; and it is half of the access story |
+| 3 | **OBJ-8** One credential | no | the other half. Doing 14 and 8 together is one piece of work about who sees what, and it has been outstanding since 3 August |
+| 4 | **OBJ-15** The queue | no | the capacity thesis, finally operational |
+| 5 | **OBJ-16** Rules that run themselves | no | needs 13 for the trigger and 15 for somewhere to put the work |
+| 6 | **OBJ-17** The agent operates the registry | yes, gated | almost free by then: the registry, the refusals, the gate and the audit trail all exist |
+| 7 | **OBJ-6** A dealership that reads as real | no | last, and better last — by then there is more for the data to exercise |
+
+> Two objectives already on the list keep their place in it rather than being
+> pushed behind new work. OBJ-8 moves *up*, because roles and credentials are
+> the same question asked twice.
+
+### OBJ-13 — The mirror emits events
+*Covers R-51.*
+
+Sync already computes whether a row changed. This makes it say **what changed
+about it**: a `record_events` row naming the module, the record, the state it
+left and the state it entered.
+
+Derived-state transitions, not field diffs — the Platform-Events reading rather
+than the Change-Data-Capture one. `REGISTRATION → RC_IN_DRAWER` is a business
+event a rule can act on. `rc_received_date changed` is a fact about a column,
+and every rule reading it would have to re-derive the meaning that
+`classify()` already produced.
+
+It also answers a question nothing currently can: *how long has this been
+stuck*, as distinct from *what is it now*.
+
+**Done when:** a state transition that happened while nobody was signed in is
+readable afterwards, with its before and after — and the same transition
+detected twice does not produce two events.
+
+### OBJ-14 — People, and what each of them may see
+*Covers R-53. Extends OBJ-3 and OBJ-7 down a level.*
+
+Today one login is one owner and sees everything. A dealership is nine people
+with different jobs, and the queue is meaningless until *my work* has a
+referent.
+
+Roles as an **additional** predicate on the owner's, never an alternative:
+Salesforce's own model can only ever grant access outward from a private
+baseline, and the same asymmetry belongs here in reverse — a bug in the role
+layer must be able to hide rows and must not be able to reveal them.
+
+**Done when:** a service advisor signs in and cannot read the receivables
+ledger — proven by a query returning nothing, not by a hidden menu item.
+
+### OBJ-15 — The queue
+*Covers R-54, R-55. Absorbs the rest of R-19.*
+
+One screen, one ordered list, across all seven modules, for the person signed
+in. Worked start to finish without going back to a list.
+
+Routing takes who can do it, who has room, and who is in today — and when
+nothing matches, work degrades to a named queue rather than vanishing. A
+nine-person dealership cannot afford an item that is unroutable, which is
+exactly what happens when skills gate eligibility and nobody holds the skill.
+
+**Done when:** the leading number on that screen is everything waiting on a
+person across every module, and somebody can clear ten items without once
+returning to a list.
+
+### OBJ-16 — Rules that run themselves
+*Covers R-52, R-56, R-57, R-58, R-60.*
+
+```
+on   <event>        a state transition, or a clock
+if   <conditions>   over the same projections the screens read
+then <action>       the existing typed registry, or a draft into the gate
+```
+
+Trigger deterministic, conditions deterministic, action from the registry that
+already refuses correctly. No model anywhere in the decision path.
+
+The line from R-48 does not move: a rule may write a decision field — internal,
+reversible, attributed to the system — and anything outbound still passes
+`authoriseSend()`. And every cadence carries a goal state, so a chase stops
+because the file moved rather than because somebody remembered to stop it.
+
+**Done when:** a file crossing into `RC_IN_DRAWER` with nobody watching
+produces a queue item and a drafted message; the same file, once the customer
+has collected, produces neither; and the whole rule set is one ordered list
+short enough to read in a sitting.
+
+### OBJ-17 — The agent operates the registry
+*Covers R-59, and finishes R-22.*
+
+The agent stops describing work and starts doing it — by calling the same
+endpoint the button calls.
+
+That is the whole design. Agentforce's useful idea is that an agent is a
+declared role with a closed set of actions and explicit guardrails, and DDMS's
+closed set already exists and already refuses correctly: 409 for a departed
+employee, 404 across tenants, the gate on anything outbound. An agent on that
+registry inherits every refusal for free.
+
+`decision_log.userId` is nullable and its comment already anticipates this:
+*"a future automated rule may act without a person — and when it does, a null
+here has to read as 'the system did this', never as 'we lost track of who
+did'."*
+
+**Done when:** the agent completes a queue item by calling `/api/dms/actions`,
+is refused for exactly the reasons a person would be, and the decision log
+shows the system did it — with a person able to undo it.
+
+### Sources
+
+Salesforce order of execution and record-triggered flows —
+<https://www.salesforceben.com/before-save-flow-vs-after-save-flow-in-salesforce/>,
+<https://help.salesforce.com/s/articleView?language=en_US&id=sf.flow_considerations_trigger_record.htm&type=5>.
+Event-driven design, Platform Events versus Change Data Capture —
+<https://developer.salesforce.com/blogs/2022/10/design-considerations-for-change-data-capture-and-platform-events>,
+<https://sfdcprep.com/salesforce-platform-events-vs-change-data-capture-use-cases/>.
+Sharing model —
+<https://help.salesforce.com/s/articleView?id=platform.security_sharing_owd_about.htm&language=en_US&type=5>,
+<https://architect.salesforce.com/docs/architect/fundamentals/guide/platform-sharing-architecture>.
+Omni-Channel skills and capacity routing —
+<https://medium.com/@shirley_peng/salesforce-omni-channel-how-skills-based-routing-really-works-54326fafbdc8>.
+Agentforce and the Atlas reasoning engine —
+<https://engineering.salesforce.com/inside-the-brain-of-agentforce-revealing-the-atlas-reasoning-engine/>,
+<https://stackoverflow.blog/2025/05/28/a-deep-dive-into-building-an-agent-framework-for-salesforce/>.
+HubSpot workflows, sequences, goals and unenrolment —
+<https://blog.hubspot.com/customers/workflows-vs-sequences>,
+<https://knowledge.hubspot.com/articles/kcs_article/workflows/set-unenrollment-triggers-in-company-deal-ticket-quote-based-workflows>.
+Automation sprawl, the failure mode being designed against —
+<https://www.equals11.com/blog/flow-sprawl-is-the-silent-killer-of-your-salesforce-org-6-signs-you-have-it>.
+
 ### OBJ-6 — A dealership that reads as real
 *Covers R-6, R-33. Replaces "get real DMS access", which Anirban ruled out on
 3 Aug: the data we generate is the data, and it has to feel real rather than be
@@ -676,6 +895,14 @@ assigned to, a person for everything else, and nothing at all without one of the
 two. Nothing has actually been delivered, because there is no email or WhatsApp
 account connected — and the outbox says so on every row rather than implying a
 delivery it cannot perform.
+
+**What it cannot do yet, and it is one thing.** Nothing happens unless somebody
+is looking. Every mechanism built so far is *pull*: sync writes the mirror,
+screens derive on read, and a file that went wrong overnight waits for a person
+to open a page. There are no events, no queue, no people inside a dealership,
+and no rule that runs on its own. That is what **section 3b** is for, and it is
+the difference between a product that shows a short-staffed dealership its
+problems and one that absorbs some of them.
 
 **The blocker before a customer has moved.** Sign-in exists and the database
 enforces the boundary rather than trusting the code to. What is left is that the
