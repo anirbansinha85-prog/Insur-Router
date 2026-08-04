@@ -815,6 +815,11 @@ short-staffed dealership does not employ. So:
 | 8 | **OBJ-17** The agent operates the registry | yes, gated | the registry, the refusals, the gate and the audit trail all exist by then |
 | 9 | **OBJ-6** A dealership that reads as real | no | last, and better last — by then there is more for the data to exercise |
 
+> **OBJ-20 — a person may write their own sentence** is unsequenced above
+> because it is small and it is a usability gap rather than a capability one.
+> It belongs before anybody demonstrates the Outbox to a dealership: the answer
+> to *"can I just add a line?"* is currently no, and that is the wrong answer.
+
 > Two objectives already on the list keep their place in it rather than being
 > pushed behind new work. OBJ-8 moves *up*, because roles and credentials are
 > the same question asked twice.
@@ -1245,6 +1250,49 @@ order, and a person moves it.
 carries what was done last time with a count and a date; a state it has never
 handled carries nothing rather than a hedge; and a pattern stopped 60 days ago
 is gone from the screen without anybody retiring it.
+
+### OBJ-20 — A person may write their own sentence
+*Raised by Anirban, 5 August. Covers R-72 to R-75.*
+
+The Outbox shipped with **no editing**, deliberately, and the reasoning is
+written at the top of `Outbox.tsx`: a message is what a rule composed and what
+`checkRewrite()` confirmed asserts nothing the facts do not support, so free
+text would put an unverified claim in the dealership's name.
+
+That reasoning is half right, and the half it gets wrong is the half that
+matters here. **The check exists to stop a *model* inventing things.** A named
+manager writing their own sentence and then approving it is not that risk — it
+is a person taking responsibility, which is precisely what R-48 asks for. The
+current design says *cancel it and fix the record instead*, and what will
+actually happen is that somebody cancels the draft and picks up the phone, and
+the outbox stops being used.
+
+A concrete case, and it is the one Anirban gave: assigning a registration file
+to an agent and wanting to add *"Mr Verma is coming in on Saturday, please have
+the file ready"*. Nothing in the composed text covers it and nothing should —
+it is not a fact the mirror holds.
+
+**How it gets built, and this is the part that keeps R-48 intact:**
+
+| | |
+|---|---|
+| Editing is allowed, on `DRAFT` only | An approved message has been read by somebody; an edit after that is a different message |
+| An edited message **can never take the rule path** | `authoriseSend()` returns a `PERSON` basis or nothing. The internal-notification rule permits text a rule composed, not text somebody typed, and that distinction is the whole of why the rule is safe |
+| The composed body is kept | `body` becomes what will go; the original stays, so *what did we draft* and *what did they send* are both answerable |
+| The edit is logged | `decision_log` with before and after, like every other decision |
+| `draftedBy` gains `PERSON` | Today it is `RULE` or `AGENT`. A human-edited message is neither, and the Outbox should say so on the row |
+
+**Done when:** a manager edits a drafted assignment note, the row says it was
+edited and by whom, the gate refuses it a rule basis so it needs approval even
+though the unedited version would not have, and the original text is still
+recoverable.
+
+| # | Requirement | Status |
+|---|---|---|
+| R-72 | **A person may edit a draft; a rule may not send what a person edited.** The rewrite checks guard against a model inventing figures. A named person writing their own sentence and approving it is the opposite case — it is somebody taking responsibility, which is what R-48 wants — but it must always take the person path, never the rule one | ○ |
+| R-73 | **What was drafted survives what was sent.** The composed text is kept alongside the edited text, because *what the product proposed* and *what the dealership said* are different facts and both are worth having later | ○ |
+| R-74 | **An edit is a decision and is logged like one.** Who, when, and both versions | ○ |
+| R-75 | **Editing is for `DRAFT` only.** Approval means somebody read it; text that changes after that has not been read by the person whose name is on the approval | ○ |
 
 ### Sources
 
