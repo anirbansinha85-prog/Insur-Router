@@ -799,6 +799,55 @@ export interface QueueResult {
   byModule: QueueResultByModuleItem[];
 }
 
+export interface PolicySetInput {
+  key: string;
+  /**
+     * Null resets this setting to the product's default.
+     * @nullable
+     */
+  value: number | null;
+  /** Which outlet the change is logged against. */
+  showroomId: number;
+}
+
+export interface PolicyResetInput {
+  showroomId: number;
+}
+
+export type PolicySettingGroup = typeof PolicySettingGroup[keyof typeof PolicySettingGroup];
+
+
+export const PolicySettingGroup = {
+  SEVERITY: 'SEVERITY',
+  THRESHOLD: 'THRESHOLD',
+} as const;
+
+export type PolicySettingUnit = typeof PolicySettingUnit[keyof typeof PolicySettingUnit];
+
+
+export const PolicySettingUnit = {
+  rank: 'rank',
+  days: 'days',
+} as const;
+
+export interface PolicySetting {
+  /** `SEVERITY.MODULE.STATE` for what comes first, or `THRESHOLD.NAME` for when something has gone wrong. */
+  key: string;
+  group: PolicySettingGroup;
+  /** The screen this belongs to, for grouping. */
+  section: string;
+  label: string;
+  /** One sentence. What changing it actually does. */
+  help: string;
+  value: number;
+  default: number;
+  /** False once somebody in this dealership has moved it. */
+  isDefault: boolean;
+  min: number;
+  max: number;
+  unit: PolicySettingUnit;
+}
+
 export type AutomationRuleModule = typeof AutomationRuleModule[keyof typeof AutomationRuleModule];
 
 
@@ -2489,6 +2538,23 @@ limit?: number;
 
 export type ListDmsEvents200 = {
   rows: RecordEvent[];
+};
+
+export type GetDmsPolicy200 = {
+  settings: PolicySetting[];
+};
+
+export type SetDmsPolicy200 = {
+  ok: boolean;
+  key: string;
+  value: number;
+  previous: number;
+  isDefault: boolean;
+};
+
+export type ResetDmsPolicy200 = {
+  /** How many settings were being overridden. */
+  cleared: number;
 };
 
 export type ListDmsRules200 = {

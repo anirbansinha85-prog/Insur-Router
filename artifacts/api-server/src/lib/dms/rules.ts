@@ -70,6 +70,7 @@ import { db, outboundMessagesTable, ownersTable, showroomsTable } from "@workspa
 import { logger } from "../logger";
 import { currentStates } from "./events";
 import { cancelMessage, createDraft, sendMessage, type TemplateId } from "./outbound";
+import { loadPolicy, type ResolvedPolicy } from "./policy";
 import { buildRegistrationWorklist, type RegistrationWorklistRow } from "./registration-worklist";
 import { buildServiceWorklist, type ServiceWorklistRow } from "./service-worklist";
 import { buildLeadWorklist, type LeadWorklistRow } from "./lead-worklist";
@@ -242,11 +243,13 @@ async function rowsFor(
   module: RuleModule,
   showroomId: number,
   ownerShowroomIds: number[],
+  policy: ResolvedPolicy,
 ): Promise<Map<string, WorklistRow>> {
   const keyed = new Map<string, WorklistRow>();
   switch (module) {
     case "REGISTRATION":
-      for (const r of await buildRegistrationWorklist({ showroomId })) keyed.set(r.regnFileNo, r);
+      for (const r of await buildRegistrationWorklist({ showroomId, policy }))
+        keyed.set(r.regnFileNo, r);
       return keyed;
     case "JOB_CARD":
       for (const r of await buildServiceWorklist({ showroomId })) keyed.set(r.jcNo, r);
@@ -255,7 +258,7 @@ async function rowsFor(
       for (const r of await buildLeadWorklist({ showroomId })) keyed.set(r.enqId, r);
       return keyed;
     case "RECEIVABLE":
-      for (const r of await buildReceivablesWorklist({ showroomId, ownerShowroomIds }))
+      for (const r of await buildReceivablesWorklist({ showroomId, ownerShowroomIds, policy }))
         keyed.set(r.receivableId, r);
       return keyed;
   }
@@ -275,6 +278,7 @@ export async function runRules(
 ): Promise<RuleRunResult> {
   const startedAt = Date.now();
   const states = await currentStates(ownerId);
+  const policy = await loadPolicy(ownerId);
 
   const result: RuleRunResult = {
     ownerId,
@@ -292,7 +296,8 @@ export async function runRules(
   // registrations should not mean two passes over the dealer's files.
   const needed = new Set(RULES.map((r) => r.module));
   const rows = new Map<RuleModule, Map<string, WorklistRow>>();
-  for (const module of needed) rows.set(module, await rowsFor(module, showroomId, ownerShowroomIds));
+  for (const module of needed)
+    rows.set(module, await rowsFor(module, showroomId, ownerShowroomIds, policy));
 
   // One draft per record per pass. The rule set is ordered, so the first match
   // wins and a file that is wrong in two ways produces one message.

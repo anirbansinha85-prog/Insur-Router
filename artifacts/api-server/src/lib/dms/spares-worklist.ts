@@ -34,6 +34,7 @@ import {
   showroomDmsAccountsTable,
 } from "@workspace/db";
 import { logger } from "../logger";
+import { policyForShowroom, type ResolvedPolicy } from "./policy";
 import { dmsPartStock } from "./client";
 import { toIsoDate, toAmount } from "./hero-adapter";
 import type { DmsPartStock } from "./types";
@@ -217,8 +218,8 @@ export type SparesState =
   | "DEAD_STOCK"
   | "OK";
 
-/** Days without an issue before stock counts as capital rather than inventory. */
-const DEAD_STOCK_DAYS = 120;
+/** The dealership's, since OBJ-18. Default and range in `lib/dms/policy.ts`. */
+const DEAD_STOCK_DAYS = "THRESHOLD.DEAD_STOCK_DAYS";
 
 export interface SparesWorklistRow {
   partNo: string;
@@ -279,6 +280,9 @@ function plural(n: number, word: string): string {
 }
 
 export interface SparesWorklistOptions {
+  /** The dealership's numbers. Resolved from the outlet when absent — see
+   *  `policyForShowroom`, and note that it is never silently defaulted. */
+  policy?: ResolvedPolicy;
   showroomId: number;
   /** Every showroom this owner holds — the cross-branch lookup reads all of them. */
   ownerShowroomIds: number[];
@@ -287,6 +291,7 @@ export interface SparesWorklistOptions {
 export async function buildSparesWorklist(
   opts: SparesWorklistOptions,
 ): Promise<SparesWorklistRow[]> {
+  const policy = opts.policy ?? (await policyForShowroom(opts.showroomId));
   const scope = opts.ownerShowroomIds.length > 0 ? opts.ownerShowroomIds : [opts.showroomId];
 
   // Every outlet's shelf, not just the one on screen. This is the query the
@@ -402,7 +407,7 @@ export async function buildSparesWorklist(
       transferRequestedAt: p.transferRequestedAt,
       reorderRaisedAt: p.reorderRaisedAt,
       now,
-    });
+    }, policy);
 
     const idle =
       (state === "DEAD_STOCK" && p.costAmount !== null) ? p.costAmount * p.qtyOnHand : null;
@@ -463,6 +468,7 @@ interface ClassifyInput {
 
 function classify(
   i: ClassifyInput,
+  policy: ResolvedPolicy,
 ): { state: SparesState; note: string | null; action: string | null } {
   const worstWait = i.waiting.reduce((m, w) => Math.max(m, w.daysWaiting), 0);
   const who = i.waiting.length === 1 ? i.waiting[0].customerName ?? i.waiting[0].jcNo : null;
@@ -515,7 +521,11 @@ function classify(
 
   // Capital, not inventory. Named by what it costs rather than by how long it
   // has sat, because the second is a fact and the first is a decision.
-  if (i.qtyOnHand > 0 && (i.neverIssued || (i.daysSinceIssued !== null && i.daysSinceIssued >= DEAD_STOCK_DAYS))) {
+  if (
+    i.qtyOnHand > 0 &&
+    (i.neverIssued ||
+      (i.daysSinceIssued !== null && i.daysSinceIssued >= policy.days(DEAD_STOCK_DAYS)))
+  ) {
     const since = i.neverIssued
       ? "never been issued since it arrived"
       : `not moved in ${plural(i.daysSinceIssued!, "day")}`;

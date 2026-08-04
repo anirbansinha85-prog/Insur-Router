@@ -86,6 +86,7 @@ import {
 import { seesEveryOutlet } from "../lib/dms/access";
 import { buildQueue } from "../lib/dms/queue";
 import { describeRules, MAX_RULES } from "../lib/dms/rules";
+import { describePolicy, resetAllPolicy, setPolicy } from "../lib/dms/policy";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -757,6 +758,7 @@ router.get("/dms/queue", async (req, res): Promise<void> => {
     user.showroomId !== null && !seesEveryOutlet(user.role) ? [user.showroomId] : owned;
 
   const result = await buildQueue({
+    ownerId: user.ownerId,
     ownerShowroomIds: owned,
     visibleShowroomIds: visible,
     empCode: user.empCode,
@@ -764,6 +766,71 @@ router.get("/dms/queue", async (req, res): Promise<void> => {
   });
 
   res.json(result);
+});
+
+/**
+ * The dealership's own numbers.
+ *
+ * What comes first on the queue, and when a classifier decides something has
+ * gone wrong. Both were ours until OBJ-18 and neither is a product question —
+ * whether a stuck registration outranks a broken payment promise depends on
+ * this group's RTO agent and this group's cash position.
+ *
+ * Read by anybody signed in, because the numbers explain what they are looking
+ * at. Written only by an owner or a showroom manager: the roles that hold every
+ * module already, and the only two whose judgement covers the whole dealership.
+ */
+router.get("/dms/policy", async (req, res): Promise<void> => {
+  res.json({ settings: await describePolicy(req.sessionUser!.ownerId) });
+});
+
+router.put("/dms/policy", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  if (!seesEveryOutlet(user.role)) {
+    res.status(403).json({
+      error:
+        `Only an owner or a showroom manager sets these. They decide what the ` +
+        `whole dealership does first, and your role covers one part of it.`,
+    });
+    return;
+  }
+
+  const body = req.body as { key?: unknown; value?: unknown; showroomId?: unknown };
+  const key = typeof body.key === "string" ? body.key : "";
+  // Null is the reset, and it is a different thing from "no value given".
+  const value = body.value === null ? null : Number(body.value);
+  if (value !== null && !Number.isFinite(value)) {
+    res.status(400).json({ error: "A value must be a whole number, or null to reset it." });
+    return;
+  }
+
+  const showroomId = Number(body.showroomId);
+  if (!Number.isInteger(showroomId) || !(await assertShowroomAccess(req, res, showroomId))) {
+    if (!res.headersSent) res.status(400).json({ error: "showroomId must be a positive integer" });
+    return;
+  }
+
+  const result = await setPolicy(user.ownerId, showroomId, user.userId, key, value);
+  if (!result.ok) {
+    res.status(400).json({ error: result.error });
+    return;
+  }
+  res.json(result);
+});
+
+router.post("/dms/policy/reset", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  if (!seesEveryOutlet(user.role)) {
+    res.status(403).json({ error: "Only an owner or a showroom manager sets these." });
+    return;
+  }
+  const showroomId = Number((req.body as { showroomId?: unknown }).showroomId);
+  if (!Number.isInteger(showroomId) || !(await assertShowroomAccess(req, res, showroomId))) {
+    if (!res.headersSent) res.status(400).json({ error: "showroomId must be a positive integer" });
+    return;
+  }
+  const cleared = await resetAllPolicy(user.ownerId, showroomId, user.userId);
+  res.json({ cleared });
 });
 
 /**

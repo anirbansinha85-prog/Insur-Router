@@ -92,7 +92,7 @@ refused, are in section 3b.*
 | R-55 | **One queue, worked one at a time.** Seven screens each holding a list is a reporting product. The capacity thesis needs a single ordered queue that can be worked start to finish without returning to a list | ✅ |
 | R-56 | ✅ *(the gate half; no rule writes a decision field yet, and OBJ-16 says why)* **Automation may write a decision field. Only the gate lets anything leave.** An automated mark is internal, reversible and logged. Anything outbound still passes `authoriseSend()`, unchanged — the line drawn in R-48 does not move because the caller stopped being a person | ○ |
 | R-57 | ✅ *(and it withdraws the draft it already raised)* **A chase stops when its goal state is reached.** The exit condition is a `classify()` state, not a reply or a click. A cadence that cannot stop itself is the mechanism by which automation becomes something a dealership apologises for | ○ |
-| R-58 | ○ *moved to OBJ-18, with the severity table — one table of the dealership's numbers, not two* **Thresholds are dealer policy, not product logic.** Credit periods, ageing buckets, chase cadence, what counts as the RTO having gone quiet — per owner, stored, and changes to them audited. The rules stay in code; the numbers belong to the dealership | ○ |
+| R-58 | ✅ *nine of them, moved out of five classifiers* **Thresholds are dealer policy, not product logic.** Credit periods, ageing buckets, chase cadence, what counts as the RTO having gone quiet — per owner, stored, and changes to them audited. The rules stay in code; the numbers belong to the dealership | ○ |
 | R-59 | **The agent invokes the same action registry a person does.** One endpoint, one set of refusals, one decision log. A parallel agent-only path would have to re-earn every refusal and would eventually fail to | ○ |
 | R-60 | ✅ **Every automated act is attributable and reversible.** `decision_log.userId` null reads as *the system did this*, never as *we lost track*. Anything a rule set, a person can unset | ○ |
 | R-61 | **A dealership's staff get their own logins, and a login is the dealership's own employee record.** *Locked 4 August.* A user carries an `empCode`, and that code is what already sits on the enquiries, registration files and job cards they are responsible for. Without that join, *my work* has no referent and the queue is only a differently sorted list | ✅ |
@@ -107,7 +107,7 @@ at what this dealership actually did last time.*
 
 | # | Requirement | Status |
 |---|---|---|
-| R-65 | **Priority is dealer policy, not product logic.** The severity table decides what a short-staffed dealership does first, and it is currently one owner's judgement written by us into a file. It becomes per-owner data with the product's table as the default, editable by the owner or a showroom manager, with what changed and who changed it in the decision log. Same class as R-58: a bounded table of numbers, **not** a rule builder | ○ |
+| R-65 | ✅ **Priority is dealer policy, not product logic.** The severity table decides what a short-staffed dealership does first, and it is currently one owner's judgement written by us into a file. It becomes per-owner data with the product's table as the default, editable by the owner or a showroom manager, with what changed and who changed it in the decision log. Same class as R-58: a bounded table of numbers, **not** a rule builder | ○ |
 | R-66 | **Memory is what people here actually did, and nothing else.** Only rows the decision log attributes to a *person* count as precedent. A mark the system made is excluded on purpose: an agent that re-reads its own output as evidence turns one early mistake into a settled belief, and the loop is invisible from inside. `decision_log.userId` already distinguishes the two, which is the whole reason R-60 insisted null means *the system did this* | ○ |
 | R-67 | **Nothing is stored as memory that was not already stored as a fact.** Precedent is derived on read from `decision_log` and `record_events` — both append-only, both writable only through `applyAction`. No summarised memory, no free text, no ingestion surface. What cannot be written cannot be poisoned, and the commonest poisoning payload in the literature is a plausible-looking *preference* | ○ |
 | R-68 | **Precedent carries its date and its count, or it is not shown.** "You did this 5 times of the last 6, most recently on 28 July" is a fact somebody can weigh. "You usually do this" is a claim with no way to tell a settled habit from something that stopped in March. Stale-but-true is the failure mode, and a date is the whole of the fix | ○ |
@@ -810,7 +810,7 @@ short-staffed dealership does not employ. So:
 | 3 | ~~**OBJ-8** One credential~~ ✅ | no | the other half. Doing 14 and 8 together was one piece of work about who sees what, and it had been outstanding since 3 August |
 | 4 | ~~**OBJ-15** The queue~~ ✅ | no | the capacity thesis, finally operational |
 | 5 | ~~**OBJ-16** Rules that run themselves~~ ✅ | no | needs 13 for the trigger and 15 for somewhere to put the work |
-| 6 | **OBJ-18** The severity table belongs to the dealership | no | *added 4 Aug.* The queue shipped with our opinion of what matters in it |
+| 6 | ~~**OBJ-18** The dealership's own numbers~~ ✅ | no | *added 4 Aug.* The queue shipped with our opinion of what matters in it |
 | 7 | **OBJ-19** The agent remembers what this dealership did | no | *added 4 Aug.* Precedent from the decision log. Before 17, so the agent that acts acts with it |
 | 8 | **OBJ-17** The agent operates the registry | yes, gated | the registry, the refusals, the gate and the audit trail all exist by then |
 | 9 | **OBJ-6** A dealership that reads as real | no | last, and better last — by then there is more for the data to exercise |
@@ -1134,7 +1134,7 @@ did'."*
 is refused for exactly the reasons a person would be, and the decision log
 shows the system did it — with a person able to undo it.
 
-### OBJ-18 — The dealership's own numbers
+### OBJ-18 — The dealership's own numbers  ✅ **done 4 Aug**
 *Covers R-65 **and R-58**, which moved here from OBJ-16 on 4 August: the
 severity table and the thresholds are one piece of work, and splitting them
 would leave a dealership with two places to set their own numbers.*
@@ -1158,6 +1158,48 @@ cannot do that.
 **Done when:** an owner moves `DEAD_STOCK` below `RTO_SILENT`, the queue reorders
 on the next build for every login in that dealership, the previous value is in
 the decision log, and a **Reset to the product's defaults** control puts it back.
+
+**Verified.** `RTO_SILENT` has no rows in the seeded dealership, so *below* is
+not observable on it; the same mechanism was proved on a pair that does exist.
+The owner raised **Dead stock** from *when there is time* to *today*:
+
+| | before | after |
+|---|---|---|
+| Anirban, owner | #17 of 32, severity 1 | **#5 of 32, severity 3** |
+| Sunil, service advisor | #9 of 9 | **#4 of 9** |
+
+One dealership, one set of numbers — the owner's change reordered a service
+advisor's queue, which is the point. Then:
+
+| | |
+|---|---|
+| Service advisor sets a number | **403** — *"Only an owner or a showroom manager sets these. They decide what the whole dealership does first, and your role covers one part of it."* |
+| A key not in the registry | **400** — *"There is no setting called … The numbers a dealership may set are a closed list."* |
+| Dead stock after 5 days | **400** — *"Dead stock after must be a whole number between 30 and 720."* |
+| Every change | in `decision_log` with the previous value: *"Dead stock: 1 → 3"*, *"Ageing after: 60 → 300"* |
+| Reset | the row is **deleted**, and dead stock is back at #17 |
+
+Reset deletes rather than writing today's default down. A dealership that
+resets keeps following the product's default *afterwards* — writing it into the
+table would freeze them on whatever we happened to think in August.
+
+**Nine thresholds moved out of five files.** `TR_WARNING_DAYS`,
+`RTO_QUIET_DAYS`, two `CHASE_FRESH_DAYS`, `DUE_SOON_DAYS`, `DEAD_STOCK_DAYS`,
+`AGEING_DAYS`, `AGEING_SEVERE_DAYS` and `STUCK_ALLOCATION_DAYS` were
+`const X = 90` in the classifier that used them, which is a fine place for a
+number nobody disagrees with and the wrong place for one every dealership does.
+Raising *ageing after* from 60 to 300 changes what the vehicle floor says, and
+the detector and the rules read the same numbers as the screen — a log that
+disagreed with the screen it came from would be worse than no log.
+
+> **The threshold change found a classifier bug.** With ageing at 300 days, two
+> units somebody had been offered came back as `AGEING_SEVERE`, whose note reads
+> *"nobody has asked for it"* — a plainly false claim about a unit a salesman had
+> shown to a named customer. `OFFERED` was only ever checked *inside* the ageing
+> branch, so being offered was reported as a side effect of also being old. Same
+> rule the registration classifier learned in OBJ-4: **derived state describes a
+> cause, not a consequence.** Being offered is a cause; ageing is a separate axis
+> and the figure travels on the row either way.
 
 ### OBJ-19 — The agent remembers what this dealership did
 *Covers R-66 to R-71, and answers the "otherwise it is just a dumb thing"

@@ -52,6 +52,7 @@
 import { inArray } from "drizzle-orm";
 import { db, dmsEmployeesTable } from "@workspace/db";
 import { canRead, type AccessModule } from "./access";
+import { loadPolicy, type ResolvedPolicy } from "./policy";
 import { buildWorklist } from "./worklist";
 import { buildServiceWorklist } from "./service-worklist";
 import { buildLeadWorklist } from "./lead-worklist";
@@ -139,70 +140,29 @@ export interface QueueResult {
 }
 
 /**
- * How urgent each state is, across all seven modules in one table.
+ * How urgent each state is — asked of the dealership, not decided here.
  *
- * 3 — somebody is waiting on us today, or money and compliance are at stake.
- * 2 — this week, and it gets worse by sitting.
- * 1 — real work, and it can wait behind the other two.
+ * This was a table in this file until OBJ-18, and it was one afternoon's
+ * judgement about whether a stuck registration outranks a broken payment
+ * promise, applied to every dealership that will ever use the product. That is
+ * not a product question: it depends on whether this group's RTO agent is
+ * snowed under or its cash position is tight, and we know neither.
  *
- * A state absent from this table produces no queue item even if its row
- * carries an `actionRequired`, which makes this list the single place the
- * queue's contents are decided. Deliberately capped and deliberately in code:
- * the research behind section 3b is largely a catalogue of what happens to
- * platforms where this became configuration.
+ * The numbers now come from `lib/dms/policy.ts` — the product's defaults are
+ * still the ones this shipped with, and an owner or a showroom manager may move
+ * any of them. What has not moved is the shape: three bands, a closed set of
+ * states, and **a state the registry does not name produces no queue item at
+ * all**, however loudly its row asks for one. That is still the single place
+ * the queue's contents are decided.
+ *
+ * Severity has to be comparable *across* modules to sort them into one list,
+ * which is why it is one table rather than a number each classifier invents.
  */
-const SEVERITY: Record<QueueModule, Record<string, number>> = {
-  DEAL: { CONFLICT: 3, BEHIND: 2, NOT_STARTED: 2, AHEAD: 1 },
-  JOB_CARD: {
-    OVERDUE: 3,
-    READY_UNCOLLECTED: 3,
-    AWAITING_APPROVAL: 2,
-    AWAITING_PART: 2,
-    FOLLOW_UP_DUE: 1,
-  },
-  ENQUIRY: {
-    SLA_BREACHED: 3,
-    NO_OWNER: 3,
-    UNCONTACTED: 2,
-    CLOCK_RUNNING: 2,
-    FOLLOW_UP_OVERDUE: 2,
-  },
-  REGISTRATION: {
-    OBJECTION: 3,
-    BLOCKED_NO_INSURANCE: 3,
-    TAX_HELD: 2,
-    AWAITING_DOCS: 2,
-    RC_IN_DRAWER: 2,
-    RTO_SILENT: 1,
-    HSRP_PENDING: 1,
-  },
-  PART: {
-    STOCKOUT_BLOCKING: 3,
-    AVAILABLE_ELSEWHERE: 2,
-    ORDER_OVERDUE: 2,
-    BELOW_REORDER: 1,
-    FULLY_RESERVED: 1,
-    DEAD_STOCK: 1,
-  },
-  RECEIVABLE: {
-    PROMISE_BROKEN: 3,
-    UNCHASED: 2,
-    DISPUTED: 2,
-    BEING_CHASED: 1,
-    DUE_SOON: 1,
-  },
-  VEHICLE: {
-    WANTED_NOW: 3,
-    STUCK_ALLOCATION: 2,
-    AGEING_SEVERE: 2,
-    AGEING: 1,
-    OFFERED: 1,
-  },
-};
 
 const BAND_ORDER: Record<QueueBand, number> = { MINE: 0, UNASSIGNED: 1, OUTLET: 2 };
 
 export interface QueueInput {
+  ownerId: number;
   /** Every outlet the owner holds — the cross-outlet builders need it. */
   ownerShowroomIds: number[];
   /** The outlets this session may look at. One for staff, all for an owner. */
@@ -210,6 +170,12 @@ export interface QueueInput {
   /** The signed-in person's employee code. Null for an owner. */
   empCode: string | null;
   role: string;
+  /**
+   * The dealership's numbers. Loaded here when the caller has not already —
+   * the seven builders and the severity table all read the same set, so a
+   * caller doing a full pass should load it once and pass it down.
+   */
+  policy?: ResolvedPolicy;
 }
 
 /**
@@ -261,6 +227,7 @@ async function staffIndex(
 export async function buildQueue(input: QueueInput): Promise<QueueResult> {
   const { ownerShowroomIds, visibleShowroomIds, empCode, role } = input;
   const may = (m: AccessModule): boolean => canRead(role, m);
+  const policy = input.policy ?? (await loadPolicy(input.ownerId));
   const staff = await staffIndex(visibleShowroomIds);
 
   /** Who is carrying this, and whether they are still here to carry it. */
@@ -281,10 +248,10 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         may("DEAL") ? buildWorklist({ showroomId }) : [],
         may("JOB_CARD") ? buildServiceWorklist({ showroomId }) : [],
         may("ENQUIRY") ? buildLeadWorklist({ showroomId }) : [],
-        may("REGISTRATION") ? buildRegistrationWorklist({ showroomId }) : [],
-        may("PART") ? buildSparesWorklist({ showroomId, ownerShowroomIds }) : [],
-        may("RECEIVABLE") ? buildReceivablesWorklist({ showroomId, ownerShowroomIds }) : [],
-        may("VEHICLE") ? buildInventoryWorklist({ showroomId, ownerShowroomIds }) : [],
+        may("REGISTRATION") ? buildRegistrationWorklist({ showroomId, policy }) : [],
+        may("PART") ? buildSparesWorklist({ showroomId, ownerShowroomIds, policy }) : [],
+        may("RECEIVABLE") ? buildReceivablesWorklist({ showroomId, ownerShowroomIds, policy }) : [],
+        may("VEHICLE") ? buildInventoryWorklist({ showroomId, ownerShowroomIds, policy }) : [],
       ]);
 
     // ── Deals ───────────────────────────────────────────────────────────────
@@ -294,7 +261,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
     // is what decides whose queue it lands in.
     for (const r of deals) {
       if (!r.actionRequired) continue;
-      const severity = SEVERITY.DEAL[r.reconcile];
+      const severity = policy.severity("DEAL", r.reconcile);
       if (!severity) continue;
       items.push({
         module: "DEAL",
@@ -327,7 +294,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
     // ── Workshop ────────────────────────────────────────────────────────────
     for (const r of jobCards) {
       if (!r.actionRequired) continue;
-      const severity = SEVERITY.JOB_CARD[r.state];
+      const severity = policy.severity("JOB_CARD", r.state);
       if (!severity) continue;
       const who = carrier(r.advisorEmpCode);
       items.push({
@@ -366,7 +333,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
     // ── Enquiries ───────────────────────────────────────────────────────────
     for (const r of leads) {
       if (!r.actionRequired) continue;
-      const severity = SEVERITY.ENQUIRY[r.state];
+      const severity = policy.severity("ENQUIRY", r.state);
       if (!severity) continue;
       // Ours overrides theirs: a reassignment made in DDMS is the current
       // answer to who is carrying this, and the DMS field is read-only.
@@ -416,7 +383,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
     // ── Registration files ──────────────────────────────────────────────────
     for (const r of registrations) {
       if (!r.actionRequired) continue;
-      const severity = SEVERITY.REGISTRATION[r.state];
+      const severity = policy.severity("REGISTRATION", r.state);
       if (!severity) continue;
       const assigned = r.ddms.assignedAgentEmpCode ?? r.agentEmpCode;
       const who = carrier(assigned);
@@ -463,7 +430,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
     // ── The parts counter ───────────────────────────────────────────────────
     for (const r of parts) {
       if (!r.actionRequired) continue;
-      const severity = SEVERITY.PART[r.state];
+      const severity = policy.severity("PART", r.state);
       if (!severity) continue;
       const source = r.availableAt[0];
       const waiting = r.waitingJobCards[0];
@@ -515,7 +482,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
     // ── The ledger ──────────────────────────────────────────────────────────
     for (const r of receivables) {
       if (!r.actionRequired) continue;
-      const severity = SEVERITY.RECEIVABLE[r.state];
+      const severity = policy.severity("RECEIVABLE", r.state);
       if (!severity) continue;
       items.push({
         module: "RECEIVABLE",
@@ -560,7 +527,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
     // ── The floor ───────────────────────────────────────────────────────────
     for (const r of vehicles) {
       if (!r.actionRequired) continue;
-      const severity = SEVERITY.VEHICLE[r.state];
+      const severity = policy.severity("VEHICLE", r.state);
       if (!severity) continue;
       items.push({
         module: "VEHICLE",

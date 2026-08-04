@@ -32,6 +32,7 @@ import {
   showroomDmsAccountsTable,
 } from "@workspace/db";
 import { logger } from "../logger";
+import { policyForShowroom, type ResolvedPolicy } from "./policy";
 import { dmsReceivables } from "./client";
 import { toIsoDate } from "./hero-adapter";
 import type { DmsReceivable } from "./types";
@@ -232,10 +233,10 @@ export type ReceivableState =
   | "CURRENT"
   | "SETTLED";
 
-/** How recently a chase counts as somebody still being on it. */
-const CHASE_FRESH_DAYS = 7;
-/** How close to the due date is worth a heads-up rather than a chase. */
-const DUE_SOON_DAYS = 7;
+/* The dealership's, since OBJ-18 — a group with a tight cash position wants a
+ * different answer here from one without. `lib/dms/policy.ts` holds both. */
+const CHASE_FRESH_DAYS = "THRESHOLD.RECEIVABLE_CHASE_FRESH_DAYS";
+const DUE_SOON_DAYS = "THRESHOLD.DUE_SOON_DAYS";
 
 export interface PartyExposure {
   partyCode: string;
@@ -312,6 +313,7 @@ function classify(
   disputedAt: Date | null,
   disputeNote: string | null,
   now: Date,
+  policy: ResolvedPolicy,
 ): { state: ReceivableState; note: string | null; action: string | null } {
   if (status === "SETTLED" || status === "WRITTEN_OFF" || balance <= 0) {
     return { state: "SETTLED", note: null, action: null };
@@ -328,7 +330,7 @@ function classify(
   }
 
   const chaseDays = chasedAt ? wholeDaysBetween(chasedAt, now) : null;
-  const chasedRecently = chaseDays !== null && chaseDays <= CHASE_FRESH_DAYS;
+  const chasedRecently = chaseDays !== null && chaseDays <= policy.days(CHASE_FRESH_DAYS);
 
   // A broken promise beats a stale chase, because it is newer information and
   // it came from the party rather than from us.
@@ -363,7 +365,7 @@ function classify(
     };
   }
 
-  if (daysOverdue > -DUE_SOON_DAYS) {
+  if (daysOverdue > -policy.days(DUE_SOON_DAYS)) {
     return {
       state: "DUE_SOON",
       note: `${inr(balance)} falls due in ${Math.abs(daysOverdue)} day${daysOverdue === -1 ? "" : "s"}.`,
@@ -375,6 +377,9 @@ function classify(
 }
 
 export interface ReceivablesWorklistOptions {
+  /** The dealership's numbers. Resolved from the outlet when absent — see
+   *  `policyForShowroom`, and note that it is never silently defaulted. */
+  policy?: ResolvedPolicy;
   showroomId: number;
   /**
    * Every showroom this owner holds. The group-exposure lookup reads all of
@@ -387,6 +392,7 @@ export interface ReceivablesWorklistOptions {
 export async function buildReceivablesWorklist(
   opts: ReceivablesWorklistOptions,
 ): Promise<ReceivablesWorklistRow[]> {
+  const policy = opts.policy ?? (await policyForShowroom(opts.showroomId));
   const scope = opts.ownerShowroomIds.length > 0 ? opts.ownerShowroomIds : [opts.showroomId];
 
   // One query across every outlet, then split. The group's ledger has hundreds
@@ -452,6 +458,7 @@ export async function buildReceivablesWorklist(
         r.disputedAt,
         r.disputeNote,
         now,
+        policy,
       );
 
       const exposure = byParty.get(r.partyCode);

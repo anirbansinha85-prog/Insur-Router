@@ -11,6 +11,7 @@ import { NotYours, ROUTE_MODULE, mayOpen } from '@/lib/permitted';
 
 import SignIn from '@/pages/SignIn';
 import Queue from '@/pages/Queue';
+import Numbers from '@/pages/Numbers';
 import Leads from '@/pages/Leads';
 import Worklist from '@/pages/Worklist';
 import ServiceWorklist from '@/pages/ServiceWorklist';
@@ -101,6 +102,11 @@ function Gate() {
               empty queue is a true answer. */}
           <Route path="/"><Queue /></Route>
           <Route path="/queue"><Queue /></Route>
+          {/* Readable by everybody, editable by an owner or a manager — the
+              numbers explain what is on somebody's screen, and hiding them
+              would make the queue's order look arbitrary. The refusal to edit
+              is on the row policies, not on this route. */}
+          <Route path="/numbers"><Numbers role={u.role} /></Route>
           <Route path="/enquiries">{guard(u, "/enquiries", <Leads />)}</Route>
           <Route path="/worklist">{guard(u, "/worklist", <Worklist />)}</Route>
           <Route path="/registrations">{guard(u, "/registrations", <Registrations />)}</Route>

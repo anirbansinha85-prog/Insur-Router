@@ -39,6 +39,7 @@ import type {
   ExecutionResult,
   ExplainInput,
   Explanation,
+  GetDmsPolicy200,
   GetInventoryWorklist200,
   GetInventoryWorklistParams,
   GetLeadWorklist200,
@@ -73,15 +74,19 @@ import type {
   OcrEngineStatus,
   OcrInput,
   Policy,
+  PolicyResetInput,
+  PolicySetInput,
   Provider,
   ProviderInput,
   ProviderUpdate,
   QueueResult,
   RecentApplication,
+  ResetDmsPolicy200,
   SearchEntities200,
   SearchEntitiesParams,
   SendDmsMessage200,
   SessionUser,
+  SetDmsPolicy200,
   ShowroomSummary,
   SubmissionLog,
   SyncShowroomDms200,
@@ -2882,6 +2887,231 @@ export function useGetDmsQueue<TData = Awaited<ReturnType<typeof getDmsQueue>>, 
 
 
 
+
+export const getGetDmsPolicyUrl = () => {
+
+
+
+
+  return `/api/dms/policy`
+}
+
+/**
+ * What comes first on the queue, and when a classifier decides something has gone wrong. Both were the product's opinion until OBJ-18, and neither is a product question: whether a stuck registration outranks a broken payment promise depends on whether this group's RTO agent is snowed under or its cash position is tight.
+ * The key set is closed. A dealership may change what the numbers are and can never change what the product does with them, which is the difference between configuration and a rule builder — and eighty numbers in a table cannot become an automation layer nobody can predict.
+ * Readable by anybody signed in, because the numbers explain what is on their screen. `isDefault` says whether anybody has moved it.
+ * @summary The dealership's own numbers
+ */
+export const getDmsPolicy = async ( options?: Parameters<typeof customFetch>[1]): Promise<GetDmsPolicy200> => {
+
+  return customFetch<GetDmsPolicy200>(getGetDmsPolicyUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDmsPolicyQueryKey = () => {
+    return [
+    `/api/dms/policy`
+    ] as const;
+    }
+
+
+export const getGetDmsPolicyQueryOptions = <TData = Awaited<ReturnType<typeof getDmsPolicy>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDmsPolicy>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDmsPolicyQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDmsPolicy>>> = ({ signal }) => getDmsPolicy({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDmsPolicy>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDmsPolicyQueryResult = NonNullable<Awaited<ReturnType<typeof getDmsPolicy>>>
+export type GetDmsPolicyQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary The dealership's own numbers
+ */
+
+export function useGetDmsPolicy<TData = Awaited<ReturnType<typeof getDmsPolicy>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDmsPolicy>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDmsPolicyQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSetDmsPolicyUrl = () => {
+
+
+
+
+  return `/api/dms/policy`
+}
+
+/**
+ * Owner or showroom manager only — the two roles whose judgement covers the whole dealership rather than one part of it. Enforced by the row policies as well as here.
+ * `value: null` resets: it deletes the row rather than writing today's default, so a dealership that resets keeps following the product's default afterwards rather than freezing on whatever it was.
+ * The change lands in the decision log with the previous value and a person's name against it.
+ * @summary Set one number, or reset it to the product's default
+ */
+export const setDmsPolicy = async (policySetInput: PolicySetInput, options?: Parameters<typeof customFetch>[1]): Promise<SetDmsPolicy200> => {
+
+  return customFetch<SetDmsPolicy200>(getSetDmsPolicyUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(policySetInput)
+  }
+);}
+
+
+
+
+
+export const getSetDmsPolicyMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setDmsPolicy>>, TError,{data: BodyType<PolicySetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setDmsPolicy>>, TError,{data: BodyType<PolicySetInput>}, TContext> => {
+
+const mutationKey = ['setDmsPolicy'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setDmsPolicy>>, {data: BodyType<PolicySetInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  setDmsPolicy(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetDmsPolicyMutationResult = NonNullable<Awaited<ReturnType<typeof setDmsPolicy>>>
+    export type SetDmsPolicyMutationBody = BodyType<PolicySetInput>
+    export type SetDmsPolicyMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Set one number, or reset it to the product's default
+ */
+export const useSetDmsPolicy = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setDmsPolicy>>, TError,{data: BodyType<PolicySetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setDmsPolicy>>,
+        TError,
+        {data: BodyType<PolicySetInput>},
+        TContext
+      > => {
+      return useMutation(getSetDmsPolicyMutationOptions(options));
+    }
+
+export const getResetDmsPolicyUrl = () => {
+
+
+
+
+  return `/api/dms/policy/reset`
+}
+
+/**
+ * @summary Put every number back to the product's default
+ */
+export const resetDmsPolicy = async (policyResetInput: PolicyResetInput, options?: Parameters<typeof customFetch>[1]): Promise<ResetDmsPolicy200> => {
+
+  return customFetch<ResetDmsPolicy200>(getResetDmsPolicyUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(policyResetInput)
+  }
+);}
+
+
+
+
+
+export const getResetDmsPolicyMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetDmsPolicy>>, TError,{data: BodyType<PolicyResetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resetDmsPolicy>>, TError,{data: BodyType<PolicyResetInput>}, TContext> => {
+
+const mutationKey = ['resetDmsPolicy'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resetDmsPolicy>>, {data: BodyType<PolicyResetInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  resetDmsPolicy(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResetDmsPolicyMutationResult = NonNullable<Awaited<ReturnType<typeof resetDmsPolicy>>>
+    export type ResetDmsPolicyMutationBody = BodyType<PolicyResetInput>
+    export type ResetDmsPolicyMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Put every number back to the product's default
+ */
+export const useResetDmsPolicy = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetDmsPolicy>>, TError,{data: BodyType<PolicyResetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resetDmsPolicy>>,
+        TError,
+        {data: BodyType<PolicyResetInput>},
+        TContext
+      > => {
+      return useMutation(getResetDmsPolicyMutationOptions(options));
+    }
 
 export const getListDmsRulesUrl = () => {
 

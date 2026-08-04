@@ -1323,6 +1323,112 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /dms/policy:
+    get:
+      operationId: getDmsPolicy
+      tags: [dms]
+      summary: The dealership's own numbers
+      description: >
+        What comes first on the queue, and when a classifier decides something
+        has gone wrong. Both were the product's opinion until OBJ-18, and
+        neither is a product question: whether a stuck registration outranks a
+        broken payment promise depends on whether this group's RTO agent is
+        snowed under or its cash position is tight.
+
+        The key set is closed. A dealership may change what the numbers are and
+        can never change what the product does with them, which is the
+        difference between configuration and a rule builder — and eighty numbers
+        in a table cannot become an automation layer nobody can predict.
+
+        Readable by anybody signed in, because the numbers explain what is on
+        their screen. `isDefault` says whether anybody has moved it.
+      responses:
+        "200":
+          description: Every key, with the value in force
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  settings:
+                    type: array
+                    items: { $ref: "#/components/schemas/PolicySetting" }
+                required: [settings]
+    put:
+      operationId: setDmsPolicy
+      tags: [dms]
+      summary: Set one number, or reset it to the product's default
+      description: >
+        Owner or showroom manager only — the two roles whose judgement covers
+        the whole dealership rather than one part of it. Enforced by the row
+        policies as well as here.
+
+        `value: null` resets: it deletes the row rather than writing today's
+        default, so a dealership that resets keeps following the product's
+        default afterwards rather than freezing on whatever it was.
+
+        The change lands in the decision log with the previous value and a
+        person's name against it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicySetInput"
+      responses:
+        "200":
+          description: Set
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  key: { type: string }
+                  value: { type: integer }
+                  previous: { type: integer }
+                  isDefault: { type: boolean }
+                required: [ok, key, value, previous, isDefault]
+        "400":
+          description: Unknown key, or a value outside its range
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Not an owner or a showroom manager
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /dms/policy/reset:
+    post:
+      operationId: resetDmsPolicy
+      tags: [dms]
+      summary: Put every number back to the product's default
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicyResetInput"
+      responses:
+        "200":
+          description: Cleared
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cleared:
+                    type: integer
+                    description: How many settings were being overridden.
+                required: [cleared]
+        "403":
+          description: Not an owner or a showroom manager
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
   /dms/rules:
     get:
       operationId: listDmsRules
@@ -2590,6 +2696,54 @@ components:
               count: { type: integer }
             required: [module, count]
       required: [items, total, mine, unassigned, outlet, byModule]
+
+    PolicySetInput:
+      type: object
+      properties:
+        key: { type: string }
+        value:
+          type: ["integer", "null"]
+          description: Null resets this setting to the product's default.
+        showroomId:
+          type: integer
+          description: Which outlet the change is logged against.
+      required: [key, value, showroomId]
+
+    PolicyResetInput:
+      type: object
+      properties:
+        showroomId: { type: integer }
+      required: [showroomId]
+
+    PolicySetting:
+      type: object
+      properties:
+        key:
+          type: string
+          description: >
+            `SEVERITY.MODULE.STATE` for what comes first, or
+            `THRESHOLD.NAME` for when something has gone wrong.
+        group:
+          type: string
+          enum: [SEVERITY, THRESHOLD]
+        section:
+          type: string
+          description: The screen this belongs to, for grouping.
+        label: { type: string }
+        help:
+          type: string
+          description: One sentence. What changing it actually does.
+        value: { type: integer }
+        default: { type: integer }
+        isDefault:
+          type: boolean
+          description: False once somebody in this dealership has moved it.
+        min: { type: integer }
+        max: { type: integer }
+        unit:
+          type: string
+          enum: [rank, days]
+      required: [key, group, section, label, help, value, default, isDefault, min, max, unit]
 
     AutomationRule:
       type: object

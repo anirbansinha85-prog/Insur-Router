@@ -48,6 +48,7 @@ import { buildRegistrationWorklist } from "./registration-worklist";
 import { buildSparesWorklist } from "./spares-worklist";
 import { buildReceivablesWorklist } from "./receivables-worklist";
 import { buildInventoryWorklist } from "./inventory-worklist";
+import { loadPolicy, type ResolvedPolicy } from "./policy";
 
 export type EventModule =
   | "DEAL"
@@ -97,15 +98,19 @@ function stateKey(module: string, showroomId: number, recordKey: string): string
  * event stream that disagrees with the screen it came from is worse than no
  * event stream.
  */
-async function observe(showroomId: number, ownerShowroomIds: number[]): Promise<Observed[]> {
+async function observe(
+  showroomId: number,
+  ownerShowroomIds: number[],
+  policy: ResolvedPolicy,
+): Promise<Observed[]> {
   const [deals, jobCards, leads, registrations, parts, receivables, vehicles] = await Promise.all([
     buildWorklist({ showroomId }),
     buildServiceWorklist({ showroomId }),
     buildLeadWorklist({ showroomId }),
-    buildRegistrationWorklist({ showroomId }),
-    buildSparesWorklist({ showroomId, ownerShowroomIds }),
-    buildReceivablesWorklist({ showroomId, ownerShowroomIds }),
-    buildInventoryWorklist({ showroomId, ownerShowroomIds }),
+    buildRegistrationWorklist({ showroomId, policy }),
+    buildSparesWorklist({ showroomId, ownerShowroomIds, policy }),
+    buildReceivablesWorklist({ showroomId, ownerShowroomIds, policy }),
+    buildInventoryWorklist({ showroomId, ownerShowroomIds, policy }),
   ]);
 
   const out: Observed[] = [];
@@ -180,8 +185,15 @@ export async function detectStateChanges(
 ): Promise<DetectResult> {
   const startedAt = Date.now();
 
+  // The dealership's own numbers, loaded once for all seven projections. An
+  // event is the classifier's answer moving, and since OBJ-18 the classifier
+  // turns on thresholds this owner set — so the detector has to be reading the
+  // same ones the screen is, or the log would disagree with the screen it came
+  // from, which is the failure this whole module was built to avoid.
+  const policy = await loadPolicy(ownerId);
+
   const [observed, known] = await Promise.all([
-    observe(showroomId, ownerShowroomIds),
+    observe(showroomId, ownerShowroomIds, policy),
     currentStates(ownerId),
   ]);
 

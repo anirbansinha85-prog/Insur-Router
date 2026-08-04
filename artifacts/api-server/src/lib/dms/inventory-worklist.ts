@@ -37,6 +37,7 @@ import {
   showroomDmsAccountsTable,
 } from "@workspace/db";
 import { logger } from "../logger";
+import { policyForShowroom, type ResolvedPolicy } from "./policy";
 import { dmsVehicleStock } from "./client";
 import { toIsoDate } from "./hero-adapter";
 import type { DmsVehicleStock } from "./types";
@@ -216,12 +217,12 @@ export type InventoryState =
   | "FRESH"
   | "SOLD";
 
-/** Days on the floor before a unit is ageing rather than in stock. */
-const AGEING_DAYS = 60;
-/** Days before it is the sort of ageing an owner needs told about. */
-const AGEING_SEVERE_DAYS = 90;
-/** Days an allocation may sit uninvoiced before the unit is stuck rather than sold. */
-const STUCK_ALLOCATION_DAYS = 30;
+/* The dealership's, since OBJ-18. A group financing its floor at a lakh a
+ * month cares about day 45; one that owns its stock outright may not care until
+ * day 120, and neither is a product opinion. `lib/dms/policy.ts` holds them. */
+const AGEING_DAYS = "THRESHOLD.AGEING_DAYS";
+const AGEING_SEVERE_DAYS = "THRESHOLD.AGEING_SEVERE_DAYS";
+const STUCK_ALLOCATION_DAYS = "THRESHOLD.STUCK_ALLOCATION_DAYS";
 
 export interface MatchingEnquiry {
   enqId: string;
@@ -299,6 +300,9 @@ function inr(n: number): string {
 const LIVE_STAGES = new Set(["NEW", "CONTACTED", "QUOTED", "TEST_RIDE", "NEGOTIATION", "BOOKED"]);
 
 export interface InventoryWorklistOptions {
+  /** The dealership's numbers. Resolved from the outlet when absent — see
+   *  `policyForShowroom`, and note that it is never silently defaulted. */
+  policy?: ResolvedPolicy;
   showroomId: number;
   /** Every outlet this owner holds — the enquiry match reads all of them. */
   ownerShowroomIds: number[];
@@ -308,6 +312,7 @@ export interface InventoryWorklistOptions {
 export async function buildInventoryWorklist(
   opts: InventoryWorklistOptions,
 ): Promise<InventoryWorklistRow[]> {
+  const policy = opts.policy ?? (await policyForShowroom(opts.showroomId));
   const scope = opts.ownerShowroomIds.length > 0 ? opts.ownerShowroomIds : [opts.showroomId];
 
   const [units, enquiries] = await Promise.all([
@@ -385,6 +390,7 @@ export async function buildInventoryWorklist(
       v.offeredToEnqId,
       interestAccrued,
       showroomCode,
+      policy,
     );
 
     return {
@@ -435,6 +441,7 @@ function classify(
   offeredToEnqId: string | null,
   interestAccrued: number | null,
   showroomCode: string | null,
+  policy: ResolvedPolicy,
 ): { state: InventoryState; note: string | null; action: string | null } {
   if (status === "INVOICED") {
     return { state: "SOLD", note: null, action: null };
@@ -448,7 +455,11 @@ function classify(
   // An allocation nobody invoiced is its own failure and outranks ageing: the
   // unit is held out of stock *and* out of sales, and an ageing report filtered
   // on IN_STOCK cannot see it at all.
-  if (status === "ALLOCATED" && allocatedDays !== null && allocatedDays > STUCK_ALLOCATION_DAYS) {
+  if (
+    status === "ALLOCATED" &&
+    allocatedDays !== null &&
+    allocatedDays > policy.days(STUCK_ALLOCATION_DAYS)
+  ) {
     return {
       state: "STUCK_ALLOCATION",
       note: `Allocated ${allocatedDays} days ago and never invoiced. It is neither sellable nor sold.${cost}`,
@@ -456,14 +467,29 @@ function classify(
     };
   }
 
-  if (matches.length > 0 && ageDays >= AGEING_DAYS) {
-    if (offeredToEnqId) {
-      return {
-        state: "OFFERED",
-        note: `On the floor ${ageDays} days. Offered against ${offeredToEnqId}.${cost}`,
-        action: null,
-      };
-    }
+  /*
+   * Somebody has been shown this unit, and that is a fact about the unit.
+   *
+   * This used to be checked *inside* the ageing branch, so being offered was
+   * only ever reported as a side effect of the unit also being old enough to
+   * count as ageing. Raising the ageing threshold made it visible: two units
+   * somebody had been offered fell straight through to `AGEING_SEVERE`, whose
+   * note reads *"nobody has asked for it"* — a plainly false claim about a unit
+   * a salesman had shown to a named customer.
+   *
+   * Same rule as the registration classifier learned in OBJ-4: **derived state
+   * describes a cause, not a consequence.** Being offered is a cause. Ageing is
+   * a separate axis, and the ageing figure travels on the row either way.
+   */
+  if (offeredToEnqId) {
+    return {
+      state: "OFFERED",
+      note: `On the floor ${ageDays} days. Offered against ${offeredToEnqId}.${cost}`,
+      action: null,
+    };
+  }
+
+  if (matches.length > 0 && ageDays >= policy.days(AGEING_DAYS)) {
     const first = matches[0]!;
     const where = first.otherOutlet
       ? ` — at ${first.showroomCode ?? "another outlet"}, not ${showroomCode ?? "this one"}`
@@ -477,7 +503,7 @@ function classify(
     };
   }
 
-  if (ageDays >= AGEING_SEVERE_DAYS) {
+  if (ageDays >= policy.days(AGEING_SEVERE_DAYS)) {
     return {
       state: "AGEING_SEVERE",
       note: `On the floor ${ageDays} days and nobody has asked for it.${cost}`,
@@ -485,7 +511,7 @@ function classify(
     };
   }
 
-  if (ageDays >= AGEING_DAYS) {
+  if (ageDays >= policy.days(AGEING_DAYS)) {
     return {
       state: "AGEING",
       note: `On the floor ${ageDays} days.${cost}`,

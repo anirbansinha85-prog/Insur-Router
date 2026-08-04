@@ -1261,6 +1261,62 @@ export const GetDmsQueueResponse = zod.object({
 
 
 /**
+ * What comes first on the queue, and when a classifier decides something has gone wrong. Both were the product's opinion until OBJ-18, and neither is a product question: whether a stuck registration outranks a broken payment promise depends on whether this group's RTO agent is snowed under or its cash position is tight.
+ * The key set is closed. A dealership may change what the numbers are and can never change what the product does with them, which is the difference between configuration and a rule builder — and eighty numbers in a table cannot become an automation layer nobody can predict.
+ * Readable by anybody signed in, because the numbers explain what is on their screen. `isDefault` says whether anybody has moved it.
+ * @summary The dealership's own numbers
+ */
+export const GetDmsPolicyResponse = zod.object({
+  "settings": zod.array(zod.object({
+  "key": zod.string().describe('`SEVERITY.MODULE.STATE` for what comes first, or `THRESHOLD.NAME` for when something has gone wrong.\n'),
+  "group": zod.enum(['SEVERITY', 'THRESHOLD']),
+  "section": zod.string().describe('The screen this belongs to, for grouping.'),
+  "label": zod.string(),
+  "help": zod.string().describe('One sentence. What changing it actually does.'),
+  "value": zod.number().int(),
+  "default": zod.number().int(),
+  "isDefault": zod.boolean().describe('False once somebody in this dealership has moved it.'),
+  "min": zod.number().int(),
+  "max": zod.number().int(),
+  "unit": zod.enum(['rank', 'days'])
+}))
+})
+
+
+/**
+ * Owner or showroom manager only — the two roles whose judgement covers the whole dealership rather than one part of it. Enforced by the row policies as well as here.
+ * `value: null` resets: it deletes the row rather than writing today's default, so a dealership that resets keeps following the product's default afterwards rather than freezing on whatever it was.
+ * The change lands in the decision log with the previous value and a person's name against it.
+ * @summary Set one number, or reset it to the product's default
+ */
+export const SetDmsPolicyBody = zod.object({
+  "key": zod.string(),
+  "value": zod.number().int().nullable().describe('Null resets this setting to the product\'s default.'),
+  "showroomId": zod.number().int().describe('Which outlet the change is logged against.')
+})
+
+export const SetDmsPolicyResponse = zod.object({
+  "ok": zod.boolean(),
+  "key": zod.string(),
+  "value": zod.number().int(),
+  "previous": zod.number().int(),
+  "isDefault": zod.boolean()
+})
+
+
+/**
+ * @summary Put every number back to the product's default
+ */
+export const ResetDmsPolicyBody = zod.object({
+  "showroomId": zod.number().int()
+})
+
+export const ResetDmsPolicyResponse = zod.object({
+  "cleared": zod.number().int().describe('How many settings were being overridden.')
+})
+
+
+/**
  * The whole rule set. One ordered list, in code, capped — no rule builder and no per-dealership flows, because the failure mode being designed against is eighty active flows on one object and an automation layer nobody can predict, and DDMS's customer has no administrator to untangle one.
  * Every rule fires on a record *being in a state* rather than on the transition into it, so a missed scheduler pass loses nothing and the cadence falls out of the same query. Leaving that state is the goal condition: a chase stops because the record moved, not because somebody remembered to stop it.
  * A rule drafts and presses send; `authoriseSend()` decides what happens next, and refuses every customer-facing message without a person. Read-only — changing the set is a deployment.

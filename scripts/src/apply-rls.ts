@@ -60,6 +60,7 @@ const SCOPED_TABLES = [
   "decision_log",
   "record_events",
   "outbound_messages",
+  "dealer_policy",
   "showrooms",
   "owners",
 ];

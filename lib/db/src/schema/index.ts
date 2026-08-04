@@ -11,6 +11,7 @@ export * from "./dms_vehicle_stock";
 export * from "./entities";
 export * from "./decision_log";
 export * from "./record_events";
+export * from "./dealer_policy";
 export * from "./outbound_messages";
 export * from "./providers";
 export * from "./insurer_panel";

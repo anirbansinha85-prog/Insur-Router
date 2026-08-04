@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter"
 import {
   Users, ListChecks, Wrench, LayoutDashboard, ShieldCheck, Bell,
-  ExternalLink, LogOut, IdCard, Boxes, Send, Wallet, Bike, ListTodo,
+  ExternalLink, LogOut, IdCard, Boxes, Send, Wallet, Bike, ListTodo, SlidersHorizontal,
 } from "lucide-react"
 import type { SessionUser } from "@workspace/api-client-react"
 import { cn } from "@/lib/utils"
@@ -75,6 +75,12 @@ const GROUPS: NavGroup[] = [
     // tucked under After sales.
     label: "Outbound",
     items: [{ href: "/outbox", label: "Outbox", icon: Send, module: "OUTBOX" }],
+  },
+  {
+    // No module gate: the numbers explain every other screen, so everybody may
+    // read them. Whether they may be *changed* is the row policies' answer.
+    label: "The dealership",
+    items: [{ href: "/numbers", label: "Your numbers", icon: SlidersHorizontal }],
   },
 ]
 

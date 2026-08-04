@@ -201,7 +201,7 @@ pnpm run typecheck:libs                         # before checking leaf packages
 
 ## Data model
 
-Twenty-four tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
+Twenty-five tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
 which of them `ddms_app` may read, and on what terms, is in `lib/db/sql/rls.sql`.
 
 **The owner tier** — who the data belongs to:
@@ -459,6 +459,45 @@ the screen it came from is worse than no event stream.
 > at the other. Keyed on the part number alone, the two outlets overwrote each
 > other and the log flapped between the two states on every pass, for ever. Any
 > key on a record has to be the key that record actually has.
+
+## The dealership's own numbers
+
+Two things decided how a short-staffed dealership spent its day and both were
+ours until OBJ-18: the severity table that orders the queue, and the thresholds
+each classifier turns on. Neither is a product question — whether a stuck
+registration outranks a broken payment promise depends on this group's RTO agent
+and this group's cash position.
+
+`lib/dms/policy.ts` is the **closed registry**: every key that may exist, with a
+default, a range and a sentence saying what it does. A key not there is rejected
+on write and ignored on read, so a dealership may change *what the numbers are*
+and can never change *what the product does with them*. That is the R-52 line —
+eighty numbers in a table cannot become an automation layer nobody can predict;
+eighty flows can.
+
+`dealer_policy` is **sparse on purpose**: a row exists only where somebody set
+something, so reset is a delete. Writing today's default into the table would
+freeze that dealership on it when the product later improves its own.
+
+Read by anybody signed in — the numbers explain what is on their screen — and
+written only by `OWNER` or `MANAGER`, enforced by `seesEveryOutlet` in the route
+*and* by `app.current_role() in ('OWNER','MANAGER')` in the row policy. Changes
+go through the decision log with the previous value.
+
+The seven builders take an optional `policy` and resolve it from the outlet when
+absent, via `policyForShowroom`. **Never silently defaulted**: a builder quietly
+using the product's numbers because nobody passed a policy would be a
+dealership's settings not applying on one screen, which nothing would report.
+Callers doing a full pass — the queue, the detector, the rules — load once and
+pass it down, so the screen, the event log and the automation all read the same
+numbers.
+
+> **Changing a threshold found a classifier bug, and will again.** With *ageing
+> after* raised to 300 days, two units somebody had been offered came back as
+> `AGEING_SEVERE` — whose note reads *"nobody has asked for it"*. `OFFERED` was
+> only checked inside the ageing branch. Derived state describes a cause, not a
+> consequence: being offered is a cause, ageing is a separate axis. Moving a
+> threshold a long way is a cheap way to find more of these.
 
 ## Rules that run themselves
 
@@ -936,6 +975,7 @@ assignment (`VAR=x cmd`) and depends on `$REPLIT_EXPO_DEV_DOMAIN`,
 ### Frontend pages
 
 DDMS (`artifacts/ddms/src/pages/`): `Queue` (`/`), `Leads` (`/enquiries`), `Worklist` (`/worklist`),
+`Numbers` (`/numbers`),
 `Registrations` (`/registrations`), `ServiceWorklist` (`/service`),
 `Spares` (`/spares`), `Receivables` (`/receivables`), `Inventory`
 (`/inventory`), `Outbox` (`/outbox`), `Dossier` (`/who/:entityId`,

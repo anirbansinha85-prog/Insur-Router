@@ -436,6 +436,37 @@ create policy outbound_messages_own on public.outbound_messages
   using (owner_id = app.current_owner_id())
   with check (owner_id = app.current_owner_id());
 
+/*
+ * The dealership's own numbers.
+ *
+ * Read by anybody in the group — the numbers explain what is on their screen,
+ * and hiding them would make the queue's order look arbitrary. Written only by
+ * an owner or a showroom manager, which is the same pair `seesEveryOutlet`
+ * names in the route: the two roles whose judgement covers the whole
+ * dealership rather than one part of it.
+ *
+ * Two policies rather than one, for the same reason `providers` has two:
+ * permissive policies OR together, so select passes on the first and the write
+ * verbs can only pass on the second.
+ */
+drop policy if exists dealer_policy_read on public.dealer_policy;
+create policy dealer_policy_read on public.dealer_policy
+  for select to ddms_app
+  using (owner_id = app.current_owner_id());
+
+drop policy if exists dealer_policy_write on public.dealer_policy;
+create policy dealer_policy_write on public.dealer_policy
+  for all to ddms_app
+  using (owner_id = app.current_owner_id() and app.current_role() in ('OWNER', 'MANAGER'))
+  with check (owner_id = app.current_owner_id() and app.current_role() in ('OWNER', 'MANAGER'));
+
+-- The scheduler reads them too: the detector and the rules classify on the
+-- dealership's thresholds, and a log that disagreed with the screen it came
+-- from would be worse than no log. Read-only — nothing unattended sets policy.
+drop policy if exists dealer_policy_worker on public.dealer_policy;
+create policy dealer_policy_worker on public.dealer_policy
+  for select to ddms_worker using (true);
+
 drop policy if exists insurer_panel_own on public.insurer_panel_entries;
 create policy insurer_panel_own on public.insurer_panel_entries
   for select to ddms_app
@@ -710,6 +741,11 @@ grant select, insert, update on
   public.submission_logs
 to ddms_app;
 
+-- Delete included, and only here: resetting a number to the product's default
+-- removes the row rather than writing the default down, so that a later change
+-- to our default actually reaches a dealership that never had an opinion.
+grant select, insert, update, delete on public.dealer_policy to ddms_app;
+
 -- `serial` columns draw from a sequence, and a role that may insert but may not
 -- touch the sequence gets "permission denied for sequence" on every insert.
 /*
@@ -786,6 +822,7 @@ grant select on public.applications, public.policies to ddms_worker;
 -- it. What a draft may *do* is still `authoriseSend()`'s to decide.
 grant select, insert, update on public.outbound_messages to ddms_worker;
 grant select, insert on public.decision_log to ddms_worker;
+grant select on public.dealer_policy to ddms_worker;
 
 -- Same reason as `ddms_app`: the entity graph is rebuilt wholesale rather than
 -- reconciled, so these two are the only tables the worker may delete from.

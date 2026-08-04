@@ -37,6 +37,7 @@ import {
   showroomDmsAccountsTable,
 } from "@workspace/db";
 import { logger } from "../logger";
+import { policyForShowroom, type ResolvedPolicy } from "./policy";
 import { dmsRegistrations, fetchRegnFile } from "./client";
 import { toIsoDate, toAmount } from "./hero-adapter";
 import type { DmsRegnFile } from "./types";
@@ -275,12 +276,15 @@ export type RegistrationState =
   | "ON_TRACK"
   | "CLOSED";
 
-/** Days a temporary registration may have left before it counts as urgent. */
-const TR_WARNING_DAYS = 7;
-/** Working days a lodged file may sit at the RTO before it is worth asking. */
-const RTO_QUIET_DAYS = 10;
-/** How recently a chase counts as still being handled. */
-const CHASE_FRESH_DAYS = 7;
+/*
+ * The three numbers this classifier turns on used to be constants here. They
+ * are the dealership's since OBJ-18 — how long an RTO may go quiet before it is
+ * worth asking depends on which RTO, and we do not know which. The defaults are
+ * unchanged and live in `lib/dms/policy.ts`.
+ */
+const TR_WARNING_DAYS = "THRESHOLD.TR_WARNING_DAYS";
+const RTO_QUIET_DAYS = "THRESHOLD.RTO_QUIET_DAYS";
+const CHASE_FRESH_DAYS = "THRESHOLD.REGISTRATION_CHASE_FRESH_DAYS";
 
 export interface RegistrationWorklistRow {
   regnFileNo: string;
@@ -370,14 +374,14 @@ interface ClassifyInput {
  * number exists the temporary one is irrelevant and saying it has lapsed would
  * be alarming and wrong.
  */
-function tempRegWarning(i: ClassifyInput): string | null {
+function tempRegWarning(i: ClassifyInput, policy: ResolvedPolicy): string | null {
   if (i.status === "REGISTERED" || i.status === "RC_RECEIVED" || i.status === "RC_DELIVERED") return null;
   if (i.tempRegDaysLeft === null) return null;
 
   if (i.tempRegDaysLeft < 0) {
     return `The temporary registration lapsed ${plural(-i.tempRegDaysLeft, "day")} ago, so the vehicle is on the road unregistered.`;
   }
-  if (i.tempRegDaysLeft <= TR_WARNING_DAYS) {
+  if (i.tempRegDaysLeft <= policy.days(TR_WARNING_DAYS)) {
     return `The temporary registration expires in ${plural(i.tempRegDaysLeft, "day")}.`;
   }
   return null;
@@ -385,8 +389,9 @@ function tempRegWarning(i: ClassifyInput): string | null {
 
 function classify(
   i: ClassifyInput,
+  policy: ResolvedPolicy,
 ): { state: RegistrationState; note: string | null; action: string | null } {
-  const warning = tempRegWarning(i);
+  const warning = tempRegWarning(i, policy);
   const withWarning = (note: string | null) =>
     warning ? (note ? `${warning} ${note}` : warning) : note;
 
@@ -455,13 +460,17 @@ function classify(
         );
   }
 
-  if (i.status === "SUBMITTED" && i.daysSinceSubmitted !== null && i.daysSinceSubmitted > RTO_QUIET_DAYS) {
+  if (
+    i.status === "SUBMITTED" &&
+    i.daysSinceSubmitted !== null &&
+    i.daysSinceSubmitted > policy.days(RTO_QUIET_DAYS)
+  ) {
     // Recency, not presence. A file lodged three weeks ago and chased yesterday
     // is being handled; the same file chased once, a fortnight back, is not.
     const chasedDaysAgo =
       i.rtoChasedAt === null ? null : wholeDaysBetween(i.rtoChasedAt, i.now);
 
-    if (chasedDaysAgo !== null && chasedDaysAgo <= CHASE_FRESH_DAYS) {
+    if (chasedDaysAgo !== null && chasedDaysAgo <= policy.days(CHASE_FRESH_DAYS)) {
       return out(
         "ON_TRACK",
         `At the RTO ${plural(i.daysSinceSubmitted, "day")}, chased ${plural(chasedDaysAgo, "day")} ago.`,
@@ -494,6 +503,9 @@ function classify(
 }
 
 export interface RegistrationWorklistOptions {
+  /** The dealership's numbers. Resolved from the outlet when absent — see
+   *  `policyForShowroom`, and note that it is never silently defaulted. */
+  policy?: ResolvedPolicy;
   showroomId: number;
   status?: string;
   includeDisappeared?: boolean;
@@ -502,6 +514,7 @@ export interface RegistrationWorklistOptions {
 export async function buildRegistrationWorklist(
   opts: RegistrationWorklistOptions,
 ): Promise<RegistrationWorklistRow[]> {
+  const policy = opts.policy ?? (await policyForShowroom(opts.showroomId));
   const rows = await db
     .select({ f: dmsRegistrationsTable, showroomCode: showroomsTable.code })
     .from(dmsRegistrationsTable)
@@ -555,7 +568,7 @@ export async function buildRegistrationWorklist(
       customerNotifiedAt: f.customerNotifiedAt,
       rtoChasedAt: f.rtoChasedAt,
       now,
-    });
+    }, policy);
 
     return {
       regnFileNo: f.regnFileNo,
