@@ -66,7 +66,7 @@ export const outboundMessagesTable = pgTable(
 
     /** Which worklist row this is about. Same vocabulary as `decision_log`. */
     module: text("module", {
-      enum: ["DEAL", "JOB_CARD", "ENQUIRY", "REGISTRATION", "PART"],
+      enum: ["DEAL", "JOB_CARD", "ENQUIRY", "REGISTRATION", "PART", "RECEIVABLE", "VEHICLE"],
     }).notNull(),
     recordKey: text("record_key").notNull(),
 

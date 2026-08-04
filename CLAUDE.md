@@ -118,7 +118,7 @@ artifacts/            deployable apps
   api-server/         Express 5 API — the only backend
     src/routes/       health, providers, applications, dashboard, dms, ingest
     src/lib/          api-executor.ts, browser-executor.ts, auth.ts, logger.ts
-    src/lib/dms/      client, adapters, mirror sync, five worklists, the
+    src/lib/dms/      client, adapters, mirror sync, seven worklists, the
                       entity graph, actions, composer, the approval gate,
                       the explain tools, insurer panel, scheduler
   insur-router/       React 19 + Vite — InsurRouter frontend
@@ -149,7 +149,7 @@ pnpm run typecheck:libs                         # before checking leaf packages
 
 ## Data model
 
-Twenty-two tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
+Twenty-four tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
 which of them `ddms_app` may read, and on what terms, is in `lib/db/sql/rls.sql`.
 
 **The owner tier** — who the data belongs to:
@@ -181,8 +181,18 @@ which of them `ddms_app` may read, and on what terms, is in `lib/db/sql/rls.sql`
   `(dealerCode, partNo)` unlike the rest: stock is physically at an outlet, not
   at a dealer code, and one showroom may carry two brands' codes over one set
   of shelves.
+- **dms_receivables** — what each outlet is owed. `partyCode` is the field
+  the module exists for: it is stable across outlets, so the projection can ask
+  what one insurer owes the *group*. Matching on names would work until
+  somebody typed "ICICI Lombard Gen. Ins." and the exposure quietly halved.
+- **dms_vehicle_stock** — the floor. `receivedDate` with `costAmount` and
+  `interestRatePct` is the whole ageing question and no screen in the dealer's
+  system puts the three together. Money here is `numeric`, not the `real` the
+  older `dms_part_stock` uses — float4 carries about seven significant digits,
+  which a fleet invoice already exceeds.
 - **entities** + **entity_links** — one person, one vehicle, one member of
-  staff, resolved across all five mirrors. **Owner-scoped, not showroom-scoped**:
+  staff, resolved across the five mirrors that carry a person. **Owner-scoped,
+  not showroom-scoped**:
   a customer who buys at one outlet and services at another is one row, and
   saying so is the point. The two are rebuilt *differently* — links wholesale,
   entities upserted — because an entity id is addressable (it is in a URL) and
@@ -205,6 +215,13 @@ which of them `ddms_app` may read, and on what terms, is in `lib/db/sql/rls.sql`
   turnaround, integration surface. Hangs off the *DMS account*, not the
   showroom. `route` is deliberately absent — it is the account's
   `insuranceChannel`, and storing it twice would let the two disagree.
+
+**Three queries deliberately span outlets**, and each is the product's premise
+rather than a convenience. Spares asks whether the part a customer is waiting
+for is on a shelf in another branch. Receivables asks what one party owes the
+group. The vehicle floor matches standing stock against open enquiries at *any*
+outlet. All three take the scope from `req.sessionUser.ownerId`, never from the
+request, and RLS is the backstop.
 
 Every mirror table carries **mirror fields** (pulled, never written back) and
 **decision fields** (what we concluded, and what is still outstanding). A
@@ -234,6 +251,8 @@ decides what may be done about it, and both are knowable, so both are rules.
 | Service | call · mark customer told |
 | Registration | assign an RTO agent · mark customer told · log a chase |
 | Spares | request a transfer from the branch that has it · mark reorder raised |
+| Receivables | log a chase · mark disputed · draft a statement of account |
+| Vehicle stock | mark offered against an enquiry · propose a transfer to the outlet that wants it |
 
 One endpoint, `POST /api/dms/actions`, because they all do the same thing:
 write a decision field that already changes a derived state, and log who did it.
@@ -690,7 +709,8 @@ assignment (`VAR=x cmd`) and depends on `$REPLIT_EXPO_DEV_DOMAIN`,
 
 DDMS (`artifacts/ddms/src/pages/`): `Leads` (`/`), `Worklist` (`/worklist`),
 `Registrations` (`/registrations`), `ServiceWorklist` (`/service`),
-`Spares` (`/spares`), `Outbox` (`/outbox`), `Dossier` (`/who/:entityId`,
+`Spares` (`/spares`), `Receivables` (`/receivables`), `Inventory`
+(`/inventory`), `Outbox` (`/outbox`), `Dossier` (`/who/:entityId`,
 reached from the header search rather than the sidebar). The explain panel is
 not a page — it is a control on every worklist row, in `src/lib/explain.tsx`.
 

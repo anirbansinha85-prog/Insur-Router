@@ -267,6 +267,31 @@ function deterministicAnswer(evidence: Evidence[]): string[] {
     }
   }
 
+  // Receivables and the floor. Both carry a figure the row itself does not
+  // show, and both are the reason the tool reads across outlets.
+  for (const c of by("what_the_clock_says")) {
+    const clock = s(c.clock);
+    if (clock === "what this party owes the group") {
+      const outlets = Array.isArray(c.outlets) ? c.outlets : [];
+      out.push(
+        `Across the group this party owes ₹${Math.round(n(c.totalBalance) ?? 0).toLocaleString("en-IN")}, ` +
+          `spread over ${plural(outlets.length, "outlet")} — a figure neither branch's own ledger can produce.`,
+      );
+    } else if (clock === "floor-plan interest") {
+      out.push(
+        `The floor-plan line charges ₹${(n(c.perDay) ?? 0).toLocaleString("en-IN")} a day on this unit; ` +
+          `₹${(n(c.accruedSoFar) ?? 0).toLocaleString("en-IN")} so far, and another week costs ` +
+          `₹${(n(c.anotherWeekCosts) ?? 0).toLocaleString("en-IN")}.`,
+      );
+    } else if (clock === "somebody asking for this model") {
+      out.push(
+        `${s(c.customer) ?? s(c.enquiry)} is asking for this model — enquiry ${s(c.enquiry)}, ` +
+          `${String(s(c.stage)).replace(/_/g, " ").toLowerCase()}` +
+          (c.atAnotherOutlet ? `, at ${s(c.outlet)} rather than here.` : "."),
+      );
+    }
+  }
+
   // What has already been done — and the absence is the answer more often.
   const done = by("what_we_have_done");
   if (done.length === 0) {

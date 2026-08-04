@@ -738,13 +738,15 @@ export const GetRegistrationWorklistResponse = zod.object({
  * @summary Record a decision against a mirrored record
  */
 export const ApplyDmsActionBody = zod.object({
-  "action": zod.enum(['ENQUIRY_LOG_CONTACT', 'ENQUIRY_REASSIGN', 'JOB_CARD_MARK_INFORMED', 'REGISTRATION_ASSIGN_AGENT', 'REGISTRATION_MARK_NOTIFIED', 'REGISTRATION_LOG_CHASE', 'PART_REQUEST_TRANSFER', 'PART_RAISE_REORDER']),
+  "action": zod.enum(['ENQUIRY_LOG_CONTACT', 'ENQUIRY_REASSIGN', 'JOB_CARD_MARK_INFORMED', 'REGISTRATION_ASSIGN_AGENT', 'REGISTRATION_MARK_NOTIFIED', 'REGISTRATION_LOG_CHASE', 'PART_REQUEST_TRANSFER', 'PART_RAISE_REORDER', 'RECEIVABLE_LOG_CHASE', 'RECEIVABLE_MARK_DISPUTED', 'VEHICLE_MARK_OFFERED', 'VEHICLE_PROPOSE_TRANSFER']),
   "showroomId": zod.number().int(),
   "recordKey": zod.string().describe('The mirror row\'s own key — enqId, jcNo, regnFileNo, partNo.'),
   "clear": zod.boolean().optional().describe('Undo rather than do. Supported by every action.'),
   "empCode": zod.string().optional().describe('Required by the two assignment actions. Must be somebody still employed.'),
   "channel": zod.enum(['CALL', 'WHATSAPP', 'SMS', 'EMAIL', 'VISIT']).optional().describe('ENQUIRY_LOG_CONTACT only. Defaults to CALL.'),
   "fromShowroomId": zod.number().int().optional().describe('PART_REQUEST_TRANSFER only — which outlet is sending it. Must be the same owner\'s.'),
+  "enqId": zod.string().optional().describe('VEHICLE_MARK_OFFERED only — the enquiry the unit was offered against.'),
+  "toShowroomId": zod.number().int().optional().describe('VEHICLE_PROPOSE_TRANSFER only — which outlet should receive it. Must be the same owner\'s.'),
   "note": zod.string().optional()
 })
 
@@ -760,7 +762,7 @@ export const ApplyDmsActionResponse = zod.object({
  * @summary Compose a message against a worklist row
  */
 export const DraftDmsMessageBody = zod.object({
-  "template": zod.enum(['SERVICE_VEHICLE_READY', 'REGISTRATION_RC_READY', 'REGISTRATION_AGENT_ASSIGNED', 'LEAD_HANDOVER']).describe('Two customer messages and two internal ones. The internal pair require the record to have been assigned first, which is what makes them a notification rather than a broadcast.\n'),
+  "template": zod.enum(['SERVICE_VEHICLE_READY', 'REGISTRATION_RC_READY', 'REGISTRATION_AGENT_ASSIGNED', 'LEAD_HANDOVER', 'RECEIVABLE_STATEMENT']).describe('Two customer messages and two internal ones. The internal pair require the record to have been assigned first, which is what makes them a notification rather than a broadcast.\n'),
   "showroomId": zod.number().int(),
   "recordKey": zod.string().describe('The mirror row\'s own key — jcNo, regnFileNo, enqId.')
 })
@@ -770,7 +772,7 @@ export const DraftDmsMessageResponse = zod.object({
   "id": zod.number().int(),
   "ownerId": zod.number().int(),
   "showroomId": zod.number().int(),
-  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART']),
+  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART', 'RECEIVABLE', 'VEHICLE']),
   "recordKey": zod.string(),
   "audience": zod.enum(['INTERNAL', 'CUSTOMER']).describe('The axis the whole gate turns on. A rule may permit an internal message. Nothing permits a customer one except a person.\n'),
   "channel": zod.enum(['EMAIL', 'WHATSAPP', 'SMS']),
@@ -819,7 +821,7 @@ export const ListDmsMessagesResponse = zod.object({
   "id": zod.number().int(),
   "ownerId": zod.number().int(),
   "showroomId": zod.number().int(),
-  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART']),
+  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART', 'RECEIVABLE', 'VEHICLE']),
   "recordKey": zod.string(),
   "audience": zod.enum(['INTERNAL', 'CUSTOMER']).describe('The axis the whole gate turns on. A rule may permit an internal message. Nothing permits a customer one except a person.\n'),
   "channel": zod.enum(['EMAIL', 'WHATSAPP', 'SMS']),
@@ -877,7 +879,7 @@ export const ApproveDmsMessageResponse = zod.object({
   "id": zod.number().int(),
   "ownerId": zod.number().int(),
   "showroomId": zod.number().int(),
-  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART']),
+  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART', 'RECEIVABLE', 'VEHICLE']),
   "recordKey": zod.string(),
   "audience": zod.enum(['INTERNAL', 'CUSTOMER']).describe('The axis the whole gate turns on. A rule may permit an internal message. Nothing permits a customer one except a person.\n'),
   "channel": zod.enum(['EMAIL', 'WHATSAPP', 'SMS']),
@@ -926,7 +928,7 @@ export const CancelDmsMessageResponse = zod.object({
   "id": zod.number().int(),
   "ownerId": zod.number().int(),
   "showroomId": zod.number().int(),
-  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART']),
+  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART', 'RECEIVABLE', 'VEHICLE']),
   "recordKey": zod.string(),
   "audience": zod.enum(['INTERNAL', 'CUSTOMER']).describe('The axis the whole gate turns on. A rule may permit an internal message. Nothing permits a customer one except a person.\n'),
   "channel": zod.enum(['EMAIL', 'WHATSAPP', 'SMS']),
@@ -966,7 +968,7 @@ export const SendDmsMessageResponse = zod.object({
   "id": zod.number().int(),
   "ownerId": zod.number().int(),
   "showroomId": zod.number().int(),
-  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART']),
+  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART', 'RECEIVABLE', 'VEHICLE']),
   "recordKey": zod.string(),
   "audience": zod.enum(['INTERNAL', 'CUSTOMER']).describe('The axis the whole gate turns on. A rule may permit an internal message. Nothing permits a customer one except a person.\n'),
   "channel": zod.enum(['EMAIL', 'WHATSAPP', 'SMS']),
@@ -998,13 +1000,13 @@ export const SendDmsMessageResponse = zod.object({
  * @summary Why is this stuck, who else is affected, what happens if it waits
  */
 export const ExplainDmsRecordBody = zod.object({
-  "module": zod.enum(['JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART']),
+  "module": zod.enum(['JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART', 'RECEIVABLE', 'VEHICLE']),
   "showroomId": zod.number().int(),
   "recordKey": zod.string().describe('The mirror row\'s own key — jcNo, enqId, regnFileNo, partNo.')
 })
 
 export const ExplainDmsRecordResponse = zod.object({
-  "module": zod.enum(['JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART']),
+  "module": zod.enum(['JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART', 'RECEIVABLE', 'VEHICLE']),
   "recordKey": zod.string(),
   "state": zod.string().nullish().describe('The module\'s own classification, carried through untouched.'),
   "summary": zod.string().nullish().describe('A model\'s reading of the findings, present only when it passed the citation check. The panel is complete without it.\n'),
@@ -1015,6 +1017,152 @@ export const ExplainDmsRecordResponse = zod.object({
   "rows": zod.array(zod.record(zod.string(), zod.unknown()))
 }).describe('One tool call and the rows it returned. This is the citation.')),
   "narrationRejected": zod.string().nullish().describe('Why a model\'s wording was refused, when one was.')
+})
+
+
+/**
+ * Rows are scoped to the outlet on screen. `groupExposure` is not — it is computed across every outlet the session's owner holds, and it is present only when a party owes at more than one of them.
+ * That figure is the module's reason for existing. A DMS keys the ledger to a dealer code, so an owner with two outlets gets two ageing reports and no way to ask what one insurer owes the group.
+ * @summary What the dealership is owed, with the group's exposure attached
+ */
+export const GetReceivablesWorklistQueryParams = zod.object({
+  "showroomId": zod.coerce.number().int()
+})
+
+export const GetReceivablesWorklistResponse = zod.object({
+  "summary": zod.object({
+  "total": zod.number().int(),
+  "byState": zod.record(zod.string(), zod.number().int()),
+  "needsAction": zod.number().int(),
+  "outstanding": zod.number(),
+  "overdue": zod.number().describe('Outstanding and past its due date. The number that should be zero.'),
+  "worstDaysOverdue": zod.number().int(),
+  "largestGroupExposure": zod.object({
+  "partyName": zod.string().optional(),
+  "totalBalance": zod.number().optional(),
+  "outletCount": zod.number().int().optional()
+}).nullish().describe('Null when no party owes at more than one outlet, in which case the figure would be a branch number wearing a group label.\n'),
+  "lastSyncedAt": zod.string().nullish()
+}),
+  "rows": zod.array(zod.object({
+  "receivableId": zod.string(),
+  "dealerCode": zod.string().optional(),
+  "showroomId": zod.number().int(),
+  "showroomCode": zod.string().nullish(),
+  "partyType": zod.string(),
+  "partyCode": zod.string(),
+  "partyName": zod.string(),
+  "partyEmail": zod.string().nullish().describe('Null for a walk-in customer, and that is why a statement cannot always go.'),
+  "dms": zod.object({
+  "invoiceNo": zod.string(),
+  "invoiceDate": zod.string().nullish(),
+  "invoiceAmount": zod.number().nullish(),
+  "receivedAmount": zod.number().nullish(),
+  "dueDate": zod.string().nullish(),
+  "againstType": zod.string().nullish(),
+  "againstKey": zod.string().nullish(),
+  "narration": zod.string().nullish(),
+  "status": zod.string(),
+  "lastReceiptDate": zod.string().nullish(),
+  "promisedDate": zod.string().nullish()
+}),
+  "ddms": zod.object({
+  "chasedAt": zod.string().nullish(),
+  "disputedAt": zod.string().nullish(),
+  "disputeNote": zod.string().nullish()
+}),
+  "state": zod.enum(['DISPUTED', 'PROMISE_BROKEN', 'UNCHASED', 'BEING_CHASED', 'DUE_SOON', 'CURRENT', 'SETTLED']).describe('Causes, not consequences. Ageing lives on the row as `daysOverdue` because a bill is not overdue \*because\* it is old — it is old because nobody chased it, they broke a promise, or it is disputed, and those need different people to do different things.\n'),
+  "note": zod.string().nullish(),
+  "actionRequired": zod.string().nullish(),
+  "balance": zod.number(),
+  "daysOverdue": zod.number().int(),
+  "ageDays": zod.number().int(),
+  "groupExposure": zod.union([zod.object({
+  "partyCode": zod.string(),
+  "partyName": zod.string(),
+  "outlets": zod.array(zod.object({
+  "showroomId": zod.number().int(),
+  "showroomCode": zod.string().nullish(),
+  "balance": zod.number(),
+  "open": zod.number().int()
+})),
+  "totalBalance": zod.number(),
+  "outletCount": zod.number().int()
+}).describe('What one party owes across every outlet the owner holds.'),zod.null()]).optional().describe('Present only when this party owes at more than one outlet.'),
+  "lastSyncedAt": zod.string(),
+  "disappearedFromDms": zod.boolean()
+}))
+})
+
+
+/**
+ * `matchingEnquiries` is the finding: an open enquiry, at any outlet the owner holds, for the exact model standing unsold on this floor. The stock screen cannot see the CRM and the CRM cannot see the floor, so both systems work correctly and the customer goes elsewhere.
+ * `interestPerDay` and `interestAccrued` are arithmetic over cost, rate and days on the floor. Nobody at a dealership disputes the sum; they have simply never seen it attached to a specific chassis.
+ * @summary The floor, aged — and matched against the people asking for it
+ */
+export const GetInventoryWorklistQueryParams = zod.object({
+  "showroomId": zod.coerce.number().int()
+})
+
+export const GetInventoryWorklistResponse = zod.object({
+  "summary": zod.object({
+  "total": zod.number().int(),
+  "byState": zod.record(zod.string(), zod.number().int()),
+  "needsAction": zod.number().int(),
+  "capitalTiedUp": zod.number(),
+  "interestAccrued": zod.number(),
+  "interestPerDay": zod.number().describe('What another day of doing nothing costs, across the floor.'),
+  "wanted": zod.number().int().describe('Units somebody is actively asking for. The one to lead with.'),
+  "oldestDays": zod.number().int(),
+  "lastSyncedAt": zod.string().nullish()
+}),
+  "rows": zod.array(zod.object({
+  "chassisNo": zod.string(),
+  "dealerCode": zod.string().optional(),
+  "showroomId": zod.number().int(),
+  "showroomCode": zod.string().nullish(),
+  "modelCode": zod.string(),
+  "modelDescription": zod.string().nullish(),
+  "variantDescription": zod.string().nullish(),
+  "colourDescription": zod.string().nullish(),
+  "dms": zod.object({
+  "engineNo": zod.string().nullish(),
+  "status": zod.string(),
+  "allocatedDealId": zod.string().nullish(),
+  "costAmount": zod.number().nullish(),
+  "isFinanced": zod.boolean(),
+  "interestRatePct": zod.number().nullish(),
+  "receivedDate": zod.string().nullish(),
+  "allocatedDate": zod.string().nullish(),
+  "invoicedDate": zod.string().nullish()
+}),
+  "ddms": zod.object({
+  "offeredToEnqId": zod.string().nullish(),
+  "offeredAt": zod.string().nullish(),
+  "transferProposedAt": zod.string().nullish(),
+  "transferToShowroomId": zod.number().int().nullish()
+}),
+  "state": zod.enum(['WANTED_NOW', 'STUCK_ALLOCATION', 'AGEING_SEVERE', 'AGEING', 'OFFERED', 'FRESH', 'SOLD']),
+  "note": zod.string().nullish(),
+  "actionRequired": zod.string().nullish(),
+  "ageDays": zod.number().int(),
+  "allocatedDays": zod.number().int().nullish(),
+  "interestPerDay": zod.number().nullish(),
+  "interestAccrued": zod.number().nullish(),
+  "matchingEnquiries": zod.array(zod.object({
+  "enqId": zod.string(),
+  "showroomId": zod.number().int(),
+  "showroomCode": zod.string().nullish(),
+  "customerName": zod.string().nullish(),
+  "customerMobile": zod.string().nullish(),
+  "stage": zod.string(),
+  "grade": zod.string().nullish(),
+  "enquiredAt": zod.string().nullish(),
+  "otherOutlet": zod.boolean().describe('True when the person asking is at a different outlet from the vehicle.')
+}).describe('An open enquiry for this exact model, at any outlet the owner holds.')),
+  "lastSyncedAt": zod.string(),
+  "disappearedFromDms": zod.boolean()
+}))
 })
 
 

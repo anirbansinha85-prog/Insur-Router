@@ -50,6 +50,7 @@ import { logger } from "../logger";
 import {
   draftAgentAssignment,
   draftLeadHandover,
+  draftStatementOfAccount,
   draftRcReady,
   draftVehicleReady,
   finishDraft,
@@ -57,6 +58,7 @@ import {
   type MessageChannel,
 } from "./composer";
 import { buildLeadWorklist } from "./lead-worklist";
+import { buildReceivablesWorklist } from "./receivables-worklist";
 import { buildRegistrationWorklist } from "./registration-worklist";
 import { buildServiceWorklist } from "./service-worklist";
 
@@ -64,13 +66,15 @@ export type TemplateId =
   | "SERVICE_VEHICLE_READY"
   | "REGISTRATION_RC_READY"
   | "REGISTRATION_AGENT_ASSIGNED"
-  | "LEAD_HANDOVER";
+  | "LEAD_HANDOVER"
+  | "RECEIVABLE_STATEMENT";
 
 export const TEMPLATE_IDS: ReadonlySet<string> = new Set<TemplateId>([
   "SERVICE_VEHICLE_READY",
   "REGISTRATION_RC_READY",
   "REGISTRATION_AGENT_ASSIGNED",
   "LEAD_HANDOVER",
+  "RECEIVABLE_STATEMENT",
 ]);
 
 // ── Transports ──────────────────────────────────────────────────────────────
@@ -252,6 +256,11 @@ export interface DraftInput {
   ownerId: number;
   userId: number;
   showroomId: number;
+  /**
+   * Every outlet this owner holds. Only the statement needs it, and it needs it
+   * for the one figure worth sending: what the party owes the *group*.
+   */
+  ownerShowroomIds: number[];
   template: TemplateId;
   recordKey: string;
 }
@@ -342,6 +351,25 @@ export async function createDraft(input: DraftInput): Promise<DraftResult> {
         break;
       }
       base = draftLeadHandover(row, emp.empName, emp.emailId, empCode, showroom.name);
+      break;
+    }
+
+    case "RECEIVABLE_STATEMENT": {
+      const rows = await buildReceivablesWorklist({
+        showroomId: input.showroomId,
+        ownerShowroomIds: input.ownerShowroomIds,
+      });
+      const row = rows.find((r) => r.receivableId === input.recordKey);
+      if (!row) return { ok: false, status: 404, error: `No receivable ${input.recordKey}` };
+      if (row.state === "SETTLED") {
+        refusal = `${row.dms.invoiceNo} is settled. Asking somebody to pay a bill they have paid is the one letter a dealership cannot take back.`;
+        break;
+      }
+      if (row.state === "DISPUTED") {
+        refusal = `${row.dms.invoiceNo} is marked disputed here. Resolve that before asking them to pay it.`;
+        break;
+      }
+      base = draftStatementOfAccount(row, showroom.name);
       break;
     }
 

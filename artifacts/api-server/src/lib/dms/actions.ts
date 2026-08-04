@@ -40,12 +40,20 @@ import {
   dmsEnquiriesTable,
   dmsJobCardsTable,
   dmsPartStockTable,
+  dmsReceivablesTable,
   dmsRegistrationsTable,
+  dmsVehicleStockTable,
   showroomsTable,
 } from "@workspace/db";
 import { logger } from "../logger";
 
-export type ActionModule = "JOB_CARD" | "ENQUIRY" | "REGISTRATION" | "PART";
+export type ActionModule =
+  | "JOB_CARD"
+  | "ENQUIRY"
+  | "REGISTRATION"
+  | "PART"
+  | "RECEIVABLE"
+  | "VEHICLE";
 
 export type ActionId =
   // Enquiries
@@ -59,7 +67,13 @@ export type ActionId =
   | "REGISTRATION_LOG_CHASE"
   // Spares
   | "PART_REQUEST_TRANSFER"
-  | "PART_RAISE_REORDER";
+  | "PART_RAISE_REORDER"
+  // Receivables
+  | "RECEIVABLE_LOG_CHASE"
+  | "RECEIVABLE_MARK_DISPUTED"
+  // The floor
+  | "VEHICLE_MARK_OFFERED"
+  | "VEHICLE_PROPOSE_TRANSFER";
 
 export interface ApplyActionInput {
   ownerId: number;
@@ -77,6 +91,10 @@ export interface ApplyActionInput {
   channel?: "CALL" | "WHATSAPP" | "SMS" | "EMAIL" | "VISIT";
   /** `PART_REQUEST_TRANSFER`: which outlet is sending it. */
   fromShowroomId?: number;
+  /** `VEHICLE_MARK_OFFERED`: the enquiry the unit was offered against. */
+  enqId?: string;
+  /** `VEHICLE_PROPOSE_TRANSFER`: which outlet should receive it. */
+  toShowroomId?: number;
   note?: string;
 }
 
@@ -93,6 +111,10 @@ const MODULE_OF: Record<ActionId, ActionModule> = {
   REGISTRATION_LOG_CHASE: "REGISTRATION",
   PART_REQUEST_TRANSFER: "PART",
   PART_RAISE_REORDER: "PART",
+  RECEIVABLE_LOG_CHASE: "RECEIVABLE",
+  RECEIVABLE_MARK_DISPUTED: "RECEIVABLE",
+  VEHICLE_MARK_OFFERED: "VEHICLE",
+  VEHICLE_PROPOSE_TRANSFER: "VEHICLE",
 };
 
 /**
@@ -367,6 +389,125 @@ export async function applyAction(input: ApplyActionInput): Promise<ApplyResult>
           and(
             eq(dmsPartStockTable.showroomId, input.showroomId),
             eq(dmsPartStockTable.partNo, input.recordKey),
+          ),
+        );
+      break;
+    }
+
+    // ── Receivables ───────────────────────────────────────────────────────
+    case "RECEIVABLE_LOG_CHASE":
+    case "RECEIVABLE_MARK_DISPUTED": {
+      const [row] = await db
+        .select({
+          chasedAt: dmsReceivablesTable.chasedAt,
+          disputedAt: dmsReceivablesTable.disputedAt,
+          disputeNote: dmsReceivablesTable.disputeNote,
+        })
+        .from(dmsReceivablesTable)
+        .where(
+          and(
+            eq(dmsReceivablesTable.showroomId, input.showroomId),
+            eq(dmsReceivablesTable.receivableId, input.recordKey),
+          ),
+        );
+      if (!row) return { ok: false, status: 404, error: `No receivable ${input.recordKey}` };
+
+      if (input.action === "RECEIVABLE_LOG_CHASE") {
+        previous = { chasedAt: row.chasedAt };
+        changed = { chasedAt: clear ? null : now };
+      } else {
+        previous = { disputedAt: row.disputedAt, disputeNote: row.disputeNote };
+        changed = clear
+          ? { disputedAt: null, disputeNote: null }
+          : { disputedAt: now, disputeNote: input.note ?? null };
+      }
+
+      await db
+        .update(dmsReceivablesTable)
+        .set(changed)
+        .where(
+          and(
+            eq(dmsReceivablesTable.showroomId, input.showroomId),
+            eq(dmsReceivablesTable.receivableId, input.recordKey),
+          ),
+        );
+      break;
+    }
+
+    // ── The floor ─────────────────────────────────────────────────────────
+    case "VEHICLE_MARK_OFFERED":
+    case "VEHICLE_PROPOSE_TRANSFER": {
+      const [row] = await db
+        .select({
+          offeredToEnqId: dmsVehicleStockTable.offeredToEnqId,
+          offeredAt: dmsVehicleStockTable.offeredAt,
+          transferProposedAt: dmsVehicleStockTable.transferProposedAt,
+          transferToShowroomId: dmsVehicleStockTable.transferToShowroomId,
+        })
+        .from(dmsVehicleStockTable)
+        .where(
+          and(
+            eq(dmsVehicleStockTable.showroomId, input.showroomId),
+            eq(dmsVehicleStockTable.chassisNo, input.recordKey),
+          ),
+        );
+      if (!row) return { ok: false, status: 404, error: `No vehicle ${input.recordKey}` };
+
+      if (input.action === "VEHICLE_MARK_OFFERED") {
+        if (!clear && !input.enqId) {
+          return { ok: false, status: 400, error: "enqId is required to record an offer" };
+        }
+        if (!clear) {
+          // The enquiry has to exist and be this owner's. Recording an offer
+          // against an enquiry id somebody typed is a note nobody can follow up.
+          const [enq] = await db
+            .select({ enqId: dmsEnquiriesTable.enqId })
+            .from(dmsEnquiriesTable)
+            .where(eq(dmsEnquiriesTable.enqId, input.enqId!));
+          if (!enq) {
+            return { ok: false, status: 404, error: `No enquiry ${input.enqId}` };
+          }
+        }
+        previous = { offeredToEnqId: row.offeredToEnqId, offeredAt: row.offeredAt };
+        changed = clear
+          ? { offeredToEnqId: null, offeredAt: null }
+          : { offeredToEnqId: input.enqId!, offeredAt: now };
+      } else {
+        if (!clear && !input.toShowroomId) {
+          return { ok: false, status: 400, error: "toShowroomId is required to propose a transfer" };
+        }
+        if (!clear) {
+          // Same rule as the parts transfer: the receiving outlet must be this
+          // owner's. Sending a bike to another dealership is not a feature.
+          const [target] = await db
+            .select({ id: showroomsTable.id })
+            .from(showroomsTable)
+            .where(
+              and(
+                eq(showroomsTable.id, input.toShowroomId!),
+                eq(showroomsTable.ownerId, input.ownerId),
+              ),
+            );
+          if (!target) {
+            return { ok: false, status: 404, error: `No showroom ${input.toShowroomId}` };
+          }
+        }
+        previous = {
+          transferProposedAt: row.transferProposedAt,
+          transferToShowroomId: row.transferToShowroomId,
+        };
+        changed = clear
+          ? { transferProposedAt: null, transferToShowroomId: null }
+          : { transferProposedAt: now, transferToShowroomId: input.toShowroomId! };
+      }
+
+      await db
+        .update(dmsVehicleStockTable)
+        .set(changed)
+        .where(
+          and(
+            eq(dmsVehicleStockTable.showroomId, input.showroomId),
+            eq(dmsVehicleStockTable.chassisNo, input.recordKey),
           ),
         );
       break;

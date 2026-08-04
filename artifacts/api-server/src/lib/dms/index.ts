@@ -25,6 +25,10 @@
  *   registration-worklist.ts  the RTO file, and the certificates in the drawer
  *   spares-worklist.ts        the part a customer is waiting for that the
  *                             company already owns, in the other branch
+ *   receivables-worklist.ts   what one party owes the *group*, which neither
+ *                             branch's ageing report can add up
+ *   inventory-worklist.ts     the floor, aged — and matched against the people
+ *                             asking for what is standing on it
  *
  * The last of those is the only one answering a question a single outlet
  * *cannot* answer, rather than one it merely failed to. That is the difference
@@ -53,6 +57,8 @@ export {
   dmsEnquiries,
   dmsJobCards,
   dmsPartStock,
+  dmsReceivables,
+  dmsVehicleStock,
   dmsRegistrations,
   fetchDeal,
   fetchEnquiry,
@@ -77,6 +83,30 @@ export {
   buildSparesWorklist,
   summariseSpares,
 } from "./spares-worklist";
+export {
+  syncShowroomReceivables,
+  buildReceivablesWorklist,
+  summariseReceivables,
+} from "./receivables-worklist";
+export type {
+  ReceivablesSyncResult,
+  ReceivableState,
+  ReceivablesWorklistRow,
+  ReceivablesWorklistSummary,
+  PartyExposure,
+} from "./receivables-worklist";
+export {
+  syncShowroomInventory,
+  buildInventoryWorklist,
+  summariseInventory,
+} from "./inventory-worklist";
+export type {
+  InventorySyncResult,
+  InventoryState,
+  InventoryWorklistRow,
+  InventoryWorklistSummary,
+  MatchingEnquiry,
+} from "./inventory-worklist";
 export { applyAction, listStaff } from "./actions";
 export {
   authoriseSend,

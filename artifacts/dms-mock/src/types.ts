@@ -509,6 +509,71 @@ export interface DmsPartStock {
   modifiedAt: DmsTimestamp;
 }
 
+// ── Finance ─────────────────────────────────────────────────────────────────
+// What the dealership is owed. A DMS keeps this per dealer code, which is why
+// an owner with three outlets has three ageing reports and no way to ask what
+// one insurer owes the group.
+
+export type DmsPartyType = "CUSTOMER" | "INSURER" | "OEM" | "FINANCIER";
+
+export type DmsReceivableStatus = "OPEN" | "PART_PAID" | "SETTLED" | "WRITTEN_OFF";
+
+export interface DmsReceivable {
+  dealerCode: string;
+  receivableId: string;
+  partyType: DmsPartyType;
+  /** Stable across outlets — the join that makes group exposure visible. */
+  partyCode: string;
+  partyName: string;
+  /**
+   * Where a statement of account would go. Null for walk-in customers, which
+   * is common and is a real answer: it is why some statements cannot be sent.
+   */
+  partyEmailId: string | null;
+  invoiceNo: string;
+  invoiceDt: DmsDate;
+  invoiceAmt: DmsAmount;
+  receivedAmt: DmsAmount;
+  /** When it fell due. Credit period is per party and already applied. */
+  dueDt: DmsDate;
+  /** What the money is for — a job card or a deal. */
+  againstType: "JOB_CARD" | "DEAL" | null;
+  againstKey: string | null;
+  narrationDesc: string | null;
+  status: DmsReceivableStatus;
+  lastReceiptDt: DmsDate | null;
+  /** What the party said they would pay by. Their words, in their system. */
+  promisedDt: DmsDate | null;
+  modifiedAt: DmsTimestamp;
+}
+
+// ── Vehicle stock ───────────────────────────────────────────────────────────
+// The floor. A vehicle costs money every day it does not sell, because almost
+// all of it is bought on a floor-plan line and the interest runs regardless.
+
+export type DmsVehicleStockStatus = "IN_STOCK" | "ALLOCATED" | "INVOICED";
+
+export interface DmsVehicleStock {
+  dealerCode: string;
+  chassisNo: string;
+  engineNo: string;
+  modelCode: string;
+  modelDesc: string;
+  variantDesc: string;
+  colourDesc: string;
+  status: DmsVehicleStockStatus;
+  /** Set once somebody puts a customer's name on the unit. */
+  allocatedDealId: string | null;
+  costAmt: DmsAmount;
+  financedFlg: "Y" | "N";
+  /** Annual, and null when the unit is not on the floor-plan line. */
+  interestRatePct: DmsAmount | null;
+  receivedDt: DmsDate;
+  allocatedDt: DmsDate | null;
+  invoicedDt: DmsDate | null;
+  modifiedAt: DmsTimestamp;
+}
+
 export type DmsJobCardType =
   | "FREE"
   | "PAID"

@@ -38,8 +38,16 @@ import { buildLeadWorklist } from "./lead-worklist";
 import { buildRegistrationWorklist } from "./registration-worklist";
 import { buildServiceWorklist } from "./service-worklist";
 import { buildSparesWorklist } from "./spares-worklist";
+import { buildReceivablesWorklist } from "./receivables-worklist";
+import { buildInventoryWorklist } from "./inventory-worklist";
 
-export type ExplainModule = "JOB_CARD" | "ENQUIRY" | "REGISTRATION" | "PART";
+export type ExplainModule =
+  | "JOB_CARD"
+  | "ENQUIRY"
+  | "REGISTRATION"
+  | "PART"
+  | "RECEIVABLE"
+  | "VEHICLE";
 
 export interface ToolContext {
   ownerId: number;
@@ -155,6 +163,70 @@ export async function recordState(ctx: ToolContext): Promise<Evidence> {
     };
   }
 
+  if (ctx.module === "RECEIVABLE") {
+    const rows = await buildReceivablesWorklist({
+      showroomId: ctx.showroomId,
+      ownerShowroomIds: ctx.ownerShowroomIds,
+    });
+    const r = rows.find((x) => x.receivableId === ctx.recordKey);
+    if (!r) return { tool: "record_state", looked, rows: [] };
+    return {
+      tool: "record_state",
+      looked,
+      rows: [
+        {
+          receivable: r.receivableId,
+          party: r.partyName,
+          partyType: r.partyType,
+          invoice: r.dms.invoiceNo,
+          state: r.state,
+          why: r.note,
+          whatIsNeeded: r.actionRequired,
+          balance: r.balance,
+          daysOverdue: r.daysOverdue,
+          ageDays: r.ageDays,
+          theyPromisedToPayBy: r.dms.promisedDate,
+          narration: r.dms.narration,
+          lastChasedAt: r.ddms.chasedAt,
+          // The number no branch ledger can produce, and the reason this row
+          // may be worth more attention than its own balance suggests.
+          owedToTheGroup: r.groupExposure?.totalBalance ?? null,
+          acrossOutlets: r.groupExposure?.outletCount ?? null,
+        },
+      ],
+    };
+  }
+
+  if (ctx.module === "VEHICLE") {
+    const rows = await buildInventoryWorklist({
+      showroomId: ctx.showroomId,
+      ownerShowroomIds: ctx.ownerShowroomIds,
+    });
+    const r = rows.find((x) => x.chassisNo === ctx.recordKey);
+    if (!r) return { tool: "record_state", looked, rows: [] };
+    return {
+      tool: "record_state",
+      looked,
+      rows: [
+        {
+          chassis: r.chassisNo,
+          model: r.modelDescription,
+          variant: r.variantDescription,
+          colour: r.colourDescription,
+          state: r.state,
+          why: r.note,
+          whatIsNeeded: r.actionRequired,
+          daysOnTheFloor: r.ageDays,
+          cost: r.dms.costAmount,
+          interestAccrued: r.interestAccrued,
+          interestPerDay: r.interestPerDay,
+          peopleAskingForThisModel: r.matchingEnquiries.length,
+          offeredTo: r.ddms.offeredToEnqId,
+        },
+      ],
+    };
+  }
+
   const rows = await buildSparesWorklist({
     showroomId: ctx.showroomId,
     ownerShowroomIds: ctx.ownerShowroomIds,
@@ -185,6 +257,21 @@ export async function recordState(ctx: ToolContext): Promise<Evidence> {
 // ── Who else is affected ────────────────────────────────────────────────────
 
 /**
+ * Which entity-graph module a worklist row resolves through, if any.
+ *
+ * A closed map rather than a cast, because "this module has no entity link" is
+ * a real answer and the type system should be made to carry it.
+ */
+const LINKED_MODULE: Record<ExplainModule, "JOB_CARD" | "ENQUIRY" | "REGISTRATION" | null> = {
+  JOB_CARD: "JOB_CARD",
+  ENQUIRY: "ENQUIRY",
+  REGISTRATION: "REGISTRATION",
+  PART: "JOB_CARD",
+  RECEIVABLE: null,
+  VEHICLE: null,
+};
+
+/**
  * Everything else open against the same person, across every outlet.
  *
  * This is the tool that could not have existed before the entity graph, and it
@@ -196,6 +283,14 @@ export async function recordState(ctx: ToolContext): Promise<Evidence> {
 export async function whoElseIsAffected(ctx: ToolContext): Promise<Evidence> {
   const looked = "every other open record belonging to the same customer, across all outlets";
 
+  // PART rows are explained through the job card waiting for them. RECEIVABLE
+  // and VEHICLE have no entity link at all: a chassis number on the floor
+  // belongs to nobody yet, and a receivable's party is an insurer or a company
+  // rather than a resolved person. Returning nothing is the correct answer —
+  // guessing at one would attach a customer to a bike that has not been sold.
+  const linkModule = LINKED_MODULE[ctx.module];
+  if (!linkModule) return { tool: "who_else_is_affected", looked, rows: [] };
+
   const [link] = await db
     .select({ entityId: entityLinksTable.entityId })
     .from(entityLinksTable)
@@ -203,7 +298,7 @@ export async function whoElseIsAffected(ctx: ToolContext): Promise<Evidence> {
     .where(
       and(
         eq(entityLinksTable.ownerId, ctx.ownerId),
-        eq(entityLinksTable.module, ctx.module === "PART" ? "JOB_CARD" : ctx.module),
+        eq(entityLinksTable.module, linkModule),
         eq(entityLinksTable.recordKey, ctx.recordKey),
         eq(entitiesTable.kind, "CUSTOMER"),
       ),
@@ -461,6 +556,69 @@ export async function whatTheClockSays(ctx: ToolContext): Promise<Evidence> {
     }
   }
 
+  if (ctx.module === "RECEIVABLE") {
+    const all = await buildReceivablesWorklist({
+      showroomId: ctx.showroomId,
+      ownerShowroomIds: ctx.ownerShowroomIds,
+    });
+    const r = all.find((x) => x.receivableId === ctx.recordKey);
+    if (r) {
+      rows.push({
+        clock: "the credit period",
+        dueDate: r.dms.dueDate,
+        daysOverdue: r.daysOverdue,
+        inAWeek: r.daysOverdue + 7,
+        amount: r.balance,
+      });
+      if (r.dms.promisedDate) {
+        rows.push({ clock: "the date they promised", promised: r.dms.promisedDate });
+      }
+      if (r.groupExposure) {
+        rows.push({
+          clock: "what this party owes the group",
+          totalBalance: r.groupExposure.totalBalance,
+          outlets: r.groupExposure.outlets.map((o) => ({
+            outlet: o.showroomCode,
+            balance: o.balance,
+          })),
+        });
+      }
+    }
+  }
+
+  if (ctx.module === "VEHICLE") {
+    const all = await buildInventoryWorklist({
+      showroomId: ctx.showroomId,
+      ownerShowroomIds: ctx.ownerShowroomIds,
+    });
+    const r = all.find((x) => x.chassisNo === ctx.recordKey);
+    if (r) {
+      rows.push({
+        clock: "days on the floor",
+        days: r.ageDays,
+        inAWeek: r.ageDays + 7,
+      });
+      if (r.interestPerDay !== null) {
+        rows.push({
+          clock: "floor-plan interest",
+          perDay: Math.round(r.interestPerDay),
+          accruedSoFar: Math.round(r.interestAccrued ?? 0),
+          anotherWeekCosts: Math.round(r.interestPerDay * 7),
+        });
+      }
+      for (const m of r.matchingEnquiries) {
+        rows.push({
+          clock: "somebody asking for this model",
+          enquiry: m.enqId,
+          customer: m.customerName,
+          stage: m.stage,
+          outlet: m.showroomCode,
+          atAnotherOutlet: m.otherOutlet,
+        });
+      }
+    }
+  }
+
   return { tool: "what_the_clock_says", looked, rows };
 }
 
@@ -552,5 +710,9 @@ function label(module: ExplainModule): string {
       ? "registration"
       : module === "ENQUIRY"
         ? "enquiries"
-        : "spares";
+        : module === "RECEIVABLE"
+          ? "receivables"
+          : module === "VEHICLE"
+            ? "vehicle stock"
+            : "spares";
 }

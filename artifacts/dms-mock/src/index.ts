@@ -33,6 +33,8 @@ import {
   listEnquiries,
   listJobCards,
   listPartStock,
+  listReceivables,
+  listVehicleStock,
   listRegnFiles,
   openStore,
   parseDmsTimestamp,
@@ -448,6 +450,70 @@ app.get("/dms/v1/parts/stock", (req, res) => {
     belowReorderOnly: belowReorder === "Y",
   });
 
+  res.json({ count: stock.length, stock });
+});
+
+/**
+ * Receivables — what the dealership is owed.
+ *
+ * Keyed to a dealer code, like everything else here, which is exactly why an
+ * owner with two outlets cannot ask what one insurer owes the group.
+ */
+app.get("/dms/v1/receivables", (req, res) => {
+  const { dealerCode, partyType, openOnly, modifiedSince } =
+    req.query as Record<string, string | undefined>;
+
+  let since: Date | undefined;
+  if (modifiedSince) {
+    const parsed = parseDmsTimestamp(modifiedSince);
+    if (!parsed) {
+      res.status(400).json({
+        errCode: "VALIDATION",
+        errDesc: "modifiedSince must be DD-MM-YYYY or DD-MM-YYYY HH:mm:ss",
+      });
+      return;
+    }
+    since = parsed;
+  }
+
+  const receivables = listReceivables({
+    dealerCode,
+    partyType,
+    openOnly: openOnly === "Y",
+    modifiedSince: since,
+  });
+  res.json({ count: receivables.length, receivables });
+});
+
+/**
+ * Vehicle stock — the floor.
+ *
+ * `receivedDt` is the field the whole ageing question turns on, and no screen
+ * in this system subtracts it from today.
+ */
+app.get("/dms/v1/vehicle-stock", (req, res) => {
+  const { dealerCode, status, unsoldOnly, modifiedSince } =
+    req.query as Record<string, string | undefined>;
+
+  let since: Date | undefined;
+  if (modifiedSince) {
+    const parsed = parseDmsTimestamp(modifiedSince);
+    if (!parsed) {
+      res.status(400).json({
+        errCode: "VALIDATION",
+        errDesc: "modifiedSince must be DD-MM-YYYY or DD-MM-YYYY HH:mm:ss",
+      });
+      return;
+    }
+    since = parsed;
+  }
+
+  const stock = listVehicleStock({
+    dealerCode,
+    status,
+    unsoldOnly: unsoldOnly === "Y",
+    modifiedSince: since,
+  });
   res.json({ count: stock.length, stock });
 });
 

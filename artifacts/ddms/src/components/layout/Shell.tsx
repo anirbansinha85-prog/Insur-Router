@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter"
 import {
   Users, ListChecks, Wrench, LayoutDashboard, ShieldCheck, Bell,
-  ExternalLink, LogOut, IdCard, Boxes, Send,
+  ExternalLink, LogOut, IdCard, Boxes, Send, Wallet, Bike,
 } from "lucide-react"
 import type { SessionUser } from "@workspace/api-client-react"
 import { cn } from "@/lib/utils"
@@ -38,6 +38,10 @@ const GROUPS: NavGroup[] = [
       // opened by the sale and closed by handing a card to the same customer,
       // and separating it is part of how it stops being anybody's job.
       { href: "/registrations", label: "Registration & RC", icon: IdCard },
+      // The floor sits under Showroom rather than beside spares: a bike
+      // standing unsold is a sales problem, and the finding on that screen is
+      // an enquiry nobody connected to it.
+      { href: "/inventory", label: "Vehicle stock", icon: Bike },
     ],
   },
   {
@@ -53,6 +57,10 @@ const GROUPS: NavGroup[] = [
       // the same job cards from opposite ends.
       { href: "/spares", label: "Spares", icon: Boxes },
     ],
+  },
+  {
+    label: "Finance",
+    items: [{ href: "/receivables", label: "Receivables", icon: Wallet }],
   },
   {
     // Its own group, and last. Everything above reads the dealership's data

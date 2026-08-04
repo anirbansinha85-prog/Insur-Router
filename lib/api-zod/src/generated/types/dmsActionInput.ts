@@ -21,5 +21,9 @@ export interface DmsActionInput {
   channel?: DmsActionInputChannel;
   /** PART_REQUEST_TRANSFER only — which outlet is sending it. Must be the same owner's. */
   fromShowroomId?: number;
+  /** VEHICLE_MARK_OFFERED only — the enquiry the unit was offered against. */
+  enqId?: string;
+  /** VEHICLE_PROPOSE_TRANSFER only — which outlet should receive it. Must be the same owner's. */
+  toShowroomId?: number;
   note?: string;
 }

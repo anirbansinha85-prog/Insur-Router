@@ -14,4 +14,6 @@ export const ExplainModule = {
   ENQUIRY: 'ENQUIRY',
   REGISTRATION: 'REGISTRATION',
   PART: 'PART',
+  RECEIVABLE: 'RECEIVABLE',
+  VEHICLE: 'VEHICLE',
 } as const;

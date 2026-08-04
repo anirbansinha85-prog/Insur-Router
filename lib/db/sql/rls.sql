@@ -216,6 +216,22 @@ create policy decision_log_own on public.decision_log
   using (owner_id = app.current_owner_id())
   with check (owner_id = app.current_owner_id());
 
+-- Receivables and the vehicle floor. Same shape as every other mirror: the
+-- policy is on the showroom, the showroom list comes from the session, and a
+-- query here with no tenant filter comes back empty rather than coming back
+-- with the other dealership's ledger.
+drop policy if exists dms_receivables_own on public.dms_receivables;
+create policy dms_receivables_own on public.dms_receivables
+  for all to ddms_app
+  using (showroom_id in (select app.owned_showroom_ids()))
+  with check (showroom_id in (select app.owned_showroom_ids()));
+
+drop policy if exists dms_vehicle_stock_own on public.dms_vehicle_stock;
+create policy dms_vehicle_stock_own on public.dms_vehicle_stock
+  for all to ddms_app
+  using (showroom_id in (select app.owned_showroom_ids()))
+  with check (showroom_id in (select app.owned_showroom_ids()));
+
 /*
  * Outbound messages. Select, insert and update — a draft is composed, then
  * approved, then sent, and each of those is an update to the same row.
@@ -309,6 +325,8 @@ grant select, insert, update on
   public.dms_employees,
   public.dms_registrations,
   public.dms_part_stock,
+  public.dms_receivables,
+  public.dms_vehicle_stock,
   public.entities,
   public.entity_links,
   public.applications,

@@ -16,6 +16,8 @@ import Registrations from '@/pages/Registrations';
 import Spares from '@/pages/Spares';
 import Dossier from '@/pages/Dossier';
 import Outbox from '@/pages/Outbox';
+import Receivables from '@/pages/Receivables';
+import Inventory from '@/pages/Inventory';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -78,6 +80,8 @@ function Gate() {
           <Route path="/registrations" component={Registrations} />
           <Route path="/service" component={ServiceWorklist} />
           <Route path="/spares" component={Spares} />
+          <Route path="/receivables" component={Receivables} />
+          <Route path="/inventory" component={Inventory} />
           {/* The only screen where DDMS proposes to speak for the dealership,
               which is why it is its own place rather than a panel on a row. */}
           <Route path="/outbox" component={Outbox} />

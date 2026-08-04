@@ -29,6 +29,12 @@ import {
   DmsError,
   applyAction,
   approveMessage,
+  buildInventoryWorklist,
+  buildReceivablesWorklist,
+  summariseInventory,
+  summariseReceivables,
+  syncShowroomInventory,
+  syncShowroomReceivables,
   authoriseSend,
   cancelMessage,
   createDraft,
@@ -93,6 +99,22 @@ const router: IRouter = Router();
  * file later is protected by default instead of by whoever remembers.
  */
 router.use("/dms", requireUser, sessionScope);
+
+/**
+ * Every outlet this owner holds.
+ *
+ * Read from the session's owner id and never from the request. Three screens
+ * now depend on it — spares, receivables and the floor — and each of them is a
+ * query that deliberately spans outlets, which is the one place a scope taken
+ * from a caller would be worth taking.
+ */
+async function ownedShowroomIds(ownerId: number): Promise<number[]> {
+  const rows = await db
+    .select({ id: showroomsTable.id })
+    .from(showroomsTable)
+    .where(eq(showroomsTable.ownerId, ownerId));
+  return rows.map((r) => r.id);
+}
 
 function parseShowroomId(raw: string): number | null {
   const id = Number(raw);
@@ -176,6 +198,8 @@ router.post("/dms/showrooms/:showroomId/sync", async (req, res): Promise<void> =
     const enquiryResults = await syncShowroomEnquiries(showroomId);
     const registrationResults = await syncShowroomRegistrations(showroomId);
     const partsResults = await syncShowroomParts(showroomId);
+    const receivablesResults = await syncShowroomReceivables(showroomId);
+    const inventoryResults = await syncShowroomInventory(showroomId);
 
     // The graph is a projection of everything above it, so it is rebuilt last
     // and for the whole owner rather than this showroom. Rebuilding one outlet
@@ -201,6 +225,8 @@ router.post("/dms/showrooms/:showroomId/sync", async (req, res): Promise<void> =
       enquiryResults,
       registrationResults,
       partsResults,
+      receivablesResults,
+      inventoryResults,
       entityGraph,
     });
   } catch (err) {
@@ -369,7 +395,56 @@ router.get("/dms/spares-worklist", async (req, res): Promise<void> => {
   res.json({ summary: summariseSpares(rows), rows });
 });
 
-const EXPLAIN_MODULES = new Set<string>(["JOB_CARD", "ENQUIRY", "REGISTRATION", "PART"]);
+const EXPLAIN_MODULES = new Set<string>([
+  "JOB_CARD",
+  "ENQUIRY",
+  "REGISTRATION",
+  "PART",
+  "RECEIVABLE",
+  "VEHICLE",
+]);
+
+/**
+ * The ledger, read across the group.
+ *
+ * Scoped to the outlet on screen for the rows, and to **every outlet the
+ * session's owner holds** for the exposure figure attached to them. That is the
+ * same arrangement as the spares worklist and for the same reason: a DMS keys
+ * the ledger to a dealer code, so what one insurer owes the group is a question
+ * neither branch's own ageing report can be made to answer.
+ */
+router.get("/dms/receivables-worklist", async (req, res): Promise<void> => {
+  const showroomId = parseShowroomId(String(req.query.showroomId ?? ""));
+  if (showroomId === null) {
+    res.status(400).json({ error: "showroomId query parameter is required and must be a positive integer" });
+    return;
+  }
+  if (!(await assertShowroomAccess(req, res, showroomId))) return;
+
+  const owned = await ownedShowroomIds(req.sessionUser!.ownerId);
+  const rows = await buildReceivablesWorklist({ showroomId, ownerShowroomIds: owned });
+  res.json({ summary: summariseReceivables(rows), rows });
+});
+
+/**
+ * The floor, aged — and matched against the people asking for what is on it.
+ *
+ * The enquiry match reads across every outlet, because a customer who walked
+ * into one showroom asking for a model standing on another's floor is exactly
+ * the case neither branch can see.
+ */
+router.get("/dms/inventory-worklist", async (req, res): Promise<void> => {
+  const showroomId = parseShowroomId(String(req.query.showroomId ?? ""));
+  if (showroomId === null) {
+    res.status(400).json({ error: "showroomId query parameter is required and must be a positive integer" });
+    return;
+  }
+  if (!(await assertShowroomAccess(req, res, showroomId))) return;
+
+  const owned = await ownedShowroomIds(req.sessionUser!.ownerId);
+  const rows = await buildInventoryWorklist({ showroomId, ownerShowroomIds: owned });
+  res.json({ summary: summariseInventory(rows), rows });
+});
 
 const ACTION_IDS = new Set<string>([
   "ENQUIRY_LOG_CONTACT",
@@ -380,6 +455,10 @@ const ACTION_IDS = new Set<string>([
   "REGISTRATION_LOG_CHASE",
   "PART_REQUEST_TRANSFER",
   "PART_RAISE_REORDER",
+  "RECEIVABLE_LOG_CHASE",
+  "RECEIVABLE_MARK_DISPUTED",
+  "VEHICLE_MARK_OFFERED",
+  "VEHICLE_PROPOSE_TRANSFER",
 ]);
 
 /**
@@ -425,6 +504,8 @@ router.post("/dms/actions", async (req, res): Promise<void> => {
     channel: typeof body.channel === "string" ? (body.channel as never) : undefined,
     fromShowroomId:
       typeof body.fromShowroomId === "number" ? body.fromShowroomId : undefined,
+    enqId: typeof body.enqId === "string" ? body.enqId : undefined,
+    toShowroomId: typeof body.toShowroomId === "number" ? body.toShowroomId : undefined,
     note: typeof body.note === "string" ? body.note : undefined,
   });
 
@@ -468,6 +549,7 @@ router.post("/dms/messages", async (req, res): Promise<void> => {
     ownerId: req.sessionUser!.ownerId,
     userId: req.sessionUser!.userId,
     showroomId,
+    ownerShowroomIds: await ownedShowroomIds(req.sessionUser!.ownerId),
     template: template as TemplateId,
     recordKey,
   });

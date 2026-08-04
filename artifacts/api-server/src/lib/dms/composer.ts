@@ -33,10 +33,18 @@ import { logger } from "../logger";
 import type { LeadWorklistRow } from "./lead-worklist";
 import type { RegistrationWorklistRow } from "./registration-worklist";
 import type { ServiceWorklistRow } from "./service-worklist";
+import type { ReceivablesWorklistRow } from "./receivables-worklist";
 
 export type MessageAudience = "INTERNAL" | "CUSTOMER";
 export type MessageChannel = "EMAIL" | "WHATSAPP" | "SMS";
-export type MessageModule = "DEAL" | "JOB_CARD" | "ENQUIRY" | "REGISTRATION" | "PART";
+export type MessageModule =
+  | "DEAL"
+  | "JOB_CARD"
+  | "ENQUIRY"
+  | "REGISTRATION"
+  | "PART"
+  | "RECEIVABLE"
+  | "VEHICLE";
 
 export interface ComposedDraft {
   template: string;
@@ -288,6 +296,20 @@ function inr(n: number): string {
 }
 
 /**
+ * `2026-06-02` → `02-06-2026`.
+ *
+ * ISO is what the mirror stores and it is wrong in a letter to an Indian
+ * accounts department: `2026-06-02` reads as the second of June to us and as
+ * nothing at all to the clerk who has to match it against their own ledger,
+ * where every date is day-first.
+ */
+function indianDate(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : iso;
+}
+
+/**
  * A customer whose vehicle has been ready and uncollected.
  *
  * The one message on the service screen worth sending, and the reason is the
@@ -507,6 +529,92 @@ export function draftLeadHandover(
     body: lines.join("\n"),
     facts,
     rationale: `${toName} now owns this enquiry and the clock is already running.`,
+  };
+}
+
+/**
+ * A statement of account — what a party owes, and what it is for.
+ *
+ * This is R-17 read honestly. "Invoice generation, automated" cannot mean
+ * generating the dealer's tax invoice: that document lives in their DMS, has a
+ * statutory number series, and the integration is read-only and always will be
+ * (R-5, R-40). Producing a second one would create two invoices for one debt,
+ * which is worse than producing none.
+ *
+ * What DDMS can generate is the document the dealership actually never gets
+ * round to: a statement addressed to the party, listing the open items with
+ * their invoice numbers and dates, **totalled across every outlet the party
+ * owes at**. That total is the thing no branch ledger can produce, and putting
+ * it in front of an insurer is the point of having computed it.
+ *
+ * Audience is CUSTOMER — an insurer or a fleet account is outside the building
+ * however corporate it sounds — so no rule can send it and a person approves
+ * every one (R-50).
+ */
+export function draftStatementOfAccount(
+  row: ReceivablesWorklistRow,
+  dealershipName: string,
+): Omit<ComposedDraft, "draftedBy"> {
+  const exposure = row.groupExposure;
+  const lines = exposure
+    ? exposure.outlets.map((o) => ({ outlet: o.showroomCode, balance: o.balance, items: o.open }))
+    : [{ outlet: row.showroomCode, balance: row.balance, items: 1 }];
+  const total = exposure ? exposure.totalBalance : row.balance;
+
+  const facts: Record<string, unknown> = {
+    party: row.partyName,
+    invoiceNumber: row.dms.invoiceNo,
+    invoiceDate: indianDate(row.dms.invoiceDate),
+    dueDate: indianDate(row.dms.dueDate),
+    balanceOnThisInvoice: row.balance,
+    daysOverdue: row.daysOverdue,
+    totalOwedToTheGroup: total,
+    outlets: lines,
+    dealership: dealershipName,
+  };
+
+  const body = [
+    `Dear ${row.partyName},`,
+    "",
+    `This is a statement of account from ${dealershipName}.`,
+    "",
+    `Invoice ${row.dms.invoiceNo}` +
+      (indianDate(row.dms.invoiceDate) ? ` dated ${indianDate(row.dms.invoiceDate)}` : "") +
+      ` — ${inr(row.balance)} outstanding` +
+      (row.daysOverdue > 0 ? `, ${row.daysOverdue} days past its due date.` : "."),
+    "",
+    // The group total goes in only when there genuinely is one. A "total across
+    // outlets" that repeats the single invoice above would read as padding to
+    // the one person guaranteed to check it — their accounts clerk.
+    ...(exposure
+      ? [
+          `Across our group the total outstanding with you is ${inr(total)}:`,
+          ...lines.map((l) => `  ${l.outlet ?? "—"}: ${inr(l.balance)} over ${l.items} item${l.items === 1 ? "" : "s"}`),
+          "",
+        ]
+      : []),
+    `We would be grateful for settlement, or for a date we can note against the account.`,
+    "",
+    `— ${dealershipName}`,
+  ].join("\n");
+
+  return {
+    template: "RECEIVABLE_STATEMENT",
+    module: "RECEIVABLE",
+    recordKey: row.receivableId,
+    showroomId: row.showroomId,
+    audience: "CUSTOMER",
+    channel: "EMAIL",
+    toName: row.partyName,
+    toAddress: row.partyEmail,
+    toEmpCode: null,
+    subject: `Statement of account — ${dealershipName}`,
+    body,
+    facts,
+    rationale: exposure
+      ? `${row.partyName} owes ${inr(total)} across ${exposure.outletCount} outlets, and neither branch's own ledger shows it.`
+      : `${inr(row.balance)} outstanding` +
+        (row.daysOverdue > 0 ? `, ${row.daysOverdue} days past due.` : "."),
   };
 }
 

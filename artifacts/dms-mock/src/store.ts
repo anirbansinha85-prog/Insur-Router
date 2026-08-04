@@ -38,6 +38,8 @@ import { EMPLOYEES, JOB_CARD_SEEDS, PARTS } from "./workshop.ts";
 import { ENQUIRY_SEEDS } from "./crm.ts";
 import { REGN_FILE_SEEDS } from "./registration.ts";
 import { PART_STOCK_SEEDS } from "./spares.ts";
+import { RECEIVABLE_SEEDS } from "./receivables.ts";
+import { VEHICLE_STOCK_SEEDS } from "./inventory.ts";
 import type {
   DmsDeal,
   DmsEmployee,
@@ -45,6 +47,8 @@ import type {
   DmsJobCard,
   DmsJobCardStatus,
   DmsPartStock,
+  DmsReceivable,
+  DmsVehicleStock,
   DmsRegnDoc,
   DmsRegnFile,
   DmsRegnStatus,
@@ -312,6 +316,49 @@ create table if not exists part_stock (
   modified_iso      text not null,
   primary key (dealer_code, part_no)
 );
+
+create table if not exists receivables (
+  dealer_code     text not null,
+  receivable_id   text not null,
+  party_type      text not null,
+  party_code      text not null,
+  party_name      text not null,
+  party_email_id  text,
+  invoice_no      text not null,
+  invoice_dt      text not null,
+  invoice_amt     text not null,
+  received_amt    text not null,
+  due_dt          text not null,
+  against_type    text,
+  against_key     text,
+  narration_desc  text,
+  status          text not null,
+  last_receipt_dt text,
+  promised_dt     text,
+  modified_at     text not null,
+  modified_iso    text not null,
+  primary key (dealer_code, receivable_id)
+);
+
+create table if not exists vehicle_stock (
+  dealer_code        text not null,
+  chassis_no         text primary key,
+  engine_no          text not null,
+  model_code         text not null,
+  model_desc         text not null,
+  variant_desc       text not null,
+  colour_desc        text not null,
+  status             text not null,
+  allocated_deal_id  text,
+  cost_amt           text not null,
+  financed_flg       text not null,
+  interest_rate_pct  text,
+  received_dt        text not null,
+  allocated_dt       text,
+  invoiced_dt        text,
+  modified_at        text not null,
+  modified_iso       text not null
+);
 `;
 
 export interface OpenOptions {
@@ -335,7 +382,7 @@ export function openStore(opts: OpenOptions = {}): void {
     for (const t of [
       "deals", "employees", "part_master", "job_cards", "jc_labour", "jc_parts",
       "jc_psf", "enquiries", "enquiry_followups", "test_rides",
-      "regn_files", "regn_docs", "part_stock",
+      "regn_files", "regn_docs", "part_stock", "receivables", "vehicle_stock",
     ]) {
       db.exec(`delete from ${t}`);
     }
@@ -359,6 +406,12 @@ function migrate(): void {
     db.exec("alter table employees add column email_id text");
     db.exec("delete from employees");
   }
+
+  const rec = db.prepare("pragma table_info(receivables)").all() as Array<{ name: string }>;
+  if (rec.length > 0 && !rec.some((c) => c.name === "party_email_id")) {
+    db.exec("alter table receivables add column party_email_id text");
+    db.exec("delete from receivables");
+  }
 }
 
 function count(table: string): number {
@@ -378,6 +431,56 @@ function seedIfEmpty(): void {
     );
     for (const e of EMPLOYEES) {
       ins.run(e.empCode, e.empName, e.dealerCode, e.role, e.doj, e.dol, e.activeFlg, e.mobileNo, e.emailId);
+    }
+  }
+
+  if (count("receivables") === 0) {
+    const ins = db.prepare(
+      `insert into receivables
+         (dealer_code, receivable_id, party_type, party_code, party_name, party_email_id,
+          invoice_no, invoice_dt, invoice_amt, received_amt, due_dt, against_type, against_key,
+          narration_desc, status, last_receipt_dt, promised_dt, modified_at, modified_iso)
+       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    for (const s of RECEIVABLE_SEEDS) {
+      const invoiced = daysAgo(s.invoiceDaysAgo);
+      // The due date is the invoice date plus the party's credit period, which
+      // is how a DMS stores it — the period itself lives on the party master
+      // and never reaches an extract.
+      const due = daysAgo(s.invoiceDaysAgo - s.creditDays);
+      const receipt = s.lastReceiptDaysAgo === null ? null : daysAgo(s.lastReceiptDaysAgo);
+      const promised = s.promisedInDays === null ? null : daysAgo(-s.promisedInDays);
+      const modified = daysAgo(s.modifiedDaysAgo);
+      ins.run(
+        s.dealerCode, s.receivableId, s.partyType, s.partyCode, s.partyName, s.partyEmailId,
+        s.invoiceNo, dmsDate(invoiced), s.invoiceAmt, s.receivedAmt, dmsDate(due),
+        s.againstType, s.againstKey, s.narrationDesc, s.status,
+        receipt ? dmsDate(receipt) : null, promised ? dmsDate(promised) : null,
+        dmsTimestamp(modified), isoStampOf(modified),
+      );
+    }
+  }
+
+  if (count("vehicle_stock") === 0) {
+    const ins = db.prepare(
+      `insert into vehicle_stock
+         (dealer_code, chassis_no, engine_no, model_code, model_desc, variant_desc,
+          colour_desc, status, allocated_deal_id, cost_amt, financed_flg,
+          interest_rate_pct, received_dt, allocated_dt, invoiced_dt, modified_at, modified_iso)
+       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    for (const s of VEHICLE_STOCK_SEEDS) {
+      const received = daysAgo(s.receivedDaysAgo);
+      const allocated = s.allocatedDaysAgo === null ? null : daysAgo(s.allocatedDaysAgo);
+      const invoiced = s.invoicedDaysAgo === null ? null : daysAgo(s.invoicedDaysAgo);
+      const modified = daysAgo(s.modifiedDaysAgo);
+      ins.run(
+        s.dealerCode, s.chassisNo, s.engineNo, s.modelCode, s.modelDesc, s.variantDesc,
+        s.colourDesc, s.status, s.allocatedDealId, s.costAmt, s.financedFlg,
+        s.interestRatePct, dmsDate(received),
+        allocated ? dmsDate(allocated) : null, invoiced ? dmsDate(invoiced) : null,
+        dmsTimestamp(modified), isoStampOf(modified),
+      );
     }
   }
 
@@ -1046,6 +1149,114 @@ export function listPartStock(filter: PartStockFilter = {}): DmsPartStock[] {
     .all(...args) as unknown as PartStockRow[];
 
   return rows.map(toPartStock);
+}
+
+// ── Finance ─────────────────────────────────────────────────────────────────
+
+interface ReceivableRow {
+  dealer_code: string; receivable_id: string; party_type: string; party_code: string;
+  party_name: string; party_email_id: string | null; invoice_no: string; invoice_dt: string; invoice_amt: string;
+  received_amt: string; due_dt: string; against_type: string | null;
+  against_key: string | null; narration_desc: string | null; status: string;
+  last_receipt_dt: string | null; promised_dt: string | null; modified_at: string;
+}
+
+function toReceivable(r: ReceivableRow): DmsReceivable {
+  return {
+    dealerCode: r.dealer_code,
+    receivableId: r.receivable_id,
+    partyType: r.party_type as DmsReceivable["partyType"],
+    partyCode: r.party_code,
+    partyName: r.party_name,
+    partyEmailId: r.party_email_id,
+    invoiceNo: r.invoice_no,
+    invoiceDt: r.invoice_dt,
+    invoiceAmt: r.invoice_amt,
+    receivedAmt: r.received_amt,
+    dueDt: r.due_dt,
+    againstType: r.against_type as DmsReceivable["againstType"],
+    againstKey: r.against_key,
+    narrationDesc: r.narration_desc,
+    status: r.status as DmsReceivable["status"],
+    lastReceiptDt: r.last_receipt_dt,
+    promisedDt: r.promised_dt,
+    modifiedAt: r.modified_at,
+  };
+}
+
+export interface ReceivableFilter {
+  dealerCode?: string;
+  partyType?: string;
+  /** Drop settled and written-off rows, which is what an ageing report does. */
+  openOnly?: boolean;
+  modifiedSince?: Date;
+}
+
+export function listReceivables(filter: ReceivableFilter = {}): DmsReceivable[] {
+  const where: string[] = [];
+  const args: string[] = [];
+  if (filter.dealerCode) { where.push("dealer_code = ?"); args.push(filter.dealerCode); }
+  if (filter.partyType) { where.push("party_type = ?"); args.push(filter.partyType); }
+  if (filter.openOnly) where.push("status in ('OPEN', 'PART_PAID')");
+  if (filter.modifiedSince) { where.push("modified_iso >= ?"); args.push(isoStampOf(filter.modifiedSince)); }
+
+  const rows = db
+    .prepare(`select * from receivables${where.length ? ` where ${where.join(" and ")}` : ""} order by dealer_code, invoice_dt`)
+    .all(...args) as unknown as ReceivableRow[];
+
+  return rows.map(toReceivable);
+}
+
+interface VehicleStockRow {
+  dealer_code: string; chassis_no: string; engine_no: string; model_code: string;
+  model_desc: string; variant_desc: string; colour_desc: string; status: string;
+  allocated_deal_id: string | null; cost_amt: string; financed_flg: string;
+  interest_rate_pct: string | null; received_dt: string; allocated_dt: string | null;
+  invoiced_dt: string | null; modified_at: string;
+}
+
+function toVehicleStock(r: VehicleStockRow): DmsVehicleStock {
+  return {
+    dealerCode: r.dealer_code,
+    chassisNo: r.chassis_no,
+    engineNo: r.engine_no,
+    modelCode: r.model_code,
+    modelDesc: r.model_desc,
+    variantDesc: r.variant_desc,
+    colourDesc: r.colour_desc,
+    status: r.status as DmsVehicleStock["status"],
+    allocatedDealId: r.allocated_deal_id,
+    costAmt: r.cost_amt,
+    financedFlg: r.financed_flg as "Y" | "N",
+    interestRatePct: r.interest_rate_pct,
+    receivedDt: r.received_dt,
+    allocatedDt: r.allocated_dt,
+    invoicedDt: r.invoiced_dt,
+    modifiedAt: r.modified_at,
+  };
+}
+
+export interface VehicleStockFilter {
+  dealerCode?: string;
+  status?: string;
+  /** Everything not yet invoiced — the units the floor-plan line is still funding. */
+  unsoldOnly?: boolean;
+  modifiedSince?: Date;
+}
+
+export function listVehicleStock(filter: VehicleStockFilter = {}): DmsVehicleStock[] {
+  const where: string[] = [];
+  const args: string[] = [];
+  if (filter.dealerCode) { where.push("dealer_code = ?"); args.push(filter.dealerCode); }
+  if (filter.status) { where.push("status = ?"); args.push(filter.status); }
+  if (filter.unsoldOnly) where.push("status <> 'INVOICED'");
+  if (filter.modifiedSince) { where.push("modified_iso >= ?"); args.push(isoStampOf(filter.modifiedSince)); }
+
+  const rows = db
+    .prepare(`select * from vehicle_stock${where.length ? ` where ${where.join(" and ")}` : ""} order by dealer_code, received_dt`)
+    .all(...args) as unknown as VehicleStockRow[];
+
+  return rows.map(toVehicleStock);
 }
 
 /** Reference data the API still serves straight from the fixtures. */

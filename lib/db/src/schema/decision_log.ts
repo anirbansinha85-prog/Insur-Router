@@ -53,7 +53,7 @@ export const decisionLogTable = pgTable(
     userId: integer("user_id").references(() => usersTable.id, { onDelete: "set null" }),
 
     module: text("module", {
-      enum: ["DEAL", "JOB_CARD", "ENQUIRY", "REGISTRATION", "PART"],
+      enum: ["DEAL", "JOB_CARD", "ENQUIRY", "REGISTRATION", "PART", "RECEIVABLE", "VEHICLE"],
     }).notNull(),
     /** The mirror row's own key — dealId, jcNo, enqId, regnFileNo, partNo. */
     recordKey: text("record_key").notNull(),

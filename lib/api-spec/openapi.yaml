@@ -1127,6 +1127,89 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /dms/receivables-worklist:
+    get:
+      operationId: getReceivablesWorklist
+      tags: [dms]
+      summary: What the dealership is owed, with the group's exposure attached
+      description: >
+        Rows are scoped to the outlet on screen. `groupExposure` is not — it is
+        computed across every outlet the session's owner holds, and it is present
+        only when a party owes at more than one of them.
+
+        That figure is the module's reason for existing. A DMS keys the ledger to
+        a dealer code, so an owner with two outlets gets two ageing reports and no
+        way to ask what one insurer owes the group.
+      parameters:
+        - name: showroomId
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Every receivable at this outlet, derived on read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  summary:
+                    $ref: "#/components/schemas/ReceivablesWorklistSummary"
+                  rows:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ReceivablesWorklistRow"
+                required: [summary, rows]
+        "404":
+          description: No such showroom
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /dms/inventory-worklist:
+    get:
+      operationId: getInventoryWorklist
+      tags: [dms]
+      summary: The floor, aged — and matched against the people asking for it
+      description: >
+        `matchingEnquiries` is the finding: an open enquiry, at any outlet the
+        owner holds, for the exact model standing unsold on this floor. The stock
+        screen cannot see the CRM and the CRM cannot see the floor, so both
+        systems work correctly and the customer goes elsewhere.
+
+        `interestPerDay` and `interestAccrued` are arithmetic over cost, rate and
+        days on the floor. Nobody at a dealership disputes the sum; they have
+        simply never seen it attached to a specific chassis.
+      parameters:
+        - name: showroomId
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Every unit at this outlet, derived on read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  summary:
+                    $ref: "#/components/schemas/InventoryWorklistSummary"
+                  rows:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/InventoryWorklistRow"
+                required: [summary, rows]
+        "404":
+          description: No such showroom
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /dms/staff:
     get:
       operationId: listShowroomStaff
@@ -2554,7 +2637,9 @@ components:
           enum:
             [ENQUIRY_LOG_CONTACT, ENQUIRY_REASSIGN, JOB_CARD_MARK_INFORMED,
              REGISTRATION_ASSIGN_AGENT, REGISTRATION_MARK_NOTIFIED,
-             REGISTRATION_LOG_CHASE, PART_REQUEST_TRANSFER, PART_RAISE_REORDER]
+             REGISTRATION_LOG_CHASE, PART_REQUEST_TRANSFER, PART_RAISE_REORDER,
+             RECEIVABLE_LOG_CHASE, RECEIVABLE_MARK_DISPUTED,
+             VEHICLE_MARK_OFFERED, VEHICLE_PROPOSE_TRANSFER]
         showroomId: { type: integer }
         recordKey:
           type: string
@@ -2572,6 +2657,12 @@ components:
         fromShowroomId:
           type: integer
           description: PART_REQUEST_TRANSFER only — which outlet is sending it. Must be the same owner's.
+        enqId:
+          type: string
+          description: VEHICLE_MARK_OFFERED only — the enquiry the unit was offered against.
+        toShowroomId:
+          type: integer
+          description: VEHICLE_PROPOSE_TRANSFER only — which outlet should receive it. Must be the same owner's.
         note: { type: string }
       required: [action, showroomId, recordKey]
 
@@ -2588,7 +2679,7 @@ components:
 
     MessageTemplate:
       type: string
-      enum: [SERVICE_VEHICLE_READY, REGISTRATION_RC_READY, REGISTRATION_AGENT_ASSIGNED, LEAD_HANDOVER]
+      enum: [SERVICE_VEHICLE_READY, REGISTRATION_RC_READY, REGISTRATION_AGENT_ASSIGNED, LEAD_HANDOVER, RECEIVABLE_STATEMENT]
       description: >
         Two customer messages and two internal ones. The internal pair require the
         record to have been assigned first, which is what makes them a
@@ -2602,7 +2693,7 @@ components:
         showroomId: { type: integer }
         module:
           type: string
-          enum: [DEAL, JOB_CARD, ENQUIRY, REGISTRATION, PART]
+          enum: [DEAL, JOB_CARD, ENQUIRY, REGISTRATION, PART, RECEIVABLE, VEHICLE]
         recordKey: { type: string }
         audience:
           type: string
@@ -2730,7 +2821,7 @@ components:
 
     ExplainModule:
       type: string
-      enum: [JOB_CARD, ENQUIRY, REGISTRATION, PART]
+      enum: [JOB_CARD, ENQUIRY, REGISTRATION, PART, RECEIVABLE, VEHICLE]
 
     Evidence:
       type: object
@@ -2773,6 +2864,198 @@ components:
           type: ["string", "null"]
           description: Why a model's wording was refused, when one was.
       required: [module, recordKey, findings, evidence]
+
+    ReceivableState:
+      type: string
+      enum: [DISPUTED, PROMISE_BROKEN, UNCHASED, BEING_CHASED, DUE_SOON, CURRENT, SETTLED]
+      description: >
+        Causes, not consequences. Ageing lives on the row as `daysOverdue`
+        because a bill is not overdue *because* it is old — it is old because
+        nobody chased it, they broke a promise, or it is disputed, and those need
+        different people to do different things.
+
+    PartyExposure:
+      type: object
+      description: What one party owes across every outlet the owner holds.
+      properties:
+        partyCode: { type: string }
+        partyName: { type: string }
+        outlets:
+          type: array
+          items:
+            type: object
+            properties:
+              showroomId: { type: integer }
+              showroomCode: { type: ["string", "null"] }
+              balance: { type: number }
+              open: { type: integer }
+            required: [showroomId, balance, open]
+        totalBalance: { type: number }
+        outletCount: { type: integer }
+      required: [partyCode, partyName, outlets, totalBalance, outletCount]
+
+    ReceivablesWorklistRow:
+      type: object
+      properties:
+        receivableId: { type: string }
+        dealerCode: { type: string }
+        showroomId: { type: integer }
+        showroomCode: { type: ["string", "null"] }
+        partyType: { type: string }
+        partyCode: { type: string }
+        partyName: { type: string }
+        partyEmail:
+          type: ["string", "null"]
+          description: Null for a walk-in customer, and that is why a statement cannot always go.
+        dms:
+          type: object
+          properties:
+            invoiceNo: { type: string }
+            invoiceDate: { type: ["string", "null"] }
+            invoiceAmount: { type: ["number", "null"] }
+            receivedAmount: { type: ["number", "null"] }
+            dueDate: { type: ["string", "null"] }
+            againstType: { type: ["string", "null"] }
+            againstKey: { type: ["string", "null"] }
+            narration: { type: ["string", "null"] }
+            status: { type: string }
+            lastReceiptDate: { type: ["string", "null"] }
+            promisedDate: { type: ["string", "null"] }
+          required: [invoiceNo, status]
+        ddms:
+          type: object
+          properties:
+            chasedAt: { type: ["string", "null"] }
+            disputedAt: { type: ["string", "null"] }
+            disputeNote: { type: ["string", "null"] }
+        state:
+          $ref: "#/components/schemas/ReceivableState"
+        note: { type: ["string", "null"] }
+        actionRequired: { type: ["string", "null"] }
+        balance: { type: number }
+        daysOverdue: { type: integer }
+        ageDays: { type: integer }
+        groupExposure:
+          oneOf:
+            - $ref: "#/components/schemas/PartyExposure"
+            - type: "null"
+          description: Present only when this party owes at more than one outlet.
+        lastSyncedAt: { type: string }
+        disappearedFromDms: { type: boolean }
+      required: [receivableId, showroomId, partyType, partyCode, partyName, dms, ddms, state, balance, daysOverdue, ageDays, lastSyncedAt, disappearedFromDms]
+
+    ReceivablesWorklistSummary:
+      type: object
+      properties:
+        total: { type: integer }
+        byState:
+          type: object
+          additionalProperties: { type: integer }
+        needsAction: { type: integer }
+        outstanding: { type: number }
+        overdue:
+          type: number
+          description: Outstanding and past its due date. The number that should be zero.
+        worstDaysOverdue: { type: integer }
+        largestGroupExposure:
+          type: ["object", "null"]
+          properties:
+            partyName: { type: string }
+            totalBalance: { type: number }
+            outletCount: { type: integer }
+          description: >
+            Null when no party owes at more than one outlet, in which case the
+            figure would be a branch number wearing a group label.
+        lastSyncedAt: { type: ["string", "null"] }
+      required: [total, byState, needsAction, outstanding, overdue, worstDaysOverdue]
+
+    InventoryState:
+      type: string
+      enum: [WANTED_NOW, STUCK_ALLOCATION, AGEING_SEVERE, AGEING, OFFERED, FRESH, SOLD]
+
+    MatchingEnquiry:
+      type: object
+      description: An open enquiry for this exact model, at any outlet the owner holds.
+      properties:
+        enqId: { type: string }
+        showroomId: { type: integer }
+        showroomCode: { type: ["string", "null"] }
+        customerName: { type: ["string", "null"] }
+        customerMobile: { type: ["string", "null"] }
+        stage: { type: string }
+        grade: { type: ["string", "null"] }
+        enquiredAt: { type: ["string", "null"] }
+        otherOutlet:
+          type: boolean
+          description: True when the person asking is at a different outlet from the vehicle.
+      required: [enqId, showroomId, stage, otherOutlet]
+
+    InventoryWorklistRow:
+      type: object
+      properties:
+        chassisNo: { type: string }
+        dealerCode: { type: string }
+        showroomId: { type: integer }
+        showroomCode: { type: ["string", "null"] }
+        modelCode: { type: string }
+        modelDescription: { type: ["string", "null"] }
+        variantDescription: { type: ["string", "null"] }
+        colourDescription: { type: ["string", "null"] }
+        dms:
+          type: object
+          properties:
+            engineNo: { type: ["string", "null"] }
+            status: { type: string }
+            allocatedDealId: { type: ["string", "null"] }
+            costAmount: { type: ["number", "null"] }
+            isFinanced: { type: boolean }
+            interestRatePct: { type: ["number", "null"] }
+            receivedDate: { type: ["string", "null"] }
+            allocatedDate: { type: ["string", "null"] }
+            invoicedDate: { type: ["string", "null"] }
+          required: [status, isFinanced]
+        ddms:
+          type: object
+          properties:
+            offeredToEnqId: { type: ["string", "null"] }
+            offeredAt: { type: ["string", "null"] }
+            transferProposedAt: { type: ["string", "null"] }
+            transferToShowroomId: { type: ["integer", "null"] }
+        state:
+          $ref: "#/components/schemas/InventoryState"
+        note: { type: ["string", "null"] }
+        actionRequired: { type: ["string", "null"] }
+        ageDays: { type: integer }
+        allocatedDays: { type: ["integer", "null"] }
+        interestPerDay: { type: ["number", "null"] }
+        interestAccrued: { type: ["number", "null"] }
+        matchingEnquiries:
+          type: array
+          items:
+            $ref: "#/components/schemas/MatchingEnquiry"
+        lastSyncedAt: { type: string }
+        disappearedFromDms: { type: boolean }
+      required: [chassisNo, showroomId, modelCode, dms, ddms, state, ageDays, matchingEnquiries, lastSyncedAt, disappearedFromDms]
+
+    InventoryWorklistSummary:
+      type: object
+      properties:
+        total: { type: integer }
+        byState:
+          type: object
+          additionalProperties: { type: integer }
+        needsAction: { type: integer }
+        capitalTiedUp: { type: number }
+        interestAccrued: { type: number }
+        interestPerDay:
+          type: number
+          description: What another day of doing nothing costs, across the floor.
+        wanted:
+          type: integer
+          description: Units somebody is actively asking for. The one to lead with.
+        oldestDays: { type: integer }
+        lastSyncedAt: { type: ["string", "null"] }
+      required: [total, byState, needsAction, capitalTiedUp, interestAccrued, interestPerDay, wanted, oldestDays]
 
     StaffMember:
       type: object

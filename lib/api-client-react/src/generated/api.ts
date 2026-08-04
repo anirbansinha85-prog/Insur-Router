@@ -39,8 +39,12 @@ import type {
   ExecutionResult,
   ExplainInput,
   Explanation,
+  GetInventoryWorklist200,
+  GetInventoryWorklistParams,
   GetLeadWorklist200,
   GetLeadWorklistParams,
+  GetReceivablesWorklist200,
+  GetReceivablesWorklistParams,
   GetRegistrationWorklist200,
   GetRegistrationWorklistParams,
   GetServiceWorklist200,
@@ -2533,6 +2537,178 @@ export const useExplainDmsRecord = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getExplainDmsRecordMutationOptions(options));
     }
+
+export const getGetReceivablesWorklistUrl = (params: GetReceivablesWorklistParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/dms/receivables-worklist?${stringifiedParams}` : `/api/dms/receivables-worklist`
+}
+
+/**
+ * Rows are scoped to the outlet on screen. `groupExposure` is not — it is computed across every outlet the session's owner holds, and it is present only when a party owes at more than one of them.
+ * That figure is the module's reason for existing. A DMS keys the ledger to a dealer code, so an owner with two outlets gets two ageing reports and no way to ask what one insurer owes the group.
+ * @summary What the dealership is owed, with the group's exposure attached
+ */
+export const getReceivablesWorklist = async (params: GetReceivablesWorklistParams, options?: Parameters<typeof customFetch>[1]): Promise<GetReceivablesWorklist200> => {
+
+  return customFetch<GetReceivablesWorklist200>(getGetReceivablesWorklistUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetReceivablesWorklistQueryKey = (params?: GetReceivablesWorklistParams,) => {
+    return [
+    `/api/dms/receivables-worklist`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetReceivablesWorklistQueryOptions = <TData = Awaited<ReturnType<typeof getReceivablesWorklist>>, TError = ErrorType<ErrorResponse>>(params: GetReceivablesWorklistParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReceivablesWorklist>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetReceivablesWorklistQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getReceivablesWorklist>>> = ({ signal }) => getReceivablesWorklist(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getReceivablesWorklist>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetReceivablesWorklistQueryResult = NonNullable<Awaited<ReturnType<typeof getReceivablesWorklist>>>
+export type GetReceivablesWorklistQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary What the dealership is owed, with the group's exposure attached
+ */
+
+export function useGetReceivablesWorklist<TData = Awaited<ReturnType<typeof getReceivablesWorklist>>, TError = ErrorType<ErrorResponse>>(
+ params: GetReceivablesWorklistParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReceivablesWorklist>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetReceivablesWorklistQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetInventoryWorklistUrl = (params: GetInventoryWorklistParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/dms/inventory-worklist?${stringifiedParams}` : `/api/dms/inventory-worklist`
+}
+
+/**
+ * `matchingEnquiries` is the finding: an open enquiry, at any outlet the owner holds, for the exact model standing unsold on this floor. The stock screen cannot see the CRM and the CRM cannot see the floor, so both systems work correctly and the customer goes elsewhere.
+ * `interestPerDay` and `interestAccrued` are arithmetic over cost, rate and days on the floor. Nobody at a dealership disputes the sum; they have simply never seen it attached to a specific chassis.
+ * @summary The floor, aged — and matched against the people asking for it
+ */
+export const getInventoryWorklist = async (params: GetInventoryWorklistParams, options?: Parameters<typeof customFetch>[1]): Promise<GetInventoryWorklist200> => {
+
+  return customFetch<GetInventoryWorklist200>(getGetInventoryWorklistUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetInventoryWorklistQueryKey = (params?: GetInventoryWorklistParams,) => {
+    return [
+    `/api/dms/inventory-worklist`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetInventoryWorklistQueryOptions = <TData = Awaited<ReturnType<typeof getInventoryWorklist>>, TError = ErrorType<ErrorResponse>>(params: GetInventoryWorklistParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getInventoryWorklist>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetInventoryWorklistQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getInventoryWorklist>>> = ({ signal }) => getInventoryWorklist(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getInventoryWorklist>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetInventoryWorklistQueryResult = NonNullable<Awaited<ReturnType<typeof getInventoryWorklist>>>
+export type GetInventoryWorklistQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary The floor, aged — and matched against the people asking for it
+ */
+
+export function useGetInventoryWorklist<TData = Awaited<ReturnType<typeof getInventoryWorklist>>, TError = ErrorType<ErrorResponse>>(
+ params: GetInventoryWorklistParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getInventoryWorklist>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetInventoryWorklistQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getListShowroomStaffUrl = (params: ListShowroomStaffParams,) => {
   const normalizedParams = new URLSearchParams();

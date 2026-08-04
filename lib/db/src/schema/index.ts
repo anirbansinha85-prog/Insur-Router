@@ -6,6 +6,8 @@ export * from "./dms_job_cards";
 export * from "./dms_enquiries";
 export * from "./dms_registrations";
 export * from "./dms_part_stock";
+export * from "./dms_receivables";
+export * from "./dms_vehicle_stock";
 export * from "./entities";
 export * from "./decision_log";
 export * from "./outbound_messages";

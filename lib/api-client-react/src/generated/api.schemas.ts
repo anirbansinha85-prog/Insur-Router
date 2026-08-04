@@ -1039,6 +1039,10 @@ export const DmsActionInputAction = {
   REGISTRATION_LOG_CHASE: 'REGISTRATION_LOG_CHASE',
   PART_REQUEST_TRANSFER: 'PART_REQUEST_TRANSFER',
   PART_RAISE_REORDER: 'PART_RAISE_REORDER',
+  RECEIVABLE_LOG_CHASE: 'RECEIVABLE_LOG_CHASE',
+  RECEIVABLE_MARK_DISPUTED: 'RECEIVABLE_MARK_DISPUTED',
+  VEHICLE_MARK_OFFERED: 'VEHICLE_MARK_OFFERED',
+  VEHICLE_PROPOSE_TRANSFER: 'VEHICLE_PROPOSE_TRANSFER',
 } as const;
 
 /**
@@ -1068,6 +1072,10 @@ export interface DmsActionInput {
   channel?: DmsActionInputChannel;
   /** PART_REQUEST_TRANSFER only — which outlet is sending it. Must be the same owner's. */
   fromShowroomId?: number;
+  /** VEHICLE_MARK_OFFERED only — the enquiry the unit was offered against. */
+  enqId?: string;
+  /** VEHICLE_PROPOSE_TRANSFER only — which outlet should receive it. Must be the same owner's. */
+  toShowroomId?: number;
   note?: string;
 }
 
@@ -1082,6 +1090,7 @@ export const MessageTemplate = {
   REGISTRATION_RC_READY: 'REGISTRATION_RC_READY',
   REGISTRATION_AGENT_ASSIGNED: 'REGISTRATION_AGENT_ASSIGNED',
   LEAD_HANDOVER: 'LEAD_HANDOVER',
+  RECEIVABLE_STATEMENT: 'RECEIVABLE_STATEMENT',
 } as const;
 
 export interface DraftMessageInput {
@@ -1100,6 +1109,8 @@ export const OutboundMessageModule = {
   ENQUIRY: 'ENQUIRY',
   REGISTRATION: 'REGISTRATION',
   PART: 'PART',
+  RECEIVABLE: 'RECEIVABLE',
+  VEHICLE: 'VEHICLE',
 } as const;
 
 /**
@@ -1264,6 +1275,8 @@ export const ExplainModule = {
   ENQUIRY: 'ENQUIRY',
   REGISTRATION: 'REGISTRATION',
   PART: 'PART',
+  RECEIVABLE: 'RECEIVABLE',
+  VEHICLE: 'VEHICLE',
 } as const;
 
 export interface ExplainInput {
@@ -1306,6 +1319,245 @@ export interface Explanation {
      * @nullable
      */
   narrationRejected?: string | null;
+}
+
+/**
+ * Causes, not consequences. Ageing lives on the row as `daysOverdue` because a bill is not overdue *because* it is old — it is old because nobody chased it, they broke a promise, or it is disputed, and those need different people to do different things.
+ */
+export type ReceivableState = typeof ReceivableState[keyof typeof ReceivableState];
+
+
+export const ReceivableState = {
+  DISPUTED: 'DISPUTED',
+  PROMISE_BROKEN: 'PROMISE_BROKEN',
+  UNCHASED: 'UNCHASED',
+  BEING_CHASED: 'BEING_CHASED',
+  DUE_SOON: 'DUE_SOON',
+  CURRENT: 'CURRENT',
+  SETTLED: 'SETTLED',
+} as const;
+
+export type PartyExposureOutletsItem = {
+  showroomId: number;
+  /** @nullable */
+  showroomCode?: string | null;
+  balance: number;
+  open: number;
+};
+
+/**
+ * What one party owes across every outlet the owner holds.
+ */
+export interface PartyExposure {
+  partyCode: string;
+  partyName: string;
+  outlets: PartyExposureOutletsItem[];
+  totalBalance: number;
+  outletCount: number;
+}
+
+export type ReceivablesWorklistRowDms = {
+  invoiceNo: string;
+  /** @nullable */
+  invoiceDate?: string | null;
+  /** @nullable */
+  invoiceAmount?: number | null;
+  /** @nullable */
+  receivedAmount?: number | null;
+  /** @nullable */
+  dueDate?: string | null;
+  /** @nullable */
+  againstType?: string | null;
+  /** @nullable */
+  againstKey?: string | null;
+  /** @nullable */
+  narration?: string | null;
+  status: string;
+  /** @nullable */
+  lastReceiptDate?: string | null;
+  /** @nullable */
+  promisedDate?: string | null;
+};
+
+export type ReceivablesWorklistRowDdms = {
+  /** @nullable */
+  chasedAt?: string | null;
+  /** @nullable */
+  disputedAt?: string | null;
+  /** @nullable */
+  disputeNote?: string | null;
+};
+
+export interface ReceivablesWorklistRow {
+  receivableId: string;
+  dealerCode?: string;
+  showroomId: number;
+  /** @nullable */
+  showroomCode?: string | null;
+  partyType: string;
+  partyCode: string;
+  partyName: string;
+  /**
+     * Null for a walk-in customer, and that is why a statement cannot always go.
+     * @nullable
+     */
+  partyEmail?: string | null;
+  dms: ReceivablesWorklistRowDms;
+  ddms: ReceivablesWorklistRowDdms;
+  state: ReceivableState;
+  /** @nullable */
+  note?: string | null;
+  /** @nullable */
+  actionRequired?: string | null;
+  balance: number;
+  daysOverdue: number;
+  ageDays: number;
+  /** Present only when this party owes at more than one outlet. */
+  groupExposure?: PartyExposure | null;
+  lastSyncedAt: string;
+  disappearedFromDms: boolean;
+}
+
+export type ReceivablesWorklistSummaryByState = {[key: string]: number};
+
+/**
+ * Null when no party owes at more than one outlet, in which case the figure would be a branch number wearing a group label.
+ * @nullable
+ */
+export type ReceivablesWorklistSummaryLargestGroupExposure = {
+  partyName?: string;
+  totalBalance?: number;
+  outletCount?: number;
+} | null;
+
+export interface ReceivablesWorklistSummary {
+  total: number;
+  byState: ReceivablesWorklistSummaryByState;
+  needsAction: number;
+  outstanding: number;
+  /** Outstanding and past its due date. The number that should be zero. */
+  overdue: number;
+  worstDaysOverdue: number;
+  /**
+     * Null when no party owes at more than one outlet, in which case the figure would be a branch number wearing a group label.
+     * @nullable
+     */
+  largestGroupExposure?: ReceivablesWorklistSummaryLargestGroupExposure;
+  /** @nullable */
+  lastSyncedAt?: string | null;
+}
+
+export type InventoryState = typeof InventoryState[keyof typeof InventoryState];
+
+
+export const InventoryState = {
+  WANTED_NOW: 'WANTED_NOW',
+  STUCK_ALLOCATION: 'STUCK_ALLOCATION',
+  AGEING_SEVERE: 'AGEING_SEVERE',
+  AGEING: 'AGEING',
+  OFFERED: 'OFFERED',
+  FRESH: 'FRESH',
+  SOLD: 'SOLD',
+} as const;
+
+/**
+ * An open enquiry for this exact model, at any outlet the owner holds.
+ */
+export interface MatchingEnquiry {
+  enqId: string;
+  showroomId: number;
+  /** @nullable */
+  showroomCode?: string | null;
+  /** @nullable */
+  customerName?: string | null;
+  /** @nullable */
+  customerMobile?: string | null;
+  stage: string;
+  /** @nullable */
+  grade?: string | null;
+  /** @nullable */
+  enquiredAt?: string | null;
+  /** True when the person asking is at a different outlet from the vehicle. */
+  otherOutlet: boolean;
+}
+
+export type InventoryWorklistRowDms = {
+  /** @nullable */
+  engineNo?: string | null;
+  status: string;
+  /** @nullable */
+  allocatedDealId?: string | null;
+  /** @nullable */
+  costAmount?: number | null;
+  isFinanced: boolean;
+  /** @nullable */
+  interestRatePct?: number | null;
+  /** @nullable */
+  receivedDate?: string | null;
+  /** @nullable */
+  allocatedDate?: string | null;
+  /** @nullable */
+  invoicedDate?: string | null;
+};
+
+export type InventoryWorklistRowDdms = {
+  /** @nullable */
+  offeredToEnqId?: string | null;
+  /** @nullable */
+  offeredAt?: string | null;
+  /** @nullable */
+  transferProposedAt?: string | null;
+  /** @nullable */
+  transferToShowroomId?: number | null;
+};
+
+export interface InventoryWorklistRow {
+  chassisNo: string;
+  dealerCode?: string;
+  showroomId: number;
+  /** @nullable */
+  showroomCode?: string | null;
+  modelCode: string;
+  /** @nullable */
+  modelDescription?: string | null;
+  /** @nullable */
+  variantDescription?: string | null;
+  /** @nullable */
+  colourDescription?: string | null;
+  dms: InventoryWorklistRowDms;
+  ddms: InventoryWorklistRowDdms;
+  state: InventoryState;
+  /** @nullable */
+  note?: string | null;
+  /** @nullable */
+  actionRequired?: string | null;
+  ageDays: number;
+  /** @nullable */
+  allocatedDays?: number | null;
+  /** @nullable */
+  interestPerDay?: number | null;
+  /** @nullable */
+  interestAccrued?: number | null;
+  matchingEnquiries: MatchingEnquiry[];
+  lastSyncedAt: string;
+  disappearedFromDms: boolean;
+}
+
+export type InventoryWorklistSummaryByState = {[key: string]: number};
+
+export interface InventoryWorklistSummary {
+  total: number;
+  byState: InventoryWorklistSummaryByState;
+  needsAction: number;
+  capitalTiedUp: number;
+  interestAccrued: number;
+  /** What another day of doing nothing costs, across the floor. */
+  interestPerDay: number;
+  /** Units somebody is actively asking for. The one to lead with. */
+  wanted: number;
+  oldestDays: number;
+  /** @nullable */
+  lastSyncedAt?: string | null;
 }
 
 export interface StaffMember {
@@ -1974,6 +2226,24 @@ export type CancelDmsMessage200 = {
 
 export type SendDmsMessage200 = {
   message: OutboundMessage;
+};
+
+export type GetReceivablesWorklistParams = {
+showroomId: number;
+};
+
+export type GetReceivablesWorklist200 = {
+  summary: ReceivablesWorklistSummary;
+  rows: ReceivablesWorklistRow[];
+};
+
+export type GetInventoryWorklistParams = {
+showroomId: number;
+};
+
+export type GetInventoryWorklist200 = {
+  summary: InventoryWorklistSummary;
+  rows: InventoryWorklistRow[];
 };
 
 export type ListShowroomStaffParams = {

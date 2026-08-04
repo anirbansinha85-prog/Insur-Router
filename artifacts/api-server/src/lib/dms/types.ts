@@ -365,6 +365,60 @@ export interface DmsPartStock {
   modifiedAt: string;
 }
 
+/**
+ * One thing the dealership is owed, at one outlet.
+ *
+ * `partyCode` is the field this module exists for: it is stable across outlets,
+ * so an owner can ask what one insurer owes the group. Neither branch's own
+ * ageing report can, because both are keyed to a dealer code.
+ */
+export interface DmsReceivable {
+  dealerCode: string;
+  receivableId: string;
+  partyType: "CUSTOMER" | "INSURER" | "OEM" | "FINANCIER";
+  partyCode: string;
+  partyName: string;
+  /** Where a statement would go. Null for walk-in customers. */
+  partyEmailId: string | null;
+  invoiceNo: string;
+  invoiceDt: DmsDate;
+  invoiceAmt: DmsAmount;
+  receivedAmt: DmsAmount;
+  dueDt: DmsDate;
+  againstType: "JOB_CARD" | "DEAL" | null;
+  againstKey: string | null;
+  narrationDesc: string | null;
+  status: "OPEN" | "PART_PAID" | "SETTLED" | "WRITTEN_OFF";
+  lastReceiptDt: DmsDate | null;
+  promisedDt: DmsDate | null;
+  modifiedAt: string;
+}
+
+/**
+ * One vehicle on the floor.
+ *
+ * `receivedDt` with `costAmt` and `interestRatePct` is the whole of the ageing
+ * question, and nothing in the dealer's system puts the three together.
+ */
+export interface DmsVehicleStock {
+  dealerCode: string;
+  chassisNo: string;
+  engineNo: string;
+  modelCode: string;
+  modelDesc: string;
+  variantDesc: string;
+  colourDesc: string;
+  status: "IN_STOCK" | "ALLOCATED" | "INVOICED";
+  allocatedDealId: string | null;
+  costAmt: DmsAmount;
+  financedFlg: "Y" | "N";
+  interestRatePct: DmsAmount | null;
+  receivedDt: DmsDate;
+  allocatedDt: DmsDate | null;
+  invoicedDt: DmsDate | null;
+  modifiedAt: string;
+}
+
 /** Every non-2xx response from the mock carries this shape. */
 export interface DmsErrorBody {
   errCode?: string;

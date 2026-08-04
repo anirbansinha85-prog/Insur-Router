@@ -30,6 +30,8 @@ import type {
   DmsJobCard,
   DmsJobCardSummary,
   DmsPartStock,
+  DmsReceivable,
+  DmsVehicleStock,
   DmsRegnFile,
   DmsRegnFileSummary,
   DmsStockLookup,
@@ -290,6 +292,28 @@ export function fetchRegnFile(regnFileNo: string): Promise<DmsRegnFile | null> {
 export async function dmsPartStock(dealerCode: string): Promise<DmsPartStock[]> {
   const body = await dmsGet<{ count: number; stock: DmsPartStock[] }>(
     `/dms/v1/parts/stock?dealerCode=${encodeURIComponent(dealerCode)}`,
+  );
+  return body?.stock ?? [];
+}
+
+/**
+ * Everything the outlet is owed, settled rows included.
+ *
+ * Deliberately not `openOnly`: a bill settled last week is what tells the
+ * screen the difference between a party who pays slowly and one who does not
+ * pay at all, and dropping it at the source would make that unanswerable.
+ */
+export async function dmsReceivables(dealerCode: string): Promise<DmsReceivable[]> {
+  const body = await dmsGet<{ count: number; receivables: DmsReceivable[] }>(
+    `/dms/v1/receivables?dealerCode=${encodeURIComponent(dealerCode)}`,
+  );
+  return body?.receivables ?? [];
+}
+
+/** Every vehicle on the floor, invoiced units included — ageing needs the contrast. */
+export async function dmsVehicleStock(dealerCode: string): Promise<DmsVehicleStock[]> {
+  const body = await dmsGet<{ count: number; stock: DmsVehicleStock[] }>(
+    `/dms/v1/vehicle-stock?dealerCode=${encodeURIComponent(dealerCode)}`,
   );
   return body?.stock ?? [];
 }

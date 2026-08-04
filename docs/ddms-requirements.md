@@ -38,7 +38,7 @@ Status: **✅ done** · **◑ partial** · **○ not started**
 
 | # | Requirement | Status |
 |---|---|---|
-| R-1 | Owner-level: one owner, many showrooms, one view across all of them | ✅ and now *load-bearing* — the spares worklist reads across outlets |
+| R-1 | Owner-level: one owner, many showrooms, one view across all of them | ✅ and *load-bearing* in three places — spares, receivables and the vehicle floor each read across outlets |
 | R-2 | A showroom is its own entity and *has* dealer codes — not 1:1. One address may carry two brands; one brand may sell from three outlets; a service centre has no dealer code at all | ✅ |
 | R-3 | First customer shape: one OEM, several showrooms, one owner | ✅ |
 | R-4 | DDMS sits on top of the OEM's DMS and does not replace it | ✅ |
@@ -57,9 +57,9 @@ Status: **✅ done** · **◑ partial** · **○ not started**
 | R-13 | Sales: deals and insurance status | ✅ |
 | R-14 | Service centre: job cards, what is stuck, what the customer has not been told | ✅ |
 | R-15 | CRM: enquiries, the manufacturer's response clock, leads with no owner | ✅ |
-| R-16 | Spares, finance/receivables, inventory ageing, registration workflow | ◑ registration and spares done |
-| R-17 | Invoice generation, automated | ○ |
-| R-18 | DDMS holds every DMS field **plus** its own decision fields for each function | ◑ 5 of 9 modules |
+| R-16 | Spares, finance/receivables, inventory ageing, registration workflow | ✅ all four |
+| R-17 | Invoice generation, automated | ✅ as a **statement of account** through the approval gate. Generating the dealer's tax invoice would mean two invoices for one debt, and the DMS is read-only |
+| R-18 | DDMS holds every DMS field **plus** its own decision fields for each function | ✅ 7 modules, every decision field proven load-bearing by query |
 | R-19 | Staff shortage made visible from the dealer's own data — attrition, orphaned work | ◑ leads only |
 
 ### What it does
@@ -235,7 +235,7 @@ string with `bypassrls`, and InsurRouter's application list shows only the
 signed-in owner's applications — proven by signing in as the second owner and
 getting an empty list rather than by reading the code.
 
-### OBJ-4 — The remaining modules  ◑ **2 of 5, 4 Aug** · *moved after OBJ-10*
+### OBJ-4 — The remaining modules  ✅ **done 4 Aug**
 *Covers R-16, R-17, R-18.*
 
 Spares, receivables, inventory ageing, registration workflow, invoicing. Each
@@ -318,11 +318,84 @@ Decision field `transferRequestedAt` proven load-bearing (needsAction 6 → 5).
 cross-branch lookup working in both directions, and the screen driven through a
 browser.
 
-#### Still to do — and deliberately not next
+#### Receivables ✅ **done 4 Aug**
 
-Receivables, inventory ageing, invoicing. Replanned on 4 August to sit after the
-action layer: five modules that report and one button that acts is a worse
-product than five modules that act. See section 3a.
+The second module — after spares — to answer a question a single branch
+**cannot** answer rather than one it merely failed to.
+
+A DMS keys the ledger to a dealer code. Own two outlets and one insurer owes you
+money in two places; each branch sees a bill worth chasing, and nobody sees an
+insurer holding a six-figure sum of the group's money. Those are different
+conversations, and only one of them gets a phone call returned.
+
+| | |
+|---|---|
+| ICICI Lombard, across both outlets | **₹85,500** — ₹48,200 at Saraswati, ₹37,300 at Deccan, and neither ledger adds them up |
+| A fleet account 104 days past a 30-day credit period | never chased since a part payment in March |
+| An OEM warranty claim short-settled | not collectable and not a write-off until somebody reworks it |
+| A customer who gave a date and missed it | a different state from an unchased bill, and it needs a different call |
+
+**The states name causes, not ageing.** `daysOverdue` lives on the row.
+Ranking by age alone would put a disputed bill next to an unchased one and send
+somebody to have an argument they cannot win — the same lesson the registration
+module paid for.
+
+Decision fields proven load-bearing by query: `chasedAt` moved the fleet account
+`UNCHASED → BEING_CHASED` and removed its action, and it is a **recency** test
+so a chase three months ago still reads as unchased. `disputedAt` moved the
+warranty claim to `DISPUTED` and replaced "chase ₹7,450" with "resolve the
+dispute — this cannot be collected until it is".
+
+#### Inventory ageing ✅ **done 4 Aug**
+
+The module that finally joins two mirrors that have sat side by side since the
+CRM was built.
+
+> **A bike has been on this floor for 96 days, and two people are asking for
+> that exact model.**
+
+The stock screen cannot see the CRM. The CRM cannot see the floor. Both systems
+are working correctly and the customer buys elsewhere. `modelCode` against
+`modelInterest`, across every outlet the owner holds, is a join rather than a
+guess — and it is the leading number, because ringing somebody who already asked
+is not a decision the way discounting is.
+
+The second number is arithmetic nobody disputes and nobody has seen attached to
+a chassis: **₹121 a day** across the floor, ₹11,065 accrued, ₹4,77,900 of capital
+standing. A Destini allocated 142 days ago and never invoiced is the sharpest
+row — held out of stock *and* out of sales, and invisible on any ageing report
+that filters on `IN_STOCK`.
+
+`offeredToEnqId` proven load-bearing: `WANTED_NOW → OFFERED`, so the screen
+stops proposing the same call every morning.
+
+> **The clock has to stop somewhere.** An invoiced unit first showed 34 days on
+> the floor and interest still climbing — a cost the dealership stopped paying
+> when the bike left. Ageing now measures to the invoice date once there is one.
+
+#### Invoicing ✅ **done 4 Aug** — as a statement of account
+
+R-17 said "invoice generation, automated". Read against R-5 that cannot mean
+generating the dealer's tax invoice: that document lives in their DMS, carries a
+statutory number series, and the integration is read-only permanently. A second
+one would create two invoices for one debt, which is worse than none.
+
+What DDMS generates instead is the document the dealership never gets round to —
+a statement addressed to the party, listing the open items **totalled across
+every outlet they owe at**. That total is the thing no branch ledger can
+produce, and putting it in front of an insurer is the point of having computed
+it.
+
+It goes through the OBJ-11 gate as a `CUSTOMER` message, so no rule can send it
+and a person approves every one. Verified, including the refusals:
+
+| | |
+|---|---|
+| Statement to ICICI Lombard | drafted, carrying the ₹85,500 group total broken out per outlet |
+| Gate | refuses — *"addressed to a customer… needs somebody to read it"* |
+| A settled invoice | 409 — *"asking somebody to pay a bill they have paid is the one letter a dealership cannot take back"* |
+| A disputed invoice | 409 — *"resolve that before asking them to pay it"* |
+| A walk-in customer with no email | drafts, then the gate refuses on send: no address |
 
 ---
 
@@ -351,7 +424,7 @@ it weaker rather than better. The remaining modules move after the action layer.
 | 2 | **OBJ-10** The screens act | no | R-20, and it is what makes an agent worth having |
 | 3 | **OBJ-11** Composer + approval gate ✅ | yes, gated | the first outbound surface |
 | 4 | **OBJ-12** The panel that explains ✅ | yes, read-only | needs 9 and 10 to have anything to say |
-| 5 | **OBJ-4** receivables, ageing, invoicing | no | after the product acts |
+| 5 | **OBJ-4** receivables, ageing, invoicing ✅ | no | after the product acts |
 | 6 | **OBJ-6** a dealership that reads as real | no | partly falls out of the above |
 | 7 | **OBJ-8** one credential | no | unchanged, and now also gates outbound |
 
@@ -576,9 +649,9 @@ the business rather than a question about the data.
 
 ## 4. Where things actually stand
 
-**Built and verified:** owner tier; the read-only mirror across five modules
-(deals, job cards, enquiries, registration files, parts); reconciliation on
-deals; derived state on all five; insurer panel with quota; scheduled sync; API
+**Built and verified:** owner tier; the read-only mirror across seven modules
+(deals, job cards, enquiries, registration files, parts, receivables, vehicle
+stock); reconciliation on deals; derived state on all seven; insurer panel with quota; scheduled sync; API
 authentication; per-user sign-in; row-level security on the DDMS request path;
 the one-application-per-deal constraint; DDMS as its own service.
 
