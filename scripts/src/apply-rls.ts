@@ -20,6 +20,12 @@
  *
  * Idempotent, and it finishes by proving the thing it claims: it reconnects as
  * `ddms_app` with no session and checks that the tables read empty.
+ *
+ * > If a re-run fails with `password authentication failed for user
+ * > "ddms_app"` immediately after the policies applied, wait a few seconds and
+ * > run it again. Supabase's pooler caches role credentials, and an `alter
+ * > role … password` takes a moment to propagate to it. The role is fine; the
+ * > pooler is still holding the previous one.
  */
 
 import { readFileSync } from "node:fs";
@@ -34,6 +40,7 @@ const SCOPED_TABLES = [
   "dms_deals",
   "dms_job_cards",
   "dms_enquiries",
+  "dms_registrations",
   "showrooms",
   "owners",
 ];
@@ -75,6 +82,15 @@ function appConnection(): { url: string; role: string; password: string } {
  * and literals in DDL, not values. Rather than escaping them here, `format`
  * with `%I`/`%L` does it server-side, which is the one implementation that is
  * definitionally correct.
+ *
+ * The re-run path deliberately omits `nosuperuser`, which the create path
+ * carries. Supabase's `supautils` hook rejects any `alter role` that names the
+ * superuser attribute — *"only roles with the SUPERUSER attribute may alter
+ * roles with the SUPERUSER attribute"* — even to switch it off, and even when
+ * it was already off. Nothing is lost by omitting it: `check()` below reads the
+ * role's actual attributes back and refuses to continue if it can bypass RLS,
+ * which is the property that matters and the only one worth trusting a query
+ * about rather than a DDL statement.
  */
 async function createRole(role: string, password: string): Promise<void> {
   const { rows } = await pool.query<{ create_sql: string; alter_sql: string }>(
@@ -84,7 +100,7 @@ async function createRole(role: string, password: string): Promise<void> {
          $1::text, $2::text
        ) as create_sql,
        format(
-         'alter role %I with login nosuperuser nocreatedb nocreaterole noinherit nobypassrls password %L',
+         'alter role %I with login nocreatedb nocreaterole noinherit nobypassrls password %L',
          $1::text, $2::text
        ) as alter_sql`,
     [role, password],

@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter"
 import {
   Users, ListChecks, Wrench, LayoutDashboard, ShieldCheck, Bell,
-  ExternalLink, LogOut,
+  ExternalLink, LogOut, IdCard,
 } from "lucide-react"
 import type { SessionUser } from "@workspace/api-client-react"
 import { cn } from "@/lib/utils"
@@ -33,6 +33,10 @@ const GROUPS: NavGroup[] = [
     items: [
       { href: "/", label: "Enquiries", icon: Users },
       { href: "/worklist", label: "Deals", icon: ListChecks },
+      // Under Showroom rather than a compliance group of its own: the file is
+      // opened by the sale and closed by handing a card to the same customer,
+      // and separating it is part of how it stops being anybody's job.
+      { href: "/registrations", label: "Registration & RC", icon: IdCard },
     ],
   },
   {

@@ -12,6 +12,7 @@ import SignIn from '@/pages/SignIn';
 import Leads from '@/pages/Leads';
 import Worklist from '@/pages/Worklist';
 import ServiceWorklist from '@/pages/ServiceWorklist';
+import Registrations from '@/pages/Registrations';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -71,6 +72,7 @@ function Gate() {
               to insure or a bike to service, so it is where the day starts. */}
           <Route path="/" component={Leads} />
           <Route path="/worklist" component={Worklist} />
+          <Route path="/registrations" component={Registrations} />
           <Route path="/service" component={ServiceWorklist} />
           <Route component={NotFound} />
         </Switch>

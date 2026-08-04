@@ -31,16 +31,19 @@ import {
   fetchDeal,
   resolveTenantByDealerCode,
   buildLeadWorklist,
+  buildRegistrationWorklist,
   buildServiceWorklist,
   buildWorklist,
   isDmsConfigured,
   panelForShowroom,
   summarise,
   summariseLeads,
+  summariseRegistrations,
   summariseService,
   syncShowroom,
   syncShowroomEnquiries,
   syncShowroomJobCards,
+  syncShowroomRegistrations,
 } from "../lib/dms";
 import { createDraftApplication } from "../lib/draft-application";
 import { assertShowroomAccess, requireUser, sessionScope } from "../lib/session";
@@ -144,12 +147,13 @@ router.post("/dms/showrooms/:showroomId/sync", async (req, res): Promise<void> =
   }
 
   try {
-    // Both modules in one pass. A sync that refreshed sales and left the
+    // Every module in one pass. A sync that refreshed sales and left the
     // workshop stale would produce a console where half the numbers are from
     // this minute and half from yesterday, with nothing on screen saying which.
     const results = await syncShowroom(showroomId);
     const jobCardResults = await syncShowroomJobCards(showroomId);
     const enquiryResults = await syncShowroomEnquiries(showroomId);
+    const registrationResults = await syncShowroomRegistrations(showroomId);
 
     if (results.length === 0) {
       // The showroom exists but has no active DMS account, which is a
@@ -162,7 +166,7 @@ router.post("/dms/showrooms/:showroomId/sync", async (req, res): Promise<void> =
       return;
     }
 
-    res.json({ results, jobCardResults, enquiryResults });
+    res.json({ results, jobCardResults, enquiryResults, registrationResults });
   } catch (err) {
     if (err instanceof DmsError) {
       const status = err.kind === "bad_response" ? 502 : 503;
@@ -258,6 +262,38 @@ router.get("/dms/lead-worklist", async (req, res): Promise<void> => {
   });
 
   res.json({ summary: summariseLeads(rows), rows });
+});
+
+/**
+ * The registration worklist.
+ *
+ * Two numbers here exist nowhere in the dealership. **Certificates in the
+ * drawer**: the DMS calls a vehicle finished when the RTO allots a number, and
+ * whether the customer ever received the card is two fields further down a
+ * record no screen puts side by side. **Road tax held**: collected from the
+ * customer at invoice, remitted to the state afterwards, and nothing anywhere
+ * subtracts the two dates.
+ *
+ * It also produces the first cross-module action in the product — a file
+ * blocked because there is no policy is a row on this screen and a deal on the
+ * insurance one, and the fix for it is InsurRouter.
+ */
+router.get("/dms/registration-worklist", async (req, res): Promise<void> => {
+  const showroomId = parseShowroomId(String(req.query.showroomId ?? ""));
+  if (showroomId === null) {
+    res.status(400).json({ error: "showroomId query parameter is required and must be a positive integer" });
+    return;
+  }
+
+  if (!(await assertShowroomAccess(req, res, showroomId))) return;
+
+  const rows = await buildRegistrationWorklist({
+    showroomId,
+    status: typeof req.query.status === "string" ? req.query.status : undefined,
+    includeDisappeared: req.query.includeDisappeared === "true",
+  });
+
+  res.json({ summary: summariseRegistrations(rows), rows });
 });
 
 /**

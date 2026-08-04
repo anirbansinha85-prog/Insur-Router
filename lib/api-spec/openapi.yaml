@@ -735,6 +735,66 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /dms/registration-worklist:
+    get:
+      operationId: getRegistrationWorklist
+      tags: [dms]
+      summary: Registration files, why each one is stuck, and the certificates nobody collected
+      description: >
+        The registration desk carries the longest-running open items in a
+        dealership and the ones with the most hands in them — the customer, the
+        dealer, an RTO agent, the state's tax counter, the RTO itself — so a
+        file can stall in six places for six reasons and the DMS records exactly
+        one of them: the current status label.
+
+        Two numbers here exist on no screen the dealer has. **Certificates in
+        the drawer**: the DMS considers a vehicle finished when the RTO allots a
+        number, and whether the customer ever received the card is two fields
+        further down a record nothing puts side by side. **Road tax held**:
+        collected from the customer at invoice and remitted to the state
+        afterwards, with nothing anywhere subtracting the two dates.
+
+        Query parameter rather than a path segment, for the orval reason
+        documented on /dms/worklist.
+      parameters:
+        - name: showroomId
+          in: query
+          required: true
+          schema:
+            type: integer
+        - name: status
+          in: query
+          required: false
+          description: Filter on the DMS file status, e.g. SUBMITTED
+          schema:
+            type: string
+        - name: includeDisappeared
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Registration files plus a summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  summary:
+                    $ref: "#/components/schemas/RegistrationWorklistSummary"
+                  rows:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RegistrationWorklistRow"
+                required: [summary, rows]
+        "404":
+          description: No such showroom
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /dms/lead-worklist:
     get:
       operationId: getLeadWorklist
@@ -1975,6 +2035,132 @@ components:
         worstDaysLate: { type: integer }
         lastSyncedAt: { type: ["string", "null"] }
       required: [total, byState, needsAction, readyUncollected, worstDaysLate]
+
+    RegistrationState:
+      type: string
+      enum:
+        [OBJECTION, BLOCKED_NO_INSURANCE, AWAITING_DOCS, TAX_HELD, RC_IN_DRAWER,
+         RTO_SILENT, HSRP_PENDING, ON_TRACK, CLOSED]
+      description: >
+        **Why** a registration file is not moving. Each has a different owner:
+        the RTO, the insurance desk, the customer, accounts, the agent, us.
+
+        A lapsed temporary registration is deliberately not one of these. It is
+        a consequence rather than a cause — it raises the urgency of whatever
+        the real blockage is — so it lives on the row as tempRegDaysLeft and in
+        the note. An earlier draft made it a state, and a file the RTO had
+        rejected whose temporary registration had also lapsed came out advising
+        somebody to take it to the RTO, with the objection nowhere on screen.
+
+        RC_IN_DRAWER is the quiet one: as far as the DMS is concerned the
+        transaction finished when the number was allotted, and a plastic card
+        the customer has never seen is in a drawer.
+
+    RegistrationWorklistRow:
+      type: object
+      properties:
+        regnFileNo: { type: string }
+        dealerCode: { type: string }
+        showroomId: { type: integer }
+        showroomCode: { type: ["string", "null"] }
+        dealId:
+          type: string
+          description: The sale this file belongs to, joining the desk to the deal.
+        customerName: { type: ["string", "null"] }
+        customerMobile: { type: ["string", "null"] }
+        modelDescription: { type: ["string", "null"] }
+        chassisNo: { type: ["string", "null"] }
+        agentEmpCode: { type: ["string", "null"] }
+        dms:
+          type: object
+          description: What the dealer's own system believes.
+          properties:
+            status: { type: string }
+            openedDate: { type: ["string", "null"] }
+            rtoCode: { type: ["string", "null"] }
+            rtoOffice: { type: ["string", "null"] }
+            tempRegNo: { type: ["string", "null"] }
+            tempRegExpiryDate: { type: ["string", "null"] }
+            policyNo:
+              type: ["string", "null"]
+              description: >
+                Null is the most actionable value on this screen, and the only
+                blockage the dealership can clear from its own desk.
+            roadTaxAmount: { type: ["number", "null"] }
+            roadTaxCollectedDate: { type: ["string", "null"] }
+            roadTaxPaidDate: { type: ["string", "null"] }
+            submittedDate: { type: ["string", "null"] }
+            regNo: { type: ["string", "null"] }
+            regDate: { type: ["string", "null"] }
+            hsrpFittedDate: { type: ["string", "null"] }
+            rcReceivedDate: { type: ["string", "null"] }
+            rcDeliveredDate: { type: ["string", "null"] }
+            objectionDesc: { type: ["string", "null"] }
+            pendingDoc: { type: ["string", "null"] }
+          required: [status]
+        ddms:
+          type: object
+          description: Ours. The DMS has no column for either of these.
+          properties:
+            customerNotifiedAt: { type: ["string", "null"] }
+            rtoChasedAt:
+              type: ["string", "null"]
+              description: >
+                Read as recency, not presence — a file lodged three weeks ago
+                and chased yesterday is being handled; the same file chased once
+                a fortnight back is not.
+          required: [customerNotifiedAt, rtoChasedAt]
+        state:
+          $ref: "#/components/schemas/RegistrationState"
+        note: { type: ["string", "null"] }
+        actionRequired: { type: ["string", "null"] }
+        ageDays:
+          type: integer
+          description: Days since the file was opened. On this screen age is severity.
+        tempRegDaysLeft:
+          type: ["integer", "null"]
+          description: Negative means the vehicle is on the road unregistered.
+        rcHeldDays: { type: ["integer", "null"] }
+        taxHeldAmount:
+          type: ["number", "null"]
+          description: Collected from the customer and not yet remitted to the state.
+        daysInStatus: { type: integer }
+        lastSyncedAt: { type: string }
+        disappearedFromDms: { type: boolean }
+      required:
+        [regnFileNo, dealerCode, showroomId, dealId, dms, ddms, state, ageDays,
+         daysInStatus, lastSyncedAt, disappearedFromDms]
+
+    RegistrationWorklistSummary:
+      type: object
+      properties:
+        total: { type: integer }
+        byState:
+          type: object
+          additionalProperties: { type: integer }
+        needsAction: { type: integer }
+        rcInDrawer:
+          type: integer
+          description: >
+            Certificates the dealership is holding that their owners do not
+            have. The number nobody could previously see.
+        blockedOnInsurance:
+          type: integer
+          description: Files that cannot move until a policy exists.
+        tempRegLapsed:
+          type: integer
+          description: Vehicles on the road with no valid registration at all.
+        tempRegAtRisk:
+          type: integer
+          description: Temporary registrations expiring within the week.
+        taxHeldAmount:
+          type: number
+          description: Customers' road tax sitting in the dealer's account, in rupees.
+        oldestOpenDays: { type: integer }
+        lastSyncedAt: { type: ["string", "null"] }
+      required:
+        [total, byState, needsAction, rcInDrawer, blockedOnInsurance,
+         tempRegLapsed, tempRegAtRisk, taxHeldAmount, oldestOpenDays]
 
     DmsTenant:
       type: object

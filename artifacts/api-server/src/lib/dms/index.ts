@@ -15,6 +15,14 @@
  *   sync.ts          pull a showroom's deals into the mirror
  *   worklist.ts      the mirror versus our own record, reconciled on read
  *   scheduler.ts     run the pull on a timer, so nobody has to remember
+ *
+ * Four modules now mirror the same way — deals, job cards, enquiries,
+ * registration files. Each is a table and a projection rather than a fresh
+ * integration, which is the return on having built the pattern once:
+ *
+ *   service-worklist.ts       the workshop, and who has not been told
+ *   lead-worklist.ts          the manufacturer's clock, and leads with no owner
+ *   registration-worklist.ts  the RTO file, and the certificates in the drawer
  */
 
 export {
@@ -22,12 +30,25 @@ export {
   dmsEmployees,
   dmsEnquiries,
   dmsJobCards,
+  dmsRegistrations,
   fetchDeal,
   fetchEnquiry,
   fetchJobCard,
+  fetchRegnFile,
   fetchStockByChassis,
   isDmsConfigured,
 } from "./client";
+export {
+  syncShowroomRegistrations,
+  buildRegistrationWorklist,
+  summariseRegistrations,
+} from "./registration-worklist";
+export type {
+  RegistrationSyncResult,
+  RegistrationState,
+  RegistrationWorklistRow,
+  RegistrationWorklistSummary,
+} from "./registration-worklist";
 export { syncShowroomEnquiries, buildLeadWorklist, summariseLeads } from "./lead-worklist";
 export type {
   EnquirySyncResult,

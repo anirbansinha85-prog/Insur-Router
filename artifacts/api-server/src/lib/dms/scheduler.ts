@@ -18,6 +18,7 @@ import { ownerDb, showroomDmsAccountsTable, showroomsTable } from "@workspace/db
 import { logger } from "../logger";
 import { isDmsConfigured } from "./client";
 import { syncShowroomEnquiries } from "./lead-worklist";
+import { syncShowroomRegistrations } from "./registration-worklist";
 import { syncShowroomJobCards } from "./service-worklist";
 import { syncShowroom } from "./sync";
 
@@ -79,11 +80,12 @@ async function runOnce(): Promise<void> {
 
   for (const showroomId of showroomIds) {
     try {
-      // Sales then workshop, sequentially, for the same reason showrooms are
+      // Every module, sequentially, for the same reason showrooms are
       // sequential — this is one shared ERP and we are one of its tenants.
       await syncShowroom(showroomId);
       await syncShowroomJobCards(showroomId);
       await syncShowroomEnquiries(showroomId);
+      await syncShowroomRegistrations(showroomId);
       succeeded++;
     } catch (err) {
       // One unreachable dealership must not stop the others. The mirror keeps

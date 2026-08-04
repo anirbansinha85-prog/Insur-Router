@@ -36,12 +36,16 @@ import { fileURLToPath } from "node:url";
 import { DEALERS, DEALS, FREE_STOCK } from "./deals.ts";
 import { EMPLOYEES, JOB_CARD_SEEDS, PARTS } from "./workshop.ts";
 import { ENQUIRY_SEEDS } from "./crm.ts";
+import { REGN_FILE_SEEDS } from "./registration.ts";
 import type {
   DmsDeal,
   DmsEmployee,
   DmsEnquiry,
   DmsJobCard,
   DmsJobCardStatus,
+  DmsRegnDoc,
+  DmsRegnFile,
+  DmsRegnStatus,
 } from "./types.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -237,6 +241,53 @@ create table if not exists test_rides (
   scheduled_dt text not null,
   done_flg     text not null
 );
+
+create table if not exists regn_files (
+  regn_file_no          text primary key,
+  dealer_code           text not null,
+  deal_id               text not null,
+  chassis_no            text not null,
+  cust_name             text not null,
+  mobile_no             text,
+  model_desc            text not null,
+  status                text not null,
+  opened_dt             text not null,
+  rto_code              text not null,
+  rto_office_desc       text not null,
+  agent_emp_code        text,
+  temp_reg_no           text,
+  temp_reg_expiry_dt    text,
+  policy_no             text,
+  road_tax_amt          text not null,
+  road_tax_collected_dt text,
+  road_tax_paid_dt      text,
+  hsrp_amt              text not null,
+  agent_fee_amt         text not null,
+  submitted_dt          text,
+  reg_no                text,
+  reg_dt                text,
+  hsrp_fitted_dt        text,
+  rc_received_dt        text,
+  rc_delivered_dt       text,
+  objection_desc        text,
+  remarks_desc          text,
+  modified_at           text not null,
+  opened_iso            text not null,
+  temp_reg_expiry_iso   text,
+  rc_received_iso       text,
+  modified_iso          text not null
+);
+create index if not exists regn_files_dealer_status on regn_files (dealer_code, status);
+
+create table if not exists regn_docs (
+  regn_file_no text not null,
+  seq          integer not null,
+  doc_code     text not null,
+  doc_desc     text not null,
+  received_flg text not null,
+  received_dt  text,
+  primary key (regn_file_no, seq)
+);
 `;
 
 export interface OpenOptions {
@@ -259,6 +310,7 @@ export function openStore(opts: OpenOptions = {}): void {
     for (const t of [
       "deals", "employees", "part_master", "job_cards", "jc_labour", "jc_parts",
       "jc_psf", "enquiries", "enquiry_followups", "test_rides",
+      "regn_files", "regn_docs",
     ]) {
       db.exec(`delete from ${t}`);
     }
@@ -295,6 +347,71 @@ function seedIfEmpty(): void {
 
   if (count("job_cards") === 0) seedJobCards();
   if (count("enquiries") === 0) seedEnquiries();
+  if (count("regn_files") === 0) seedRegnFiles();
+}
+
+/**
+ * Registration files, resolved against today.
+ *
+ * Same reasoning as the job cards, with one addition: a temporary registration
+ * expiry is written as days *from* now rather than days ago, because whether it
+ * has already lapsed is the fixture. A seed that hard-coded the date would
+ * eventually show every file as expired, which teaches nothing.
+ */
+function seedRegnFiles(): void {
+  const insFile = db.prepare(
+    `insert into regn_files (
+       regn_file_no, dealer_code, deal_id, chassis_no, cust_name, mobile_no, model_desc,
+       status, opened_dt, rto_code, rto_office_desc, agent_emp_code,
+       temp_reg_no, temp_reg_expiry_dt, policy_no,
+       road_tax_amt, road_tax_collected_dt, road_tax_paid_dt, hsrp_amt, agent_fee_amt,
+       submitted_dt, reg_no, reg_dt, hsrp_fitted_dt, rc_received_dt, rc_delivered_dt,
+       objection_desc, remarks_desc, modified_at,
+       opened_iso, temp_reg_expiry_iso, rc_received_iso, modified_iso
+     ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  const insDoc = db.prepare(
+    `insert into regn_docs (regn_file_no, seq, doc_code, doc_desc, received_flg, received_dt)
+     values (?, ?, ?, ?, ?, ?)`,
+  );
+
+  const back = (n: number | null) => (n === null ? null : daysAgo(n));
+  const fwd = (n: number | null) => (n === null ? null : daysAgo(-n));
+
+  for (const s of REGN_FILE_SEEDS) {
+    const opened = daysAgo(s.openedDaysAgo);
+    const tempExpiry = fwd(s.tempRegExpiresInDays);
+    const rcReceived = back(s.rcReceivedDaysAgo);
+    const modified = daysAgo(s.modifiedDaysAgo);
+
+    insFile.run(
+      s.regnFileNo, s.dealerCode, s.dealId, s.chassisNo, s.custName, s.mobileNo, s.modelDesc,
+      s.status, dmsDate(opened), s.rtoCode, s.rtoOfficeDesc, s.agentEmpCode,
+      s.tempRegNo, tempExpiry ? dmsDate(tempExpiry) : null, s.policyNo,
+      s.roadTaxAmt,
+      s.roadTaxCollectedDaysAgo === null ? null : dmsDate(daysAgo(s.roadTaxCollectedDaysAgo)),
+      s.roadTaxPaidDaysAgo === null ? null : dmsDate(daysAgo(s.roadTaxPaidDaysAgo)),
+      s.hsrpAmt, s.agentFeeAmt,
+      s.submittedDaysAgo === null ? null : dmsDate(daysAgo(s.submittedDaysAgo)),
+      s.regNo,
+      s.regDaysAgo === null ? null : dmsDate(daysAgo(s.regDaysAgo)),
+      s.hsrpFittedDaysAgo === null ? null : dmsDate(daysAgo(s.hsrpFittedDaysAgo)),
+      rcReceived ? dmsDate(rcReceived) : null,
+      s.rcDeliveredDaysAgo === null ? null : dmsDate(daysAgo(s.rcDeliveredDaysAgo)),
+      s.objectionDesc, s.remarksDesc, dmsTimestamp(modified),
+      isoOf(opened),
+      tempExpiry ? isoOf(tempExpiry) : null,
+      rcReceived ? isoOf(rcReceived) : null,
+      isoStampOf(modified),
+    );
+
+    for (const d of s.docSeeds) {
+      insDoc.run(
+        s.regnFileNo, d.seq, d.docCode, d.docDesc, d.receivedFlg,
+        d.receivedDaysAgo === null ? null : dmsDate(daysAgo(d.receivedDaysAgo)),
+      );
+    }
+  }
 }
 
 function minutesAgo(n: number): Date {
@@ -697,6 +814,111 @@ export function listEnquiries(filter: EnquiryFilter = {}): DmsEnquiry[] {
 export function getEnquiry(enqId: string): DmsEnquiry | null {
   const row = db.prepare(`select * from enquiries where enq_id = ?`).get(enqId) as EnquiryRow | undefined;
   return row ? toEnquiry(row, true) : null;
+}
+
+// ── Registration ────────────────────────────────────────────────────────────
+
+interface RegnFileRow {
+  regn_file_no: string; dealer_code: string; deal_id: string; chassis_no: string;
+  cust_name: string; mobile_no: string | null; model_desc: string; status: string;
+  opened_dt: string; rto_code: string; rto_office_desc: string;
+  agent_emp_code: string | null; temp_reg_no: string | null;
+  temp_reg_expiry_dt: string | null; policy_no: string | null;
+  road_tax_amt: string; road_tax_collected_dt: string | null;
+  road_tax_paid_dt: string | null; hsrp_amt: string; agent_fee_amt: string;
+  submitted_dt: string | null; reg_no: string | null; reg_dt: string | null;
+  hsrp_fitted_dt: string | null; rc_received_dt: string | null;
+  rc_delivered_dt: string | null; objection_desc: string | null;
+  remarks_desc: string | null; modified_at: string;
+}
+
+function toRegnFile(r: RegnFileRow, withDocs: boolean): DmsRegnFile {
+  const f: DmsRegnFile = {
+    regnFileNo: r.regn_file_no,
+    dealerCode: r.dealer_code,
+    dealId: r.deal_id,
+    chassisNo: r.chassis_no,
+    custName: r.cust_name,
+    mobileNo: r.mobile_no,
+    modelDesc: r.model_desc,
+    status: r.status as DmsRegnStatus,
+    openedDt: r.opened_dt,
+    rtoCode: r.rto_code,
+    rtoOfficeDesc: r.rto_office_desc,
+    agentEmpCode: r.agent_emp_code,
+    tempRegNo: r.temp_reg_no,
+    tempRegExpiryDt: r.temp_reg_expiry_dt,
+    policyNo: r.policy_no,
+    roadTaxAmt: r.road_tax_amt,
+    roadTaxCollectedDt: r.road_tax_collected_dt,
+    roadTaxPaidDt: r.road_tax_paid_dt,
+    hsrpAmt: r.hsrp_amt,
+    agentFeeAmt: r.agent_fee_amt,
+    submittedDt: r.submitted_dt,
+    regNo: r.reg_no,
+    regDt: r.reg_dt,
+    hsrpFittedDt: r.hsrp_fitted_dt,
+    rcReceivedDt: r.rc_received_dt,
+    rcDeliveredDt: r.rc_delivered_dt,
+    objectionDesc: r.objection_desc,
+    remarksDesc: r.remarks_desc,
+    modifiedAt: r.modified_at,
+    docs: [],
+  };
+
+  if (!withDocs) return f;
+
+  f.docs = db
+    .prepare(`select seq, doc_code, doc_desc, received_flg, received_dt from regn_docs where regn_file_no = ? order by seq`)
+    .all(r.regn_file_no)
+    .map((d) => {
+      const row = d as { seq: number; doc_code: string; doc_desc: string; received_flg: string; received_dt: string | null };
+      return {
+        seq: row.seq,
+        docCode: row.doc_code,
+        docDesc: row.doc_desc,
+        receivedFlg: row.received_flg as DmsRegnDoc["receivedFlg"],
+        receivedDt: row.received_dt,
+      };
+    });
+
+  return f;
+}
+
+export interface RegnFileFilter {
+  dealerCode?: string;
+  status?: string;
+  modifiedSince?: Date;
+  /** Only files where the certificate is here and the customer is not holding it. */
+  rcUndeliveredOnly?: boolean;
+  /** Only files with at least one document still outstanding. */
+  pendingDocsOnly?: boolean;
+}
+
+export function listRegnFiles(filter: RegnFileFilter = {}): DmsRegnFile[] {
+  const where: string[] = [];
+  const args: string[] = [];
+
+  if (filter.dealerCode) { where.push("dealer_code = ?"); args.push(filter.dealerCode); }
+  if (filter.status) { where.push("status = ?"); args.push(filter.status); }
+  if (filter.rcUndeliveredOnly) where.push("rc_received_dt is not null and rc_delivered_dt is null");
+  if (filter.pendingDocsOnly) {
+    where.push("exists (select 1 from regn_docs d where d.regn_file_no = regn_files.regn_file_no and d.received_flg = 'N')");
+  }
+  if (filter.modifiedSince) { where.push("modified_iso >= ?"); args.push(isoStampOf(filter.modifiedSince)); }
+
+  // Ordered on the ISO companion, never on `opened_dt` — the displayed column is
+  // DD-MM-YYYY and sorts by day of month.
+  const rows = db
+    .prepare(`select * from regn_files${where.length ? ` where ${where.join(" and ")}` : ""} order by opened_iso asc, regn_file_no asc`)
+    .all(...args) as unknown as RegnFileRow[];
+
+  return rows.map((r) => toRegnFile(r, false));
+}
+
+export function getRegnFile(regnFileNo: string): DmsRegnFile | null {
+  const row = db.prepare(`select * from regn_files where regn_file_no = ?`).get(regnFileNo) as RegnFileRow | undefined;
+  return row ? toRegnFile(row, true) : null;
 }
 
 /** Reference data the API still serves straight from the fixtures. */

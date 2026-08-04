@@ -57,9 +57,9 @@ Status: **✅ done** · **◑ partial** · **○ not started**
 | R-13 | Sales: deals and insurance status | ✅ |
 | R-14 | Service centre: job cards, what is stuck, what the customer has not been told | ✅ |
 | R-15 | CRM: enquiries, the manufacturer's response clock, leads with no owner | ✅ |
-| R-16 | Spares, finance/receivables, inventory ageing, registration workflow | ○ |
+| R-16 | Spares, finance/receivables, inventory ageing, registration workflow | ◑ registration done |
 | R-17 | Invoice generation, automated | ○ |
-| R-18 | DDMS holds every DMS field **plus** its own decision fields for each function | ◑ 3 of 9 modules |
+| R-18 | DDMS holds every DMS field **plus** its own decision fields for each function | ◑ 4 of 9 modules |
 | R-19 | Staff shortage made visible from the dealer's own data — attrition, orphaned work | ◑ leads only |
 
 ### What it does
@@ -230,7 +230,7 @@ string with `bypassrls`, and InsurRouter's application list shows only the
 signed-in owner's applications — proven by signing in as the second owner and
 getting an empty list rather than by reading the code.
 
-### OBJ-4 — The remaining modules
+### OBJ-4 — The remaining modules  ◑ **1 of 5, 4 Aug**
 *Covers R-16, R-17, R-18.*
 
 Spares, receivables, inventory ageing, registration workflow, invoicing. Each
@@ -239,6 +239,48 @@ decision field that changes the outcome.
 
 **Done when:** each module has a screen whose leading number is a count of work
 nobody could previously see.
+
+#### Registration & RC ✅ **done 4 Aug**
+
+Taken first because it is the one adjacent to insurance — a new vehicle cannot
+be registered without live cover — so it tested whether the mirror pattern
+extends *and* whether one module can hand work to another.
+
+Two numbers on that screen exist nowhere in the dealership:
+
+- **Certificates in the drawer.** The DMS treats a vehicle as finished when the
+  RTO allots a number, because that is when the sale can be reported. Whether
+  the customer ever received the card is two fields further down the same
+  record, and no screen puts them beside each other. Saraswati is holding two,
+  one for 47 days.
+- **Road tax held.** Collected from the customer at invoice, remitted to the
+  state afterwards. Both dates exist; nothing subtracts them. ₹9,901 of
+  customers' money, and their files cannot be lodged until it goes.
+
+Two decision fields, both proven load-bearing by query rather than assumed:
+`customerNotifiedAt` (needsAction 8 → 7) and `rtoChasedAt`, which is a
+**recency** test rather than a presence one — a chase 14 days ago leaves the
+file `RTO_SILENT`, a chase yesterday moves it to `ON_TRACK`.
+
+It also produced the first cross-module action: a file blocked because there is
+no policy links straight to the insurance queue with its deal id.
+
+**Verified**: 10 files mirrored for Saraswati, every state populated, tenant
+isolation holding at the database (Malhotra reads 0 of 12), and the screen
+driven through the browser rather than the API.
+
+> **The bug worth keeping.** The first derivation had a lapsed temporary
+> registration as a *state*, near the top of the ordering. A file the RTO had
+> rejected whose temporary registration had also lapsed came out as `TR_EXPIRED`
+> advising somebody to take it to the RTO — which is what had already been done
+> — with the objection nowhere on screen. A lapse is not a cause; it is a
+> consequence that raises the urgency of whatever the cause is, and it can
+> coexist with all of them. It now lives on the row and in the note, and the
+> rule is written into CLAUDE.md.
+
+#### Still to do
+
+Spares, receivables, inventory ageing, invoicing.
 
 ### OBJ-5 — Agent orchestration
 *Covers R-22, R-23.*
@@ -267,11 +309,11 @@ the business rather than a question about the data.
 
 ## 4. Where things actually stand
 
-**Built and verified:** owner tier; the read-only mirror across three modules
-(deals, job cards, enquiries); reconciliation on deals; derived state on all
-three; insurer panel with quota; scheduled sync; API authentication; per-user
-sign-in; row-level security on the DDMS request path; the
-one-application-per-deal constraint; DDMS as its own service.
+**Built and verified:** owner tier; the read-only mirror across four modules
+(deals, job cards, enquiries, registration files); reconciliation on deals;
+derived state on all four; insurer panel with quota; scheduled sync; API
+authentication; per-user sign-in; row-level security on the DDMS request path;
+the one-application-per-deal constraint; DDMS as its own service.
 
 **The dual role has started.** The first action button works end to end: a deal
 with no insurance goes from a row on a screen to an application in the database

@@ -1012,6 +1012,150 @@ export interface ServiceWorklistSummary {
 }
 
 /**
+ * **Why** a registration file is not moving. Each has a different owner: the RTO, the insurance desk, the customer, accounts, the agent, us.
+ * A lapsed temporary registration is deliberately not one of these. It is a consequence rather than a cause — it raises the urgency of whatever the real blockage is — so it lives on the row as tempRegDaysLeft and in the note. An earlier draft made it a state, and a file the RTO had rejected whose temporary registration had also lapsed came out advising somebody to take it to the RTO, with the objection nowhere on screen.
+ * RC_IN_DRAWER is the quiet one: as far as the DMS is concerned the transaction finished when the number was allotted, and a plastic card the customer has never seen is in a drawer.
+ */
+export type RegistrationState = typeof RegistrationState[keyof typeof RegistrationState];
+
+
+export const RegistrationState = {
+  OBJECTION: 'OBJECTION',
+  BLOCKED_NO_INSURANCE: 'BLOCKED_NO_INSURANCE',
+  AWAITING_DOCS: 'AWAITING_DOCS',
+  TAX_HELD: 'TAX_HELD',
+  RC_IN_DRAWER: 'RC_IN_DRAWER',
+  RTO_SILENT: 'RTO_SILENT',
+  HSRP_PENDING: 'HSRP_PENDING',
+  ON_TRACK: 'ON_TRACK',
+  CLOSED: 'CLOSED',
+} as const;
+
+/**
+ * What the dealer's own system believes.
+ */
+export type RegistrationWorklistRowDms = {
+  status: string;
+  /** @nullable */
+  openedDate?: string | null;
+  /** @nullable */
+  rtoCode?: string | null;
+  /** @nullable */
+  rtoOffice?: string | null;
+  /** @nullable */
+  tempRegNo?: string | null;
+  /** @nullable */
+  tempRegExpiryDate?: string | null;
+  /**
+     * Null is the most actionable value on this screen, and the only blockage the dealership can clear from its own desk.
+     * @nullable
+     */
+  policyNo?: string | null;
+  /** @nullable */
+  roadTaxAmount?: number | null;
+  /** @nullable */
+  roadTaxCollectedDate?: string | null;
+  /** @nullable */
+  roadTaxPaidDate?: string | null;
+  /** @nullable */
+  submittedDate?: string | null;
+  /** @nullable */
+  regNo?: string | null;
+  /** @nullable */
+  regDate?: string | null;
+  /** @nullable */
+  hsrpFittedDate?: string | null;
+  /** @nullable */
+  rcReceivedDate?: string | null;
+  /** @nullable */
+  rcDeliveredDate?: string | null;
+  /** @nullable */
+  objectionDesc?: string | null;
+  /** @nullable */
+  pendingDoc?: string | null;
+};
+
+/**
+ * Ours. The DMS has no column for either of these.
+ */
+export type RegistrationWorklistRowDdms = {
+  /** @nullable */
+  customerNotifiedAt: string | null;
+  /**
+     * Read as recency, not presence — a file lodged three weeks ago and chased yesterday is being handled; the same file chased once a fortnight back is not.
+     * @nullable
+     */
+  rtoChasedAt: string | null;
+};
+
+export interface RegistrationWorklistRow {
+  regnFileNo: string;
+  dealerCode: string;
+  showroomId: number;
+  /** @nullable */
+  showroomCode?: string | null;
+  /** The sale this file belongs to, joining the desk to the deal. */
+  dealId: string;
+  /** @nullable */
+  customerName?: string | null;
+  /** @nullable */
+  customerMobile?: string | null;
+  /** @nullable */
+  modelDescription?: string | null;
+  /** @nullable */
+  chassisNo?: string | null;
+  /** @nullable */
+  agentEmpCode?: string | null;
+  /** What the dealer's own system believes. */
+  dms: RegistrationWorklistRowDms;
+  /** Ours. The DMS has no column for either of these. */
+  ddms: RegistrationWorklistRowDdms;
+  state: RegistrationState;
+  /** @nullable */
+  note?: string | null;
+  /** @nullable */
+  actionRequired?: string | null;
+  /** Days since the file was opened. On this screen age is severity. */
+  ageDays: number;
+  /**
+     * Negative means the vehicle is on the road unregistered.
+     * @nullable
+     */
+  tempRegDaysLeft?: number | null;
+  /** @nullable */
+  rcHeldDays?: number | null;
+  /**
+     * Collected from the customer and not yet remitted to the state.
+     * @nullable
+     */
+  taxHeldAmount?: number | null;
+  daysInStatus: number;
+  lastSyncedAt: string;
+  disappearedFromDms: boolean;
+}
+
+export type RegistrationWorklistSummaryByState = {[key: string]: number};
+
+export interface RegistrationWorklistSummary {
+  total: number;
+  byState: RegistrationWorklistSummaryByState;
+  needsAction: number;
+  /** Certificates the dealership is holding that their owners do not have. The number nobody could previously see. */
+  rcInDrawer: number;
+  /** Files that cannot move until a policy exists. */
+  blockedOnInsurance: number;
+  /** Vehicles on the road with no valid registration at all. */
+  tempRegLapsed: number;
+  /** Temporary registrations expiring within the week. */
+  tempRegAtRisk: number;
+  /** Customers' road tax sitting in the dealer's account, in rupees. */
+  taxHeldAmount: number;
+  oldestOpenDays: number;
+  /** @nullable */
+  lastSyncedAt?: string | null;
+}
+
+/**
  * Identifies the deal to pull. Deliberately not keyed on a registration number: under the Motor Vehicles Act an RTO will not register a vehicle without live insurance, so a new vehicle has no registration number at the moment the policy is bought. The keys that do exist at that point are the dealer's own deal identifier and the chassis number of the allocated stock unit. Supply at least one — dealId wins if both are given, because it resolves a whole deal rather than just a vehicle.
  */
 export interface DmsPullInput {
@@ -1246,6 +1390,20 @@ includeDisappeared?: boolean;
 export type GetServiceWorklist200 = {
   summary: ServiceWorklistSummary;
   rows: ServiceWorklistRow[];
+};
+
+export type GetRegistrationWorklistParams = {
+showroomId: number;
+/**
+ * Filter on the DMS file status, e.g. SUBMITTED
+ */
+status?: string;
+includeDisappeared?: boolean;
+};
+
+export type GetRegistrationWorklist200 = {
+  summary: RegistrationWorklistSummary;
+  rows: RegistrationWorklistRow[];
 };
 
 export type GetLeadWorklistParams = {

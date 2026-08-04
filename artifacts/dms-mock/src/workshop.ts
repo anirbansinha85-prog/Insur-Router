@@ -41,11 +41,16 @@ export const EMPLOYEES: DmsEmployee[] = [
   { empCode: "TE-0417-14", empName: "Dinesh Sahu", dealerCode: "HMC-DL-0417", role: "TECHNICIAN", doj: "05-05-2024", dol: null, activeFlg: "Y", mobileNo: "9810044214" },
   { empCode: "TE-0417-16", empName: "Aslam Qureshi", dealerCode: "HMC-DL-0417", role: "TECHNICIAN", doj: "12-11-2024", dol: "15-05-2026", activeFlg: "N", mobileNo: null },
   { empCode: "MG-0417-01", empName: "Anand Saraswat", dealerCode: "HMC-DL-0417", role: "MANAGER", doj: "01-04-2018", dol: null, activeFlg: "Y", mobileNo: "9810044201" },
+  // One RTO agent for the whole branch, which is normal and is also why the
+  // registration backlog is one person deep.
+  { empCode: "RT-0417-02", empName: "Jaswinder Sethi", dealerCode: "HMC-DL-0417", role: "RTO_AGENT", doj: "03-03-2019", dol: null, activeFlg: "Y", mobileNo: "9810044202" },
+  { empCode: "AC-0417-06", empName: "Meera Joshi", dealerCode: "HMC-DL-0417", role: "ACCOUNTS", doj: "18-11-2021", dol: null, activeFlg: "Y", mobileNo: "9810044206" },
 
   // ── Deccan, Pune ──────────────────────────────────────────────────────────
   { empCode: "SA-1182-03", empName: "Prasad Kulkarni", dealerCode: "HMC-MH-1182", role: "SALES_EXEC", doj: "14-07-2023", dol: null, activeFlg: "Y", mobileNo: "9822011203" },
   { empCode: "AD-1182-02", empName: "Sneha Deshmukh", dealerCode: "HMC-MH-1182", role: "SERVICE_ADVISOR", doj: "09-02-2022", dol: null, activeFlg: "Y", mobileNo: "9822011202" },
   { empCode: "TE-1182-05", empName: "Balaji Pawar", dealerCode: "HMC-MH-1182", role: "TECHNICIAN", doj: "30-10-2021", dol: null, activeFlg: "Y", mobileNo: "9822011205" },
+  { empCode: "RT-1182-01", empName: "Ganesh Shinde", dealerCode: "HMC-MH-1182", role: "RTO_AGENT", doj: "21-06-2020", dol: null, activeFlg: "Y", mobileNo: "9822011201" },
 ];
 
 /** Labour operation codes, priced per hour. Rates are invented. */

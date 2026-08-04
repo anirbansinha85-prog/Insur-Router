@@ -368,6 +368,107 @@ export interface DmsEmployee {
   mobileNo: string | null;
 }
 
+// ── Registration ────────────────────────────────────────────────────────────
+// What happens to a vehicle between the invoice and the customer holding a
+// registration certificate. It is the longest-running open file in a
+// dealership and the one with the most hands in it — the customer, the dealer,
+// an RTO agent, the state's tax counter and the RTO itself — which is why it is
+// also the one that most often stops moving without anybody noticing.
+
+/**
+ * Where a registration file has got to.
+ *
+ * The sequence is real and each step can stall for a different reason:
+ *
+ *   PENDING_DOCS   the customer still owes a document — address proof, a
+ *                  signed Form 20, a passport photo
+ *   READY_TO_FILE  paperwork complete. Road tax may have been collected from
+ *                  the customer at invoice and not yet paid to the state
+ *   TAX_PAID       road tax remitted, receipt in hand, file not yet lodged
+ *   SUBMITTED      lodged with the RTO. Now it is somebody else's queue
+ *   REGISTERED     number allotted
+ *   RC_RECEIVED    the smart card has arrived at the dealership
+ *   RC_DELIVERED   the customer has it. The only terminal state that counts
+ *   REJECTED       the RTO raised an objection and sent the file back
+ *
+ * `RC_RECEIVED` is the one worth staring at. As far as the DMS is concerned
+ * the vehicle is registered and the transaction is finished. In the building,
+ * a plastic card is in a drawer and its owner does not have it.
+ */
+export type DmsRegnStatus =
+  | "PENDING_DOCS"
+  | "READY_TO_FILE"
+  | "TAX_PAID"
+  | "SUBMITTED"
+  | "REGISTERED"
+  | "RC_RECEIVED"
+  | "RC_DELIVERED"
+  | "REJECTED";
+
+/**
+ * A document the customer has to produce.
+ *
+ * Relational rather than a flag per document, because the list genuinely varies
+ * — a corporate buyer produces a GST certificate and a board resolution, an
+ * individual produces neither — and because "which files are waiting on which
+ * document" is the query somebody actually asks.
+ */
+export interface DmsRegnDoc {
+  seq: number;
+  docCode: string;
+  docDesc: string;
+  receivedFlg: "Y" | "N";
+  receivedDt: DmsDate | null;
+}
+
+export interface DmsRegnFileSummary {
+  regnFileNo: string;
+  dealerCode: string;
+  dealId: string;
+  chassisNo: string;
+  custName: string;
+  mobileNo: string | null;
+  modelDesc: string;
+  status: DmsRegnStatus;
+  openedDt: DmsDate;
+  rtoCode: string;
+  rtoOfficeDesc: string;
+  /** The dealership's RTO agent. Null when nobody has picked the file up. */
+  agentEmpCode: string | null;
+  /**
+   * Temporary registration. Valid one month, and the reason a customer can ride
+   * away the same day — which also means a lapsed one is a vehicle on the road
+   * with no valid registration at all.
+   */
+  tempRegNo: string | null;
+  tempRegExpiryDt: DmsDate | null;
+  /**
+   * The policy the RTO will not register the vehicle without. Null here is the
+   * single most actionable value in this module, because it is the one blockage
+   * the dealership can clear from its own desk.
+   */
+  policyNo: string | null;
+  /** Collected from the customer at invoice; remitted to the state later. */
+  roadTaxAmt: DmsAmount;
+  roadTaxCollectedDt: DmsDate | null;
+  roadTaxPaidDt: DmsDate | null;
+  submittedDt: DmsDate | null;
+  regNo: string | null;
+  regDt: DmsDate | null;
+  hsrpFittedDt: DmsDate | null;
+  rcReceivedDt: DmsDate | null;
+  rcDeliveredDt: DmsDate | null;
+  objectionDesc: string | null;
+  modifiedAt: DmsTimestamp;
+}
+
+export interface DmsRegnFile extends DmsRegnFileSummary {
+  hsrpAmt: DmsAmount;
+  agentFeeAmt: DmsAmount;
+  remarksDesc: string | null;
+  docs: DmsRegnDoc[];
+}
+
 export type DmsJobCardType =
   | "FREE"
   | "PAID"

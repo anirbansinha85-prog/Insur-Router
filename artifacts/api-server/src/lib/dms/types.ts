@@ -276,6 +276,67 @@ export interface DmsJobCard extends DmsJobCardSummary {
   psf: DmsPsf | null;
 }
 
+// ── Registration ────────────────────────────────────────────────────────────
+
+/**
+ * Where a registration file has got to. Treated as an opaque string everywhere
+ * it is stored — a real OEM will have its own vocabulary, and the derivation is
+ * written against the fields, not the label.
+ */
+export type DmsRegnStatus =
+  | "PENDING_DOCS"
+  | "READY_TO_FILE"
+  | "TAX_PAID"
+  | "SUBMITTED"
+  | "REGISTERED"
+  | "RC_RECEIVED"
+  | "RC_DELIVERED"
+  | "REJECTED";
+
+export interface DmsRegnFileSummary {
+  regnFileNo: string;
+  dealerCode: string;
+  dealId: string;
+  chassisNo: string;
+  custName: string;
+  mobileNo: string | null;
+  modelDesc: string;
+  status: DmsRegnStatus;
+  openedDt: DmsDate;
+  rtoCode: string;
+  rtoOfficeDesc: string;
+  agentEmpCode: string | null;
+  tempRegNo: string | null;
+  tempRegExpiryDt: DmsDate | null;
+  policyNo: string | null;
+  roadTaxAmt: DmsAmount;
+  roadTaxCollectedDt: DmsDate | null;
+  roadTaxPaidDt: DmsDate | null;
+  submittedDt: DmsDate | null;
+  regNo: string | null;
+  regDt: DmsDate | null;
+  hsrpFittedDt: DmsDate | null;
+  rcReceivedDt: DmsDate | null;
+  rcDeliveredDt: DmsDate | null;
+  objectionDesc: string | null;
+  modifiedAt: string;
+}
+
+export interface DmsRegnDoc {
+  seq: number;
+  docCode: string;
+  docDesc: string;
+  receivedFlg: "Y" | "N";
+  receivedDt: DmsDate | null;
+}
+
+export interface DmsRegnFile extends DmsRegnFileSummary {
+  hsrpAmt: DmsAmount;
+  agentFeeAmt: DmsAmount;
+  remarksDesc: string | null;
+  docs: DmsRegnDoc[];
+}
+
 /** Every non-2xx response from the mock carries this shape. */
 export interface DmsErrorBody {
   errCode?: string;

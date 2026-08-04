@@ -29,6 +29,8 @@ import type {
   DmsErrorBody,
   DmsJobCard,
   DmsJobCardSummary,
+  DmsRegnFile,
+  DmsRegnFileSummary,
   DmsStockLookup,
 } from "./types";
 
@@ -250,6 +252,28 @@ export async function dmsEnquiries(
 
 export function fetchEnquiry(enqId: string): Promise<DmsEnquiry | null> {
   return dmsGet<DmsEnquiry>(`/dms/v1/enquiries/${encodeURIComponent(enqId)}`, {
+    notFoundIsNull: true,
+  });
+}
+
+/**
+ * Registration files for a dealer. Summaries only, like the other lists — the
+ * document checklist is only needed once a row is opened.
+ */
+export async function dmsRegistrations(
+  dealerCode: string,
+  status?: string,
+): Promise<DmsRegnFileSummary[]> {
+  const params = new URLSearchParams({ dealerCode });
+  if (status) params.set("status", status);
+  const body = await dmsGet<{ count: number; registrations: DmsRegnFileSummary[] }>(
+    `/dms/v1/registrations?${params.toString()}`,
+  );
+  return body?.registrations ?? [];
+}
+
+export function fetchRegnFile(regnFileNo: string): Promise<DmsRegnFile | null> {
+  return dmsGet<DmsRegnFile>(`/dms/v1/registrations/${encodeURIComponent(regnFileNo)}`, {
     notFoundIsNull: true,
   });
 }

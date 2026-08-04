@@ -28,9 +28,11 @@ import {
   dealIdsModifiedSince,
   getEnquiry,
   getJobCard,
+  getRegnFile,
   listEmployees,
   listEnquiries,
   listJobCards,
+  listRegnFiles,
   openStore,
   parseDmsTimestamp,
   saveDeal,
@@ -333,6 +335,83 @@ app.get("/dms/v1/enquiries/:enqId", (req, res) => {
     return;
   }
   res.json(enquiry);
+});
+
+/**
+ * Registration files.
+ *
+ * The list a registration desk works from. Note what a DMS considers finished:
+ * `status` reaches `REGISTERED` when the RTO allots a number, and every
+ * management report in the building treats that as the end of the transaction.
+ * The two fields that say whether the customer actually has their certificate —
+ * `rcReceivedDt` and `rcDeliveredDt` — sit further down the record and no
+ * screen puts them next to each other.
+ */
+app.get("/dms/v1/registrations", (req, res) => {
+  const { dealerCode, status, modifiedSince, rcUndelivered, pendingDocs } =
+    req.query as Record<string, string | undefined>;
+
+  let since: Date | undefined;
+  if (modifiedSince) {
+    const parsed = parseDmsTimestamp(modifiedSince);
+    if (!parsed) {
+      res.status(400).json({
+        errCode: "VALIDATION",
+        errDesc: "modifiedSince must be DD-MM-YYYY or DD-MM-YYYY HH:mm:ss",
+      });
+      return;
+    }
+    since = parsed;
+  }
+
+  const files = listRegnFiles({
+    dealerCode,
+    status,
+    modifiedSince: since,
+    rcUndeliveredOnly: rcUndelivered === "Y",
+    pendingDocsOnly: pendingDocs === "Y",
+  });
+
+  res.json({
+    count: files.length,
+    registrations: files.map((f) => ({
+      regnFileNo: f.regnFileNo,
+      dealerCode: f.dealerCode,
+      dealId: f.dealId,
+      chassisNo: f.chassisNo,
+      custName: f.custName,
+      mobileNo: f.mobileNo,
+      modelDesc: f.modelDesc,
+      status: f.status,
+      openedDt: f.openedDt,
+      rtoCode: f.rtoCode,
+      rtoOfficeDesc: f.rtoOfficeDesc,
+      agentEmpCode: f.agentEmpCode,
+      tempRegNo: f.tempRegNo,
+      tempRegExpiryDt: f.tempRegExpiryDt,
+      policyNo: f.policyNo,
+      roadTaxAmt: f.roadTaxAmt,
+      roadTaxCollectedDt: f.roadTaxCollectedDt,
+      roadTaxPaidDt: f.roadTaxPaidDt,
+      submittedDt: f.submittedDt,
+      regNo: f.regNo,
+      regDt: f.regDt,
+      hsrpFittedDt: f.hsrpFittedDt,
+      rcReceivedDt: f.rcReceivedDt,
+      rcDeliveredDt: f.rcDeliveredDt,
+      objectionDesc: f.objectionDesc,
+      modifiedAt: f.modifiedAt,
+    })),
+  });
+});
+
+app.get("/dms/v1/registrations/:regnFileNo", (req, res) => {
+  const file = getRegnFile(req.params.regnFileNo);
+  if (!file) {
+    res.status(404).json({ errCode: "REGN_FILE_NOT_FOUND", errDesc: req.params.regnFileNo });
+    return;
+  }
+  res.json(file);
 });
 
 /**

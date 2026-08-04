@@ -168,6 +168,12 @@ create policy dms_employees_own on public.dms_employees
   using (showroom_id in (select app.owned_showroom_ids()))
   with check (showroom_id in (select app.owned_showroom_ids()));
 
+drop policy if exists dms_registrations_own on public.dms_registrations;
+create policy dms_registrations_own on public.dms_registrations
+  for all to ddms_app
+  using (showroom_id in (select app.owned_showroom_ids()))
+  with check (showroom_id in (select app.owned_showroom_ids()));
+
 drop policy if exists insurer_panel_own on public.insurer_panel_entries;
 create policy insurer_panel_own on public.insurer_panel_entries
   for select to ddms_app
@@ -236,6 +242,7 @@ grant select, insert, update on
   public.dms_job_cards,
   public.dms_enquiries,
   public.dms_employees,
+  public.dms_registrations,
   public.applications,
   public.submission_logs
 to ddms_app;

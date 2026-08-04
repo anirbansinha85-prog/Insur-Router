@@ -9,7 +9,7 @@ mobile capture app:
 
 | Product | Path served | Package | What it does |
 |---|---|---|---|
-| **DDMS** | `/ddms` | `@workspace/ddms` | Owner-facing control panel across every showroom. Mirrors the dealer's own DMS read-only and shows what that system cannot: enquiries against the manufacturer's response clock, deals against our insurance record, job cards against the promise made to the customer. |
+| **DDMS** | `/ddms` | `@workspace/ddms` | Owner-facing control panel across every showroom. Mirrors the dealer's own DMS read-only and shows what that system cannot: enquiries against the manufacturer's response clock, deals against our insurance record, job cards against the promise made to the customer, RTO files against whether the customer ever got their certificate. |
 | **InsurRouter** | `/` | `@workspace/insur-router` | Agent-facing dashboard. Fill the MSA payload, pick an insurer, validate, submit. Routes to the provider's REST API or falls back to Playwright browser automation. |
 | **VeloDocs** | `/doc-ingest` | `@workspace/doc-ingest` | Document ingestion. Pulls vehicle/owner data from a dealer DMS, a scraped portal, or OCR of an RC book, lets a human correct low-confidence fields, then pushes a draft into InsurRouter. |
 | **RC Capture** | `/rc-capture` | `@workspace/rc-capture` | Expo mobile app. Camera capture → OCR review → push to InsurRouter. |
@@ -118,7 +118,8 @@ artifacts/            deployable apps
   api-server/         Express 5 API — the only backend
     src/routes/       health, providers, applications, dashboard, dms, ingest
     src/lib/          api-executor.ts, browser-executor.ts, auth.ts, logger.ts
-    src/lib/dms/      client, adapters, mirror sync, worklist, panel, scheduler
+    src/lib/dms/      client, adapters, mirror sync, four worklists, panel,
+                      scheduler
   insur-router/       React 19 + Vite — InsurRouter frontend
   doc-ingest/         React 19 + Vite — VeloDocs frontend
   rc-capture/         Expo mobile app
@@ -147,7 +148,7 @@ pnpm run typecheck:libs                         # before checking leaf packages
 
 ## Data model
 
-Fifteen tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
+Sixteen tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
 which of them `ddms_app` may read, and on what terms, is in `lib/db/sql/rls.sql`.
 
 **The owner tier** — who the data belongs to:
@@ -169,10 +170,28 @@ which of them `ddms_app` may read, and on what terms, is in `lib/db/sql/rls.sql`
   on, and `statusSince` / `lastSyncedAt` / `disappearedAt`. Reconciliation is
   **not** stored here; it is derived on read, because a stale "in sync" flag is
   worse than none.
+- **dms_job_cards**, **dms_enquiries** + **dms_employees**, **dms_registrations**
+  — the same shape, three more times. Every mirror table carries **mirror
+  fields** (pulled, never written back) and **decision fields** (what we
+  concluded, and what is still outstanding). A decision field that does not
+  change the derived state is decoration, and the test for one is a query
+  before and after it is set.
 - **insurer_panel_entries** — one insurer on one outlet's panel: quota, payout,
   turnaround, integration surface. Hangs off the *DMS account*, not the
   showroom. `route` is deliberately absent — it is the account's
   `insuranceChannel`, and storing it twice would let the two disagree.
+
+Adding a module means: a mirror table, a `*-worklist.ts` with `sync…` and
+`build…` and `summarise…`, a route, a spec entry, a screen. It is not a fresh
+integration, and it should not become one.
+
+**Derived state describes a cause, not a consequence.** `registration-worklist.ts`
+has the counter-example written into it: a lapsed temporary registration was
+first modelled as a state, and a file the RTO had rejected whose temporary
+registration had also lapsed came out advising somebody to take it to the RTO,
+with the objection nowhere on screen. Consequences that can coexist with any
+cause belong on the row (`tempRegDaysLeft`) and in the note, and the summary
+counts them from there.
 
 **The application pipeline:**
 
@@ -497,9 +516,10 @@ assignment (`VAR=x cmd`) and depends on `$REPLIT_EXPO_DEV_DOMAIN`,
 ### Frontend pages
 
 DDMS (`artifacts/ddms/src/pages/`): `Leads` (`/`), `Worklist` (`/worklist`),
-`ServiceWorklist` (`/service`). Its own `Shell` — an owner looking across
-showrooms, not an agent working one application — with outbound links to the
-other two products rather than embedded copies of them.
+`Registrations` (`/registrations`), `ServiceWorklist` (`/service`). Its own
+`Shell` — an owner looking across showrooms, not an agent working one
+application — with outbound links to the other two products rather than
+embedded copies of them.
 
 InsurRouter (`artifacts/insur-router/src/pages/`), routed by Wouter under
 `BASE_URL`: `Dashboard` (`/`), `ApplicationsList`, `ApplicationNew`,

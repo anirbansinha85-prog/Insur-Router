@@ -657,6 +657,80 @@ export const GetServiceWorklistResponse = zod.object({
 
 
 /**
+ * The registration desk carries the longest-running open items in a dealership and the ones with the most hands in them — the customer, the dealer, an RTO agent, the state's tax counter, the RTO itself — so a file can stall in six places for six reasons and the DMS records exactly one of them: the current status label.
+ * Two numbers here exist on no screen the dealer has. **Certificates in the drawer**: the DMS considers a vehicle finished when the RTO allots a number, and whether the customer ever received the card is two fields further down a record nothing puts side by side. **Road tax held**: collected from the customer at invoice and remitted to the state afterwards, with nothing anywhere subtracting the two dates.
+ * Query parameter rather than a path segment, for the orval reason documented on /dms/worklist.
+ * @summary Registration files, why each one is stuck, and the certificates nobody collected
+ */
+export const GetRegistrationWorklistQueryParams = zod.object({
+  "showroomId": zod.coerce.number().int(),
+  "status": zod.coerce.string().optional().describe('Filter on the DMS file status, e.g. SUBMITTED'),
+  "includeDisappeared": zod.coerce.boolean().optional()
+})
+
+export const GetRegistrationWorklistResponse = zod.object({
+  "summary": zod.object({
+  "total": zod.number().int(),
+  "byState": zod.record(zod.string(), zod.number().int()),
+  "needsAction": zod.number().int(),
+  "rcInDrawer": zod.number().int().describe('Certificates the dealership is holding that their owners do not have. The number nobody could previously see.\n'),
+  "blockedOnInsurance": zod.number().int().describe('Files that cannot move until a policy exists.'),
+  "tempRegLapsed": zod.number().int().describe('Vehicles on the road with no valid registration at all.'),
+  "tempRegAtRisk": zod.number().int().describe('Temporary registrations expiring within the week.'),
+  "taxHeldAmount": zod.number().describe('Customers\' road tax sitting in the dealer\'s account, in rupees.'),
+  "oldestOpenDays": zod.number().int(),
+  "lastSyncedAt": zod.string().nullish()
+}),
+  "rows": zod.array(zod.object({
+  "regnFileNo": zod.string(),
+  "dealerCode": zod.string(),
+  "showroomId": zod.number().int(),
+  "showroomCode": zod.string().nullish(),
+  "dealId": zod.string().describe('The sale this file belongs to, joining the desk to the deal.'),
+  "customerName": zod.string().nullish(),
+  "customerMobile": zod.string().nullish(),
+  "modelDescription": zod.string().nullish(),
+  "chassisNo": zod.string().nullish(),
+  "agentEmpCode": zod.string().nullish(),
+  "dms": zod.object({
+  "status": zod.string(),
+  "openedDate": zod.string().nullish(),
+  "rtoCode": zod.string().nullish(),
+  "rtoOffice": zod.string().nullish(),
+  "tempRegNo": zod.string().nullish(),
+  "tempRegExpiryDate": zod.string().nullish(),
+  "policyNo": zod.string().nullish().describe('Null is the most actionable value on this screen, and the only blockage the dealership can clear from its own desk.\n'),
+  "roadTaxAmount": zod.number().nullish(),
+  "roadTaxCollectedDate": zod.string().nullish(),
+  "roadTaxPaidDate": zod.string().nullish(),
+  "submittedDate": zod.string().nullish(),
+  "regNo": zod.string().nullish(),
+  "regDate": zod.string().nullish(),
+  "hsrpFittedDate": zod.string().nullish(),
+  "rcReceivedDate": zod.string().nullish(),
+  "rcDeliveredDate": zod.string().nullish(),
+  "objectionDesc": zod.string().nullish(),
+  "pendingDoc": zod.string().nullish()
+}).describe('What the dealer\'s own system believes.'),
+  "ddms": zod.object({
+  "customerNotifiedAt": zod.string().nullable(),
+  "rtoChasedAt": zod.string().nullable().describe('Read as recency, not presence — a file lodged three weeks ago and chased yesterday is being handled; the same file chased once a fortnight back is not.\n')
+}).describe('Ours. The DMS has no column for either of these.'),
+  "state": zod.enum(['OBJECTION', 'BLOCKED_NO_INSURANCE', 'AWAITING_DOCS', 'TAX_HELD', 'RC_IN_DRAWER', 'RTO_SILENT', 'HSRP_PENDING', 'ON_TRACK', 'CLOSED']).describe('\*\*Why\*\* a registration file is not moving. Each has a different owner: the RTO, the insurance desk, the customer, accounts, the agent, us.\nA lapsed temporary registration is deliberately not one of these. It is a consequence rather than a cause — it raises the urgency of whatever the real blockage is — so it lives on the row as tempRegDaysLeft and in the note. An earlier draft made it a state, and a file the RTO had rejected whose temporary registration had also lapsed came out advising somebody to take it to the RTO, with the objection nowhere on screen.\nRC_IN_DRAWER is the quiet one: as far as the DMS is concerned the transaction finished when the number was allotted, and a plastic card the customer has never seen is in a drawer.\n'),
+  "note": zod.string().nullish(),
+  "actionRequired": zod.string().nullish(),
+  "ageDays": zod.number().int().describe('Days since the file was opened. On this screen age is severity.'),
+  "tempRegDaysLeft": zod.number().int().nullish().describe('Negative means the vehicle is on the road unregistered.'),
+  "rcHeldDays": zod.number().int().nullish(),
+  "taxHeldAmount": zod.number().nullish().describe('Collected from the customer and not yet remitted to the state.'),
+  "daysInStatus": zod.number().int(),
+  "lastSyncedAt": zod.string(),
+  "disappearedFromDms": zod.boolean()
+}))
+})
+
+
+/**
  * The CRM mirror. Two things here appear on no screen the dealer has: how many minutes are left on a manufacturer-generated lead's response window — the industry mandate is thirty, and future lead allocation depends on it — and which live enquiries are assigned to somebody who has left.
  * The second needs the enquiry mirror joined to the staff mirror. The dealer's CRM knows the assignment and their HR records know the leaving date; neither knows both.
  * @summary Enquiries, the manufacturer response clock, and leads with no owner

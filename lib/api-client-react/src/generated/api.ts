@@ -33,6 +33,8 @@ import type {
   ExecutionResult,
   GetLeadWorklist200,
   GetLeadWorklistParams,
+  GetRegistrationWorklist200,
+  GetRegistrationWorklistParams,
   GetServiceWorklist200,
   GetServiceWorklistParams,
   GetShowroomPanel200,
@@ -1888,6 +1890,93 @@ export function useGetServiceWorklist<TData = Awaited<ReturnType<typeof getServi
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetServiceWorklistQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetRegistrationWorklistUrl = (params: GetRegistrationWorklistParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/dms/registration-worklist?${stringifiedParams}` : `/api/dms/registration-worklist`
+}
+
+/**
+ * The registration desk carries the longest-running open items in a dealership and the ones with the most hands in them — the customer, the dealer, an RTO agent, the state's tax counter, the RTO itself — so a file can stall in six places for six reasons and the DMS records exactly one of them: the current status label.
+ * Two numbers here exist on no screen the dealer has. **Certificates in the drawer**: the DMS considers a vehicle finished when the RTO allots a number, and whether the customer ever received the card is two fields further down a record nothing puts side by side. **Road tax held**: collected from the customer at invoice and remitted to the state afterwards, with nothing anywhere subtracting the two dates.
+ * Query parameter rather than a path segment, for the orval reason documented on /dms/worklist.
+ * @summary Registration files, why each one is stuck, and the certificates nobody collected
+ */
+export const getRegistrationWorklist = async (params: GetRegistrationWorklistParams, options?: Parameters<typeof customFetch>[1]): Promise<GetRegistrationWorklist200> => {
+
+  return customFetch<GetRegistrationWorklist200>(getGetRegistrationWorklistUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRegistrationWorklistQueryKey = (params?: GetRegistrationWorklistParams,) => {
+    return [
+    `/api/dms/registration-worklist`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetRegistrationWorklistQueryOptions = <TData = Awaited<ReturnType<typeof getRegistrationWorklist>>, TError = ErrorType<ErrorResponse>>(params: GetRegistrationWorklistParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRegistrationWorklist>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRegistrationWorklistQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRegistrationWorklist>>> = ({ signal }) => getRegistrationWorklist(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRegistrationWorklist>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRegistrationWorklistQueryResult = NonNullable<Awaited<ReturnType<typeof getRegistrationWorklist>>>
+export type GetRegistrationWorklistQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Registration files, why each one is stuck, and the certificates nobody collected
+ */
+
+export function useGetRegistrationWorklist<TData = Awaited<ReturnType<typeof getRegistrationWorklist>>, TError = ErrorType<ErrorResponse>>(
+ params: GetRegistrationWorklistParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRegistrationWorklist>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRegistrationWorklistQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
