@@ -23,6 +23,9 @@ import { syncShowroomRegistrations } from "./registration-worklist";
 import { syncShowroomParts } from "./spares-worklist";
 import { syncShowroomJobCards } from "./service-worklist";
 import { syncShowroom } from "./sync";
+import { syncShowroomReceivables } from "./receivables-worklist";
+import { syncShowroomInventory } from "./inventory-worklist";
+import { detectStateChanges, showroomIdsForOwner } from "./events";
 
 const DEFAULT_INTERVAL_MS = 15 * 60 * 1000;
 const DEFAULT_INITIAL_DELAY_MS = 30 * 1000;
@@ -90,6 +93,8 @@ async function runOnce(): Promise<void> {
       await syncShowroomEnquiries(showroomId);
       await syncShowroomRegistrations(showroomId);
       await syncShowroomParts(showroomId);
+      await syncShowroomReceivables(showroomId);
+      await syncShowroomInventory(showroomId);
       succeeded++;
     } catch (err) {
       // One unreachable dealership must not stop the others. The mirror keeps
@@ -112,6 +117,27 @@ async function runOnce(): Promise<void> {
       logger.error(
         { err: err instanceof Error ? err.message : String(err), ownerId },
         "Entity graph rebuild failed",
+      );
+    }
+
+    // And then: what moved. This is the pass that makes the product capable of
+    // noticing anything on its own — a file that lapsed overnight, a lead that
+    // breached because time passed. It runs here, with nobody signed in, which
+    // is the whole point of it running here.
+    //
+    // After the graph, because a state may depend on it, and per owner rather
+    // than per showroom because three of the seven projections read across
+    // outlets and would classify half a group differently mid-loop.
+    try {
+      const owned = await showroomIdsForOwner(ownerId);
+      for (const showroomId of owned) {
+        if (!showroomIds.includes(showroomId)) continue;
+        await detectStateChanges(ownerId, showroomId, owned);
+      }
+    } catch (err) {
+      logger.error(
+        { err: err instanceof Error ? err.message : String(err), ownerId },
+        "Derived-state detection failed",
       );
     }
   }

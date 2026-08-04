@@ -1560,6 +1560,35 @@ export interface InventoryWorklistSummary {
   lastSyncedAt?: string | null;
 }
 
+export type EventModule = typeof EventModule[keyof typeof EventModule];
+
+
+export const EventModule = {
+  DEAL: 'DEAL',
+  JOB_CARD: 'JOB_CARD',
+  ENQUIRY: 'ENQUIRY',
+  REGISTRATION: 'REGISTRATION',
+  PART: 'PART',
+  RECEIVABLE: 'RECEIVABLE',
+  VEHICLE: 'VEHICLE',
+} as const;
+
+export interface RecordEvent {
+  id: number;
+  ownerId: number;
+  showroomId: number;
+  module: EventModule;
+  recordKey: string;
+  /**
+     * Null means first classified, which is not the same as changed.
+     * @nullable
+     */
+  fromState?: string | null;
+  toState: string;
+  /** When it was detected, not when it happened. A file that lapsed at midnight is found at the next sync, so this is bounded above by the scheduler's interval — calling it occurredAt would claim a precision the mirror cannot have. */
+  detectedAt: string;
+}
+
 export interface StaffMember {
   empCode: string;
   empName: string;
@@ -2244,6 +2273,23 @@ showroomId: number;
 export type GetInventoryWorklist200 = {
   summary: InventoryWorklistSummary;
   rows: InventoryWorklistRow[];
+};
+
+export type ListDmsEventsParams = {
+showroomId?: number;
+module?: EventModule;
+/**
+ * The mirror row's own key. What a timeline on one record reads.
+ */
+recordKey?: string;
+/**
+ * Default 100, capped at 500.
+ */
+limit?: number;
+};
+
+export type ListDmsEvents200 = {
+  rows: RecordEvent[];
 };
 
 export type ListShowroomStaffParams = {

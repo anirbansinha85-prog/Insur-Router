@@ -1210,6 +1210,76 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /dms/events:
+    get:
+      operationId: listDmsEvents
+      tags: [dms]
+      summary: What has moved, and what it moved from
+      description: >
+        The log of derived-state transitions. Every other endpoint answers what
+        is true now; this answers what changed and when, which is a different
+        question and the one a rule is triggered by.
+
+        Events are the classifier's answer moving, not a column changing —
+        the Platform-Events reading rather than Change-Data-Capture. That also
+        catches transitions no field diff could: a lead breaching its window, a
+        chase going stale, a temporary registration lapsing. Nothing in the
+        dealer's system changed; the answer did.
+
+        `fromState` null means the record was classified for the first time,
+        which is a different fact from a record moving and is kept distinct so
+        each rule can decide whether it cares.
+
+        The newest row for a record is, by construction, its current state.
+      parameters:
+        - name: showroomId
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: module
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/EventModule"
+        - name: recordKey
+          in: query
+          required: false
+          description: The mirror row's own key. What a timeline on one record reads.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Default 100, capped at 500.
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RecordEvent"
+                required: [rows]
+        "400":
+          description: Unknown module, or a malformed showroomId
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No such showroom
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /dms/staff:
     get:
       operationId: listShowroomStaff
@@ -3056,6 +3126,32 @@ components:
         oldestDays: { type: integer }
         lastSyncedAt: { type: ["string", "null"] }
       required: [total, byState, needsAction, capitalTiedUp, interestAccrued, interestPerDay, wanted, oldestDays]
+
+    EventModule:
+      type: string
+      enum: [DEAL, JOB_CARD, ENQUIRY, REGISTRATION, PART, RECEIVABLE, VEHICLE]
+
+    RecordEvent:
+      type: object
+      properties:
+        id: { type: integer }
+        ownerId: { type: integer }
+        showroomId: { type: integer }
+        module:
+          $ref: "#/components/schemas/EventModule"
+        recordKey: { type: string }
+        fromState:
+          type: ["string", "null"]
+          description: Null means first classified, which is not the same as changed.
+        toState: { type: string }
+        detectedAt:
+          type: string
+          description: >
+            When it was detected, not when it happened. A file that lapsed at
+            midnight is found at the next sync, so this is bounded above by the
+            scheduler's interval — calling it occurredAt would claim a precision
+            the mirror cannot have.
+      required: [id, ownerId, showroomId, module, recordKey, toState, detectedAt]
 
     StaffMember:
       type: object

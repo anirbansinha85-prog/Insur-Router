@@ -31,6 +31,10 @@ import {
   approveMessage,
   buildInventoryWorklist,
   buildReceivablesWorklist,
+  detectForShowrooms,
+  listEvents,
+  EVENT_MODULES,
+  type EventModule,
   summariseInventory,
   summariseReceivables,
   syncShowroomInventory,
@@ -208,6 +212,11 @@ router.post("/dms/showrooms/:showroomId/sync", async (req, res): Promise<void> =
     // them.
     const entityGraph = await rebuildEntityGraph(req.sessionUser!.ownerId);
 
+    // What moved, after everything else has landed. On a manual sync this is
+    // mostly a no-op — the scheduler will usually have got there first — and
+    // that is the correct relationship between the two.
+    const events = await detectForShowrooms(req.sessionUser!.ownerId, [showroomId]);
+
     if (results.length === 0) {
       // The showroom exists but has no active DMS account, which is a
       // configuration gap rather than a fault. Say which.
@@ -228,6 +237,7 @@ router.post("/dms/showrooms/:showroomId/sync", async (req, res): Promise<void> =
       receivablesResults,
       inventoryResults,
       entityGraph,
+      events,
     });
   } catch (err) {
     if (err instanceof DmsError) {
@@ -662,6 +672,46 @@ router.post("/dms/messages/:id/send", async (req, res): Promise<void> => {
     return;
   }
   res.json({ message: result.message });
+});
+
+/**
+ * What has moved, and what it moved from.
+ *
+ * The log of derived-state transitions. Everything else in DDMS answers *what
+ * is true now*; this is the only thing that answers *what changed and when*,
+ * which is a different question and the one a rule is triggered by.
+ *
+ * Filterable by record, because that is what a timeline on a row reads — and
+ * because the newest row for a record is, by construction, its current state.
+ */
+router.get("/dms/events", async (req, res): Promise<void> => {
+  const showroomRaw = req.query.showroomId;
+  let showroomId: number | undefined;
+  if (typeof showroomRaw === "string" && showroomRaw !== "") {
+    const parsed = parseShowroomId(showroomRaw);
+    if (parsed === null) {
+      res.status(400).json({ error: "showroomId must be a positive integer" });
+      return;
+    }
+    if (!(await assertShowroomAccess(req, res, parsed))) return;
+    showroomId = parsed;
+  }
+
+  const moduleRaw = typeof req.query.module === "string" ? req.query.module : undefined;
+  if (moduleRaw && !EVENT_MODULES.has(moduleRaw)) {
+    res.status(400).json({ error: `Unknown module ${moduleRaw}` });
+    return;
+  }
+
+  const limitRaw = Number(req.query.limit);
+  const rows = await listEvents(req.sessionUser!.ownerId, {
+    showroomId,
+    module: moduleRaw as EventModule | undefined,
+    recordKey: typeof req.query.recordKey === "string" ? req.query.recordKey : undefined,
+    limit: Number.isInteger(limitRaw) && limitRaw > 0 ? limitRaw : undefined,
+  });
+
+  res.json({ rows });
 });
 
 /**

@@ -10,6 +10,7 @@ export * from "./dms_receivables";
 export * from "./dms_vehicle_stock";
 export * from "./entities";
 export * from "./decision_log";
+export * from "./record_events";
 export * from "./outbound_messages";
 export * from "./providers";
 export * from "./insurer_panel";

@@ -60,6 +60,8 @@ import type {
   IngestPushResult,
   IngestResult,
   ListApplicationsParams,
+  ListDmsEvents200,
+  ListDmsEventsParams,
   ListDmsMessages200,
   ListDmsMessagesParams,
   ListShowroomStaff200,
@@ -2698,6 +2700,94 @@ export function useGetInventoryWorklist<TData = Awaited<ReturnType<typeof getInv
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetInventoryWorklistQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListDmsEventsUrl = (params?: ListDmsEventsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/dms/events?${stringifiedParams}` : `/api/dms/events`
+}
+
+/**
+ * The log of derived-state transitions. Every other endpoint answers what is true now; this answers what changed and when, which is a different question and the one a rule is triggered by.
+ * Events are the classifier's answer moving, not a column changing — the Platform-Events reading rather than Change-Data-Capture. That also catches transitions no field diff could: a lead breaching its window, a chase going stale, a temporary registration lapsing. Nothing in the dealer's system changed; the answer did.
+ * `fromState` null means the record was classified for the first time, which is a different fact from a record moving and is kept distinct so each rule can decide whether it cares.
+ * The newest row for a record is, by construction, its current state.
+ * @summary What has moved, and what it moved from
+ */
+export const listDmsEvents = async (params?: ListDmsEventsParams, options?: Parameters<typeof customFetch>[1]): Promise<ListDmsEvents200> => {
+
+  return customFetch<ListDmsEvents200>(getListDmsEventsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListDmsEventsQueryKey = (params?: ListDmsEventsParams,) => {
+    return [
+    `/api/dms/events`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListDmsEventsQueryOptions = <TData = Awaited<ReturnType<typeof listDmsEvents>>, TError = ErrorType<ErrorResponse>>(params?: ListDmsEventsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDmsEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListDmsEventsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listDmsEvents>>> = ({ signal }) => listDmsEvents(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listDmsEvents>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListDmsEventsQueryResult = NonNullable<Awaited<ReturnType<typeof listDmsEvents>>>
+export type ListDmsEventsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary What has moved, and what it moved from
+ */
+
+export function useListDmsEvents<TData = Awaited<ReturnType<typeof listDmsEvents>>, TError = ErrorType<ErrorResponse>>(
+ params?: ListDmsEventsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDmsEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListDmsEventsQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

@@ -1167,6 +1167,34 @@ export const GetInventoryWorklistResponse = zod.object({
 
 
 /**
+ * The log of derived-state transitions. Every other endpoint answers what is true now; this answers what changed and when, which is a different question and the one a rule is triggered by.
+ * Events are the classifier's answer moving, not a column changing — the Platform-Events reading rather than Change-Data-Capture. That also catches transitions no field diff could: a lead breaching its window, a chase going stale, a temporary registration lapsing. Nothing in the dealer's system changed; the answer did.
+ * `fromState` null means the record was classified for the first time, which is a different fact from a record moving and is kept distinct so each rule can decide whether it cares.
+ * The newest row for a record is, by construction, its current state.
+ * @summary What has moved, and what it moved from
+ */
+export const ListDmsEventsQueryParams = zod.object({
+  "showroomId": zod.coerce.number().int().optional(),
+  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART', 'RECEIVABLE', 'VEHICLE']).optional(),
+  "recordKey": zod.coerce.string().optional().describe('The mirror row\'s own key. What a timeline on one record reads.'),
+  "limit": zod.coerce.number().int().optional().describe('Default 100, capped at 500.')
+})
+
+export const ListDmsEventsResponse = zod.object({
+  "rows": zod.array(zod.object({
+  "id": zod.number().int(),
+  "ownerId": zod.number().int(),
+  "showroomId": zod.number().int(),
+  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART', 'RECEIVABLE', 'VEHICLE']),
+  "recordKey": zod.string(),
+  "fromState": zod.string().nullish().describe('Null means first classified, which is not the same as changed.'),
+  "toState": zod.string(),
+  "detectedAt": zod.string().describe('When it was detected, not when it happened. A file that lapsed at midnight is found at the next sync, so this is bounded above by the scheduler\'s interval — calling it occurredAt would claim a precision the mirror cannot have.\n')
+}))
+})
+
+
+/**
  * Behind the reassignment pickers. Departed employees are excluded rather than greyed out — they are the reason the reassignment field exists, and a list containing them invites handing work back to somebody who left in February. `carrying` is included because reassigning an orphaned lead to whoever is already busiest is a decision DDMS would have made worse.
  * @summary Staff who still work at this outlet, and what each already carries
  */

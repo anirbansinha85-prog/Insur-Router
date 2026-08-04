@@ -233,6 +233,20 @@ create policy dms_vehicle_stock_own on public.dms_vehicle_stock
   with check (showroom_id in (select app.owned_showroom_ids()));
 
 /*
+ * The event log. Insert and select only, like the decision log and for the same
+ * reason: it is the record of what changed, and a record that can be rewritten
+ * afterwards is answering a different question from the one it was written to
+ * answer. It is also the *source* of current state — the newest row per record
+ * is the state — so an update here would not merely lose history, it would
+ * silently change what every rule believes is true now.
+ */
+drop policy if exists record_events_own on public.record_events;
+create policy record_events_own on public.record_events
+  for all to ddms_app
+  using (owner_id = app.current_owner_id())
+  with check (owner_id = app.current_owner_id());
+
+/*
  * Outbound messages. Select, insert and update — a draft is composed, then
  * approved, then sent, and each of those is an update to the same row.
  *
@@ -313,6 +327,7 @@ grant select on
 to ddms_app;
 
 grant select, insert on public.decision_log to ddms_app;
+grant select, insert on public.record_events to ddms_app;
 
 -- Update but not delete: a draft moves DRAFT → APPROVED → SENT in place, and a
 -- message that was decided against is CANCELLED rather than removed.

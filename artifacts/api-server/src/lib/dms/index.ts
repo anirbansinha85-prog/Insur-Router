@@ -29,6 +29,8 @@
  *                             branch's ageing report can add up
  *   inventory-worklist.ts     the floor, aged — and matched against the people
  *                             asking for what is standing on it
+ *   events.ts                 the mirror emits events — a derived state moving,
+ *                             which is the only thing a rule can be triggered by
  *
  * The last of those is the only one answering a question a single outlet
  * *cannot* answer, rather than one it merely failed to. That is the difference
@@ -127,6 +129,15 @@ export type {
   OutboxSummary,
   TemplateId,
 } from "./outbound";
+export {
+  detectStateChanges,
+  detectForShowrooms,
+  currentStates,
+  listEvents,
+  showroomIdsForOwner,
+  EVENT_MODULES,
+} from "./events";
+export type { EventModule, EventQuery, DetectResult, RecordEventRow } from "./events";
 export { checkRewrite } from "./composer";
 export { explainRecord, citationsHold } from "./explain";
 export type { ExplainInput, Explanation } from "./explain";

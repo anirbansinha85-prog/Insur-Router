@@ -85,7 +85,7 @@ refused, are in section 3b.*
 
 | # | Requirement | Status |
 |---|---|---|
-| R-51 | **A change of derived state is an event, and events are recorded.** Not a field diff — `classify()`'s answer moving from one state to another. A file that crossed into `RC_IN_DRAWER` at 3am must be knowable without anybody having opened a screen | ○ |
+| R-51 | **A change of derived state is an event, and events are recorded.** Not a field diff — `classify()`'s answer moving from one state to another. A file that crossed into `RC_IN_DRAWER` at 3am must be knowable without anybody having opened a screen | ✅ |
 | R-52 | **Automation is one ordered list, it lives in code, and it is capped.** No rule builder, no per-dealership flows, and a stated ceiling on how many rules may exist. The failure mode being designed against is documented: orgs reach eighty automations on one object, page saves take eight seconds, and nobody can predict what a save will do | ○ |
 | R-53 | **A dealership has people, and scope only ever narrows.** Roles inside an owner — advisor, RTO agent, accounts, manager — expressed as an *additional* predicate on top of the owner's, never an alternative one. A bug in the role layer must be able to hide rows and must not be able to reveal them | ○ |
 | R-54 | **Work is routed by role and capacity, and never becomes unroutable.** Who can do it, who has room, and who is actually in today. When nothing matches, it degrades to a named queue rather than disappearing | ○ |
@@ -747,7 +747,7 @@ short-staffed dealership does not employ. So:
 > list. It also brings deprovisioning with it, since the mirror already knows
 > who has left.
 
-### OBJ-13 — The mirror emits events
+### OBJ-13 — The mirror emits events  ✅ **done 4 Aug**
 *Covers R-51.*
 
 Sync already computes whether a row changed. This makes it say **what changed
@@ -766,6 +766,31 @@ stuck*, as distinct from *what is it now*.
 **Done when:** a state transition that happened while nobody was signed in is
 readable afterwards, with its before and after — and the same transition
 detected twice does not produce two events.
+
+**Verified**, and the whole proof ran with nobody signed in until the reading:
+
+| | |
+|---|---|
+| Two scheduler passes over both outlets | 67 events across 67 distinct records — **one each** |
+| Moved, when nothing had changed between the passes | **0** |
+| Then: a policy keyed into the *mock OEM's own system*, by PATCH, with DDMS not involved | the OEM replied 200 |
+| The next scheduler pass, unattended | **exactly one event** — `DEAL HMC-DL-2026-000183 · AHEAD → IN_SYNC` |
+| That record's timeline, filtered the way a row will read it | `first seen → AHEAD`, then `AHEAD → IN_SYNC` |
+| The screen afterwards | *"Both systems hold SIM-BAJAJ-API-MSD9PEXS."* |
+| The other owner reading these events | 404 |
+
+The scheduler also gained the two syncs it never learned about in OBJ-4 —
+receivables and the vehicle floor — which had been running on manual sync only
+since they were built.
+
+> **The bug worth keeping: the showroom is part of a record's identity.**
+> `dms_part_stock` is keyed on `(showroomId, partNo)` unlike every other mirror,
+> so `HR-BRK-SHOE-R` is `AVAILABLE_ELSEWHERE` at Saraswati and `OK` at Deccan.
+> Keyed on the part number alone, the two outlets overwrote each other in the
+> comparison and the log flapped between the two states on every pass, for ever.
+> It showed up as two events one second apart with the states reversed. A key on
+> a record has to be the key that record actually has, and CLAUDE.md had said so
+> about this exact table since OBJ-4.
 
 ### OBJ-14 — People, and what each of them may see
 *Covers R-53, R-61, R-62, R-63, R-64. Extends OBJ-3 and OBJ-7 down a level.*

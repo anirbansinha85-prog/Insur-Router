@@ -120,7 +120,7 @@ artifacts/            deployable apps
     src/lib/          api-executor.ts, browser-executor.ts, auth.ts, logger.ts
     src/lib/dms/      client, adapters, mirror sync, seven worklists, the
                       entity graph, actions, composer, the approval gate,
-                      the explain tools, insurer panel, scheduler
+                      the explain tools, the event log, insurer panel, scheduler
   insur-router/       React 19 + Vite — InsurRouter frontend
   doc-ingest/         React 19 + Vite — VeloDocs frontend
   rc-capture/         Expo mobile app
@@ -149,7 +149,7 @@ pnpm run typecheck:libs                         # before checking leaf packages
 
 ## Data model
 
-Twenty-four tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
+Twenty-five tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
 which of them `ddms_app` may read, and on what terms, is in `lib/db/sql/rls.sql`.
 
 **The owner tier** — who the data belongs to:
@@ -207,6 +207,11 @@ which of them `ddms_app` may read, and on what terms, is in `lib/db/sql/rls.sql`
   and channel; the application widens that to a day, because the index has to
   release before a legitimate nudge next week and it was letting a duplicate
   through minutes later.
+- **record_events** — every time a record's *derived state* moved, and what it
+  moved from. Append-only, like the decision log and for a sharper reason: the
+  newest row per `(module, showroomId, recordKey)` **is** the current state, so
+  an update here would not merely lose history, it would change what every rule
+  believes is true now.
 - **decision_log** — every decision-field change, with a name and a
   before/after against it. Append-only by convention: `ddms_app` is granted
   insert and select and nothing else, because a record of who decided what is
@@ -366,6 +371,42 @@ explanation of *why a row says what it says* is the worst.
 > the stock, with the figure cited correctly. The fix was to name the subject in
 > the finding. An ambiguous finding is one waiting to be misread, and by a person
 > as easily as by a model.
+
+## The mirror emits events
+
+Everything above answers *what is true now*. `record_events` answers **what
+changed and when**, which is a different question and the only one a rule can
+be triggered by.
+
+Until it existed the product was entirely *pull*: sync wrote the mirror, screens
+derived on read, and a file that went wrong overnight waited for somebody to
+open a page. Sync already compared a hash of every row on every pull and threw
+the answer away.
+
+**An event is the classifier's answer moving, not a column changing.** That is
+Salesforce's distinction between a platform event and change data capture, and
+it decides the design: `REGISTRATION → RC_IN_DRAWER` is something a rule can act
+on, where `rc_received_date changed` would make every rule re-derive the meaning
+`classify()` already worked out. It also catches the transitions no field diff
+could — a lead breaching its window, a chase going stale, a temporary
+registration lapsing. Nothing in the dealer's system changes; the answer does.
+
+**The log is the state.** There is no companion table of current state: the
+newest row per `(module, showroomId, recordKey)` *is* the state, and its
+`detectedAt` is when the record entered it — which is also how long it has been
+stuck. Two tables would read faster and would eventually disagree.
+
+`detectStateChanges` runs after sync in `scheduler.ts`, with nobody signed in,
+which is the entire point of it running there. It rebuilds the same projections
+the screens use rather than re-deriving — an event stream that disagrees with
+the screen it came from is worse than no event stream.
+
+> **The showroom is part of a record's identity.** `dms_part_stock` is keyed on
+> `(showroomId, partNo)` unlike every other mirror, so `HR-BRK-SHOE-R` is a
+> different record at each branch and is `AVAILABLE_ELSEWHERE` at one and `OK`
+> at the other. Keyed on the part number alone, the two outlets overwrote each
+> other and the log flapped between the two states on every pass, for ever. Any
+> key on a record has to be the key that record actually has.
 
 **Identity: prefer an explicit reference over a probable one.** A registration
 file *names* its deal, so the customer resolves through that named deal before
