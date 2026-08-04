@@ -95,6 +95,10 @@ refused, are in section 3b.*
 | R-58 | **Thresholds are dealer policy, not product logic.** Credit periods, ageing buckets, chase cadence, what counts as the RTO having gone quiet — per owner, stored, and changes to them audited. The rules stay in code; the numbers belong to the dealership | ○ |
 | R-59 | **The agent invokes the same action registry a person does.** One endpoint, one set of refusals, one decision log. A parallel agent-only path would have to re-earn every refusal and would eventually fail to | ○ |
 | R-60 | **Every automated act is attributable and reversible.** `decision_log.userId` null reads as *the system did this*, never as *we lost track*. Anything a rule set, a person can unset | ○ |
+| R-61 | **A dealership's staff get their own logins, and a login is the dealership's own employee record.** *Locked 4 August.* A user carries an `empCode`, and that code is what already sits on the enquiries, registration files and job cards they are responsible for. Without that join, *my work* has no referent and the queue is only a differently sorted list | ○ |
+| R-62 | **The mirror may revoke access. It may never grant it.** An owner creates a login and links it to an employee; the DMS saying that person has left closes it. Never the reverse — a name appearing in the staff master must not become a login. And the honest limit travels with it: revocation is only as fresh as the last sync | ○ |
+| R-63 | **See the outlet, act on what is yours or unowned.** A nine-person dealership covers for each other, so hiding a colleague's leads would be wrong and would hide the orphaned-work finding R-19 exists for. Visibility is the outlet; the write is yours, or nobody's | ○ |
+| R-64 | **A cross-outlet *finding* survives the narrowing; the other outlet's *rows* do not.** An advisor scoped to one branch still learns that the part their customer is waiting for is free at the other one, and still cannot open that branch's ledger. The finding is the product; the rows are somebody else's business | ○ |
 
 ### How it looks
 
@@ -737,6 +741,12 @@ short-staffed dealership does not employ. So:
 > pushed behind new work. OBJ-8 moves *up*, because roles and credentials are
 > the same question asked twice.
 
+> **The one product decision this plan waited on, answered 4 August: a
+> dealership's staff get their own logins.** It is written up in OBJ-14 and it
+> is what makes the queue somebody's work rather than a differently sorted
+> list. It also brings deprovisioning with it, since the mirror already knows
+> who has left.
+
 ### OBJ-13 — The mirror emits events
 *Covers R-51.*
 
@@ -758,25 +768,77 @@ readable afterwards, with its before and after — and the same transition
 detected twice does not produce two events.
 
 ### OBJ-14 — People, and what each of them may see
-*Covers R-53. Extends OBJ-3 and OBJ-7 down a level.*
+*Covers R-53, R-61, R-62, R-63, R-64. Extends OBJ-3 and OBJ-7 down a level.*
 
-Today one login is one owner and sees everything. A dealership is nine people
-with different jobs, and the queue is meaningless until *my work* has a
-referent.
+**Locked 4 August: a dealership's staff get their own logins.** That answer is
+what turns the queue from a differently sorted list into somebody's work, and
+it decides the shape of OBJ-15 through OBJ-17.
 
-Roles as an **additional** predicate on the owner's, never an alternative:
-Salesforce's own model can only ever grant access outward from a private
-baseline, and the same asymmetry belongs here in reverse — a bug in the role
-layer must be able to hide rows and must not be able to reveal them.
+Today one login is one owner and sees everything; `users.role` is
+`OWNER | MANAGER` and the column's own comment admits both see the whole group.
+A dealership is nine people with different jobs.
+
+**A login is an employee.** `users` gains an `empCode`, and that code is already
+on the enquiries, registration files and job cards that person is responsible
+for — `assignedEmpCode`, `reassignedToEmpCode`, `assignedAgentEmpCode`,
+`advisorEmpCode`. The join is what `listStaff` has been computing `carrying`
+against since OBJ-10. Roles come from the same place: `dms_employees.role`
+already carries SALES_EXEC, SERVICE_ADVISOR, TECHNICIAN, RTO_AGENT, ACCOUNTS
+and MANAGER.
+
+**Deprovisioning falls out of the mirror, in one direction only.** The DMS
+already records `dateOfLeaving`, and the reassignment actions already refuse
+work to somebody who has left. The same fact should close their login. But
+strictly one-way: an owner creates a login and links it to an employee, and the
+mirror may only ever *revoke*. A name appearing in a staff master must never
+become an account — that is Salesforce's sharing asymmetry, where the layers
+after the baseline can only grant, applied here in reverse so that the layers
+after the baseline can only take away.
+
+The honest limit travels with it: revocation is as fresh as the last sync, and
+that window is the scheduler's interval. It is the same window the reassignment
+refusal already runs on, and it should be said on screen rather than implied.
+
+**Scope, as three predicates ANDed onto the owner's:**
+
+| | |
+|---|---|
+| Owner | unchanged — `app.current_owner_id()`, and everything already built rests on it |
+| Outlet | the employee's showroom, not the owner's whole set |
+| Module | the role's — an RTO agent gets registrations, accounts gets the ledger, an advisor gets the workshop |
+
+Never ORed. A bug in the role layer must be able to hide rows and must not be
+able to reveal them, which means every new predicate narrows and none of them
+widens.
+
+**Two decisions inside this, both taken deliberately:**
+
+*See the outlet, act on what is yours.* Hiding a colleague's leads in a
+nine-person dealership would be wrong — they cover for each other, and the
+orphaned-work finding only works if somebody other than the departed person can
+see it. Visibility is the outlet; the write is yours or nobody's (R-63).
+
+*The cross-outlet finding survives; the rows do not.* Spares already returns
+`availableAt` as a summary of another branch rather than that branch's rows, and
+receivables returns `groupExposure` rather than the other outlet's ledger. That
+accident of design turns out to be exactly the rule (R-64): an advisor still
+learns the part is free at Deccan and still cannot open Deccan's books.
 
 **Done when:** a service advisor signs in and cannot read the receivables
-ledger — proven by a query returning nothing, not by a hidden menu item.
+ledger — proven by a query returning nothing rather than by a hidden menu item —
+and an employee the DMS reports as departed cannot sign in at all.
 
 ### OBJ-15 — The queue
 *Covers R-54, R-55. Absorbs the rest of R-19.*
 
 One screen, one ordered list, across all seven modules, for the person signed
-in. Worked start to finish without going back to a list.
+in — which, since OBJ-14, is a named member of staff with an `empCode` rather
+than the owner. Worked start to finish without going back to a list.
+
+Three bands, in this order: **mine**, then **nobody's**, then **my outlet's**.
+The middle band is the one that matters — orphaned work is what a short-staffed
+dealership loses, and R-19 has been asking for it since the register was
+written.
 
 Routing takes who can do it, who has room, and who is in today — and when
 nothing matches, work degrades to a named queue rather than vanishing. A
