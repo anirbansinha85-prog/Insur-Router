@@ -119,7 +119,8 @@ artifacts/            deployable apps
     src/routes/       health, providers, applications, dashboard, dms, ingest
     src/lib/          api-executor.ts, browser-executor.ts, auth.ts, logger.ts
     src/lib/dms/      client, adapters, mirror sync, five worklists, the
-                      entity graph, panel, scheduler
+                      entity graph, actions, composer, the approval gate,
+                      panel, scheduler
   insur-router/       React 19 + Vite — InsurRouter frontend
   doc-ingest/         React 19 + Vite — VeloDocs frontend
   rc-capture/         Expo mobile app
@@ -148,7 +149,7 @@ pnpm run typecheck:libs                         # before checking leaf packages
 
 ## Data model
 
-Twenty-one tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
+Twenty-two tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
 which of them `ddms_app` may read, and on what terms, is in `lib/db/sql/rls.sql`.
 
 **The owner tier** — who the data belongs to:
@@ -172,6 +173,10 @@ which of them `ddms_app` may read, and on what terms, is in `lib/db/sql/rls.sql`
   worse than none.
 - **dms_job_cards**, **dms_enquiries** + **dms_employees**,
   **dms_registrations**, **dms_part_stock** — the same shape, four more times.
+  `dms_employees.emailId` is mirrored rather than composed from the name: a
+  dealership's mailbox naming is theirs, and guessing it would send an
+  assignment notification into the void while the screen reported it delivered.
+  Null is a real answer there, and it is why the approval gate refuses to send.
   `dms_part_stock` is keyed on `(showroomId, partNo)` rather than
   `(dealerCode, partNo)` unlike the rest: stock is physically at an outlet, not
   at a dealer code, and one showroom may carry two brands' codes over one set
@@ -183,6 +188,15 @@ which of them `ddms_app` may read, and on what terms, is in `lib/db/sql/rls.sql`
   entities upserted — because an entity id is addressable (it is in a URL) and
   `firstSeenAt` is a claim about how long the dealership has known somebody.
   Deleting both reassigned every id on each scheduled sync.
+- **outbound_messages** — everything DDMS proposes to say on the
+  dealership's behalf, and the basis on which it was allowed to. Select,
+  insert and update but **no delete**: a message somebody decided against is
+  `CANCELLED`, because "we chose not to contact this customer" and "nobody ever
+  drafted anything" are different facts and only one of them can be defended
+  later. A partial unique index keeps one *open* message per record, audience
+  and channel; the application widens that to a day, because the index has to
+  release before a legitimate nudge next week and it was letting a duplicate
+  through minutes later.
 - **decision_log** — every decision-field change, with a name and a
   before/after against it. Append-only by convention: `ddms_app` is granted
   insert and select and nothing else, because a record of who decided what is
@@ -248,6 +262,49 @@ state keeps using *their* field, our record changes only the *advice* — "call
 now" becomes "key the contact into the OEM portal" — and `slaNote` says the
 limit out loud. A screen that let a logged call clear an SLA breach would tell
 an owner they were compliant while the manufacturer's report said otherwise.
+
+## Nothing leaves the building unapproved
+
+Every screen above acts on the dealership's own records. `outbound_messages` is
+the first thing that speaks *for* them, and it is gated in one place:
+
+> **Nothing leaves without either a rule permitting it or a person approving
+> it.**
+
+`authoriseSend()` in `lib/dms/outbound.ts` is that gate, and `sendMessage()` is
+the only function permitted to write `sentAt` — after the gate has returned a
+basis and not otherwise. A row with a `sentAt` and no `authorisedBasis` is the
+state that file exists to make unreachable.
+
+**There is exactly one rule**, `INTERNAL_STAFF_NOTIFICATION`, and every clause
+of it is load-bearing: internal **email** only, to somebody who **still works
+here**, at the address **on the mirror** rather than in the request, about a
+record **already assigned to them**. Everything else — every customer message,
+without exception — needs a person. No branch can produce a rule basis for
+`audience: "CUSTOMER"`, which is R-50 expressed as control flow rather than as
+configuration. Widening that is a decision about how far this product is
+trusted, and it belongs in that file where somebody can read it.
+
+**The transport registry is empty, and that is honest rather than unfinished.**
+There is no SMTP credential and no WhatsApp Business account, so an authorised
+message lands in `HELD_NO_TRANSPORT` with `sentAt` still null and the screen
+says exactly that. A green "sent" for something no customer received is the same
+defect as a simulated policy number that looks issued. Adding a transport is
+adding an entry to `TRANSPORTS`; the gate is complete either way, because what a
+message *may* do is the part that had to be built.
+
+**A model writes and a rule verifies.** `composer.ts` builds every draft from a
+`facts` object a rule pulled out of the mirror, then optionally asks a model to
+rephrase it — and `checkRewrite()` accepts the result only if it invents no
+figure, drops no figure the draft asserted, and ends in a finished sentence.
+Each of those three tests exists because a rewrite failed it: the first customer
+draft this composer ever produced read *"Dear Mr Satish Verma, your HF Deluxe"*
+and stopped, because the token budget ran out inside the model's own reasoning
+and a truncated message invents nothing. A failed rewrite is logged and the
+template goes forward — and the *reason* is logged too, because a silent
+fallback and a silent failure look identical from the outside. They looked
+identical for a while: a malformed request made the model path inert and every
+draft came back `RULE`, which is exactly what healthy fallback looks like.
 
 **Identity: prefer an explicit reference over a probable one.** A registration
 file *names* its deal, so the customer resolves through that named deal before
@@ -591,8 +648,8 @@ assignment (`VAR=x cmd`) and depends on `$REPLIT_EXPO_DEV_DOMAIN`,
 
 DDMS (`artifacts/ddms/src/pages/`): `Leads` (`/`), `Worklist` (`/worklist`),
 `Registrations` (`/registrations`), `ServiceWorklist` (`/service`),
-`Spares` (`/spares`), `Dossier` (`/who/:entityId`, reached from the header
-search rather than the sidebar). Its own `Shell` — an owner looking across showrooms,
+`Spares` (`/spares`), `Outbox` (`/outbox`), `Dossier` (`/who/:entityId`,
+reached from the header search rather than the sidebar). Its own `Shell` — an owner looking across showrooms,
 rather than an agent working one
 application — with outbound links to the other two products rather than
 embedded copies of them.

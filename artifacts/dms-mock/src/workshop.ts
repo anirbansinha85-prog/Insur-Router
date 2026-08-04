@@ -15,6 +15,12 @@
  *   JC-MH-8841     IN_PROGRESS               second dealer, so nothing is global
  *   JC-MH-8842     READY, 2 days
  *
+ * Work email addresses are on the `.example` reserved TLD, which by RFC 2606
+ * can never resolve or receive mail. That is deliberate: these are the
+ * addresses DDMS's internal notifications are aimed at, and a fixture that
+ * could accidentally deliver to a real mailbox is a fixture waiting to embarrass
+ * somebody.
+ *
  * Dates are written relative to a fixed anchor and shifted to "now" at seed
  * time, so a demo run a month later still shows a part outstanding for nine
  * days rather than forty. Ageing is the whole point of these rows; letting it
@@ -30,27 +36,27 @@ import type {
 
 export const EMPLOYEES: DmsEmployee[] = [
   // ── Saraswati, New Delhi ──────────────────────────────────────────────────
-  { empCode: "SA-0417-19", empName: "Vikram Chandel", dealerCode: "HMC-DL-0417", role: "SALES_EXEC", doj: "11-04-2022", dol: null, activeFlg: "Y", mobileNo: "9810044219" },
-  { empCode: "SA-0417-23", empName: "Neha Grover", dealerCode: "HMC-DL-0417", role: "SALES_EXEC", doj: "02-01-2024", dol: null, activeFlg: "Y", mobileNo: "9810044223" },
+  { empCode: "SA-0417-19", empName: "Vikram Chandel", dealerCode: "HMC-DL-0417", role: "SALES_EXEC", doj: "11-04-2022", dol: null, activeFlg: "Y", mobileNo: "9810044219", emailId: "vikram.chandel@saraswatiauto.example" },
+  { empCode: "SA-0417-23", empName: "Neha Grover", dealerCode: "HMC-DL-0417", role: "SALES_EXEC", doj: "02-01-2024", dol: null, activeFlg: "Y", mobileNo: "9810044223", emailId: "neha.grover@saraswatiauto.example" },
   // Three departures inside six months on a floor of nine. This is the
   // attrition the owner feels and cannot currently quantify.
-  { empCode: "SA-0417-21", empName: "Imtiaz Khan", dealerCode: "HMC-DL-0417", role: "SALES_EXEC", doj: "19-08-2023", dol: "28-02-2026", activeFlg: "N", mobileNo: null },
-  { empCode: "AD-0417-04", empName: "Sunil Rawat", dealerCode: "HMC-DL-0417", role: "SERVICE_ADVISOR", doj: "07-06-2021", dol: null, activeFlg: "Y", mobileNo: "9810044204" },
-  { empCode: "AD-0417-07", empName: "Farida Sheikh", dealerCode: "HMC-DL-0417", role: "SERVICE_ADVISOR", doj: "15-03-2025", dol: "30-06-2026", activeFlg: "N", mobileNo: null },
-  { empCode: "TE-0417-11", empName: "Ramesh Yadav", dealerCode: "HMC-DL-0417", role: "TECHNICIAN", doj: "22-09-2020", dol: null, activeFlg: "Y", mobileNo: "9810044211" },
-  { empCode: "TE-0417-14", empName: "Dinesh Sahu", dealerCode: "HMC-DL-0417", role: "TECHNICIAN", doj: "05-05-2024", dol: null, activeFlg: "Y", mobileNo: "9810044214" },
-  { empCode: "TE-0417-16", empName: "Aslam Qureshi", dealerCode: "HMC-DL-0417", role: "TECHNICIAN", doj: "12-11-2024", dol: "15-05-2026", activeFlg: "N", mobileNo: null },
-  { empCode: "MG-0417-01", empName: "Anand Saraswat", dealerCode: "HMC-DL-0417", role: "MANAGER", doj: "01-04-2018", dol: null, activeFlg: "Y", mobileNo: "9810044201" },
+  { empCode: "SA-0417-21", empName: "Imtiaz Khan", dealerCode: "HMC-DL-0417", role: "SALES_EXEC", doj: "19-08-2023", dol: "28-02-2026", activeFlg: "N", mobileNo: null, emailId: null },
+  { empCode: "AD-0417-04", empName: "Sunil Rawat", dealerCode: "HMC-DL-0417", role: "SERVICE_ADVISOR", doj: "07-06-2021", dol: null, activeFlg: "Y", mobileNo: "9810044204", emailId: "sunil.rawat@saraswatiauto.example" },
+  { empCode: "AD-0417-07", empName: "Farida Sheikh", dealerCode: "HMC-DL-0417", role: "SERVICE_ADVISOR", doj: "15-03-2025", dol: "30-06-2026", activeFlg: "N", mobileNo: null, emailId: null },
+  { empCode: "TE-0417-11", empName: "Ramesh Yadav", dealerCode: "HMC-DL-0417", role: "TECHNICIAN", doj: "22-09-2020", dol: null, activeFlg: "Y", mobileNo: "9810044211", emailId: "ramesh.yadav@saraswatiauto.example" },
+  { empCode: "TE-0417-14", empName: "Dinesh Sahu", dealerCode: "HMC-DL-0417", role: "TECHNICIAN", doj: "05-05-2024", dol: null, activeFlg: "Y", mobileNo: "9810044214", emailId: "dinesh.sahu@saraswatiauto.example" },
+  { empCode: "TE-0417-16", empName: "Aslam Qureshi", dealerCode: "HMC-DL-0417", role: "TECHNICIAN", doj: "12-11-2024", dol: "15-05-2026", activeFlg: "N", mobileNo: null, emailId: null },
+  { empCode: "MG-0417-01", empName: "Anand Saraswat", dealerCode: "HMC-DL-0417", role: "MANAGER", doj: "01-04-2018", dol: null, activeFlg: "Y", mobileNo: "9810044201", emailId: "anand.saraswat@saraswatiauto.example" },
   // One RTO agent for the whole branch, which is normal and is also why the
   // registration backlog is one person deep.
-  { empCode: "RT-0417-02", empName: "Jaswinder Sethi", dealerCode: "HMC-DL-0417", role: "RTO_AGENT", doj: "03-03-2019", dol: null, activeFlg: "Y", mobileNo: "9810044202" },
-  { empCode: "AC-0417-06", empName: "Meera Joshi", dealerCode: "HMC-DL-0417", role: "ACCOUNTS", doj: "18-11-2021", dol: null, activeFlg: "Y", mobileNo: "9810044206" },
+  { empCode: "RT-0417-02", empName: "Jaswinder Sethi", dealerCode: "HMC-DL-0417", role: "RTO_AGENT", doj: "03-03-2019", dol: null, activeFlg: "Y", mobileNo: "9810044202", emailId: "jaswinder.sethi@saraswatiauto.example" },
+  { empCode: "AC-0417-06", empName: "Meera Joshi", dealerCode: "HMC-DL-0417", role: "ACCOUNTS", doj: "18-11-2021", dol: null, activeFlg: "Y", mobileNo: "9810044206", emailId: "meera.joshi@saraswatiauto.example" },
 
   // ── Deccan, Pune ──────────────────────────────────────────────────────────
-  { empCode: "SA-1182-03", empName: "Prasad Kulkarni", dealerCode: "HMC-MH-1182", role: "SALES_EXEC", doj: "14-07-2023", dol: null, activeFlg: "Y", mobileNo: "9822011203" },
-  { empCode: "AD-1182-02", empName: "Sneha Deshmukh", dealerCode: "HMC-MH-1182", role: "SERVICE_ADVISOR", doj: "09-02-2022", dol: null, activeFlg: "Y", mobileNo: "9822011202" },
-  { empCode: "TE-1182-05", empName: "Balaji Pawar", dealerCode: "HMC-MH-1182", role: "TECHNICIAN", doj: "30-10-2021", dol: null, activeFlg: "Y", mobileNo: "9822011205" },
-  { empCode: "RT-1182-01", empName: "Ganesh Shinde", dealerCode: "HMC-MH-1182", role: "RTO_AGENT", doj: "21-06-2020", dol: null, activeFlg: "Y", mobileNo: "9822011201" },
+  { empCode: "SA-1182-03", empName: "Prasad Kulkarni", dealerCode: "HMC-MH-1182", role: "SALES_EXEC", doj: "14-07-2023", dol: null, activeFlg: "Y", mobileNo: "9822011203", emailId: "prasad.kulkarni@deccantw.example" },
+  { empCode: "AD-1182-02", empName: "Sneha Deshmukh", dealerCode: "HMC-MH-1182", role: "SERVICE_ADVISOR", doj: "09-02-2022", dol: null, activeFlg: "Y", mobileNo: "9822011202", emailId: "sneha.deshmukh@deccantw.example" },
+  { empCode: "TE-1182-05", empName: "Balaji Pawar", dealerCode: "HMC-MH-1182", role: "TECHNICIAN", doj: "30-10-2021", dol: null, activeFlg: "Y", mobileNo: "9822011205", emailId: "balaji.pawar@deccantw.example" },
+  { empCode: "RT-1182-01", empName: "Ganesh Shinde", dealerCode: "HMC-MH-1182", role: "RTO_AGENT", doj: "21-06-2020", dol: null, activeFlg: "Y", mobileNo: "9822011201", emailId: "ganesh.shinde@deccantw.example" },
 ];
 
 /** Labour operation codes, priced per hour. Rates are invented. */

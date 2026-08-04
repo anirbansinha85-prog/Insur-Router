@@ -216,6 +216,23 @@ create policy decision_log_own on public.decision_log
   using (owner_id = app.current_owner_id())
   with check (owner_id = app.current_owner_id());
 
+/*
+ * Outbound messages. Select, insert and update — a draft is composed, then
+ * approved, then sent, and each of those is an update to the same row.
+ *
+ * No delete, deliberately and unlike `entities`. A message somebody decided not
+ * to send is `CANCELLED`, not absent: "we chose not to contact this customer"
+ * and "nobody ever drafted anything" are different facts about a dealership,
+ * and only one of them can be defended later. The grants below match, so a
+ * `delete from outbound_messages` on the request path fails at the database
+ * rather than relying on nobody writing one.
+ */
+drop policy if exists outbound_messages_own on public.outbound_messages;
+create policy outbound_messages_own on public.outbound_messages
+  for all to ddms_app
+  using (owner_id = app.current_owner_id())
+  with check (owner_id = app.current_owner_id());
+
 drop policy if exists insurer_panel_own on public.insurer_panel_entries;
 create policy insurer_panel_own on public.insurer_panel_entries
   for select to ddms_app
@@ -280,6 +297,10 @@ grant select on
 to ddms_app;
 
 grant select, insert on public.decision_log to ddms_app;
+
+-- Update but not delete: a draft moves DRAFT → APPROVED → SENT in place, and a
+-- message that was decided against is CANCELLED rather than removed.
+grant select, insert, update on public.outbound_messages to ddms_app;
 
 grant select, insert, update on
   public.dms_deals,

@@ -366,6 +366,12 @@ export interface DmsEmployee {
   dol: DmsDate | null;
   activeFlg: "Y" | "N";
   mobileNo: string | null;
+  /**
+   * Work email. Null for anybody who has left, exactly like `mobileNo` — a
+   * dealership revokes the mailbox on the last day, and a system that kept
+   * offering the address would be inviting somebody to write to it.
+   */
+  emailId: string | null;
 }
 
 // ── Registration ────────────────────────────────────────────────────────────

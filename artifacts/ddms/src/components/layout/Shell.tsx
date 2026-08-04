@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter"
 import {
   Users, ListChecks, Wrench, LayoutDashboard, ShieldCheck, Bell,
-  ExternalLink, LogOut, IdCard, Boxes,
+  ExternalLink, LogOut, IdCard, Boxes, Send,
 } from "lucide-react"
 import type { SessionUser } from "@workspace/api-client-react"
 import { cn } from "@/lib/utils"
@@ -53,6 +53,14 @@ const GROUPS: NavGroup[] = [
       // the same job cards from opposite ends.
       { href: "/spares", label: "Spares", icon: Boxes },
     ],
+  },
+  {
+    // Its own group, and last. Everything above reads the dealership's data
+    // back to them; this is the one place the product proposes to say something
+    // on their behalf, and that difference is worth a heading rather than a row
+    // tucked under After sales.
+    label: "Outbound",
+    items: [{ href: "/outbox", label: "Outbox", icon: Send }],
   },
 ]
 

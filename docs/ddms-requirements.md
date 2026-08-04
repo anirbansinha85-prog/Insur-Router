@@ -68,14 +68,14 @@ Status: **✅ done** · **◑ partial** · **○ not started**
 |---|---|---|
 | R-20 | **Dual role**: a control panel *with action buttons*, not a report | ✅ every screen acts |
 | R-21 | Action buttons call the real `/api` pipeline — *locked decision, after the owner tier* | ✅ |
-| R-22 | Multi-agent automation orchestration — agents propose, rules dispose, actions execute | ○ split into OBJ-10 / 11 / 12 |
+| R-22 | Multi-agent automation orchestration — agents propose, rules dispose, actions execute | ◑ the composer proposes and the gate disposes; the panel that explains is OBJ-12 |
 | R-23 | Deterministic if/else rules where the logic is knowable, not a model guessing | ✅ derivations *and* actions are rules |
 | R-24 | What the software cannot do becomes an explicit tracked task with the exact value to copy | ✅ |
 | R-46 | **Our record of a contact is ours, and does not stop the manufacturer's clock.** The DMS is read-only, so a call logged in DDMS cannot write `firstContactAt` in their CRM. The row shows both and states the limit, with the exact value to key in | ✅ |
 | R-47 | **Identity resolved on a mobile number is probable, not certain** — families share a handset, numbers are reassigned, switchboard numbers get typed into walk-in records. Confidence travels with the entity and nothing irreversible is driven by it alone. **And an explicit reference beats a probable one**: a registration file names its deal, so that wins over a matching number | ✅ |
-| R-48 | Nothing leaves the building without either a rule permitting it or a person approving it | ○ |
-| R-49 | **The agent proposes, explains and drafts. Rules authorise.** A model may never decide whether an action is permitted or whether a record is in breach — that logic is knowable, and a rule that is right every time beats a model that is right most of the time | ○ |
-| R-50 | Internal notifications before customer-facing ones. Emailing staff their own workload is low risk; messaging a dealership's customers is not | ○ |
+| R-48 | Nothing leaves the building without either a rule permitting it or a person approving it | ✅ one function decides, and it is the only thing that may write `sentAt` |
+| R-49 | **The agent proposes, explains and drafts. Rules authorise.** A model may never decide whether an action is permitted or whether a record is in breach — that logic is knowable, and a rule that is right every time beats a model that is right most of the time | ◑ the composer drafts and `checkRewrite()` verifies; the gate never calls a model. Explaining is OBJ-12 |
+| R-50 | Internal notifications before customer-facing ones. Emailing staff their own workload is low risk; messaging a dealership's customers is not | ✅ the only rule that sends without a person covers internal email, and no branch can produce one for a customer |
 
 ### How it looks
 
@@ -349,7 +349,7 @@ it weaker rather than better. The remaining modules move after the action layer.
 |---|---|---|---|
 | 1 | **OBJ-9** Entity resolution | no | prerequisite for anything cross-module |
 | 2 | **OBJ-10** The screens act | no | R-20, and it is what makes an agent worth having |
-| 3 | **OBJ-11** Composer + approval gate | yes, gated | the first outbound surface |
+| 3 | **OBJ-11** Composer + approval gate ✅ | yes, gated | the first outbound surface |
 | 4 | **OBJ-12** The panel that explains | yes, read-only | needs 9 and 10 to have anything to say |
 | 5 | **OBJ-4** receivables, ageing, invoicing | no | after the product acts |
 | 6 | **OBJ-6** a dealership that reads as real | no | partly falls out of the above |
@@ -443,13 +443,13 @@ manufacturer's clock, the derived state still uses their field, and the screen
 says so. A version that cleared the breach would have told an owner they were
 compliant while the OEM's report disagreed.
 
-### OBJ-11 — Nothing leaves the building unapproved
-*Covers R-22 in part, R-48, R-50.*
+### OBJ-11 — Nothing leaves the building unapproved  ✅ **done 4 Aug**
+*Covers R-22 in part, R-48, R-49, R-50.*
 
 The composer drafts the contact — the message to the customer whose vehicle is
-ready, the note to the lead nobody rang, the email telling an RTO agent a file
-is theirs. Rules decide whether it may be sent. A person approves until trust is
-earned.
+ready, the email telling an RTO agent a file is theirs, the handover note to the
+salesperson a lead has just landed on. Rules decide whether it may be sent. A
+person approves until trust is earned.
 
 **Internal notifications before customer-facing ones.** Emailing a member of
 staff their own workload is low risk and immediately useful; messaging a
@@ -459,6 +459,50 @@ building, and it goes behind the gate.
 **Done when:** a drafted message exists against a worklist row, and no message
 can leave without either a rule permitting it or a person approving — proven by
 attempting to send one that neither permits and watching it be refused.
+
+**Verified.** The proof is the second row:
+
+| | |
+|---|---|
+| Draft the customer WhatsApp for a vehicle ready and uncollected | 201, `DRAFT`, gate refuses |
+| **Send it with nobody having approved** | **409** — *"This is addressed to a customer. No rule permits that."* Still `DRAFT`, `sentAt` null, `authorisedBasis` null |
+| Approve, then send | `HELD_NO_TRANSPORT`, basis `PERSON`, `sentAt` **still null** |
+| Draft the agent's email before anybody is assigned | 409 — *"assign it first, then tell them"* |
+| Assign, then draft | gate allows it, basis `RULE`, rule `INTERNAL_STAFF_NOTIFICATION` |
+| Send it | `HELD_NO_TRANSPORT`, basis `RULE`, `approvedByUserId` null — no person involved |
+| Hand the file to somebody else, then send the draft addressed to the first agent | 409 — *"not the person this record is assigned to"* |
+| "Vehicle ready" about a job card awaiting a part | 409 — *"telling a customer otherwise is worse than telling them nothing"* |
+| The other owner reading, approving, sending or cancelling any of it | 404 each |
+
+Driven through the browser as well as the API: drafting from the service and
+registration screens, the refusal appearing on the row that caused it, then
+approving and sending from the outbox.
+
+**One number on that screen is deliberately zero and stays zero.** *Actually
+sent* is 0, because the transport registry is empty — there is no SMTP
+credential and no WhatsApp Business account, so an authorised message is held
+and the row says nothing was delivered. The gate is what this objective is; a
+"sent" badge for a message no customer received would be the same defect as a
+simulated policy number that looks issued (R-41).
+
+> **Two bugs the screen showed before the code did.** The RTO agent was told
+> about the same file twice, two minutes apart: the partial unique index only
+> blocks a duplicate while the first is `DRAFT` or `APPROVED`, and it *has* to
+> release so a legitimate nudge next week can go — so the window belongs in the
+> application, where "again already?" and "again, later" can be told apart. And
+> the agent's email carried the lapsed temporary registration on two consecutive
+> lines, because the worklist note already prefixes it.
+>
+> **And one the model produced.** The first customer draft read *"Dear Mr Satish
+> Verma, your HF Deluxe"* and stopped — the token budget covered the model's
+> reasoning as well as its output. It passed the fact check, because a truncated
+> message invents nothing. `checkRewrite()` now tests all three directions:
+> nothing invented, nothing dropped, and it ends in a finished sentence.
+>
+> **And one that was invisible by construction.** A malformed request made the
+> model path inert for a while and every draft came back `RULE` — which is
+> exactly what a healthy fallback looks like. A silent fallback and a silent
+> failure are indistinguishable unless one of them says so, and now it does.
 
 ### OBJ-12 — The panel that explains
 *Covers R-22, R-23, R-49.*
@@ -505,6 +549,14 @@ in one click, and the row changes state behind you. The other actions on the
 three screens are still sentences, because they still need a person — and
 dressing those as buttons would be the same defect as a simulated policy that
 looks issued.
+
+**And it has started to speak.** Every screen now drafts the message its rows
+have been describing in words for three sessions, and one gate decides whether
+any of it may leave: a rule for internal email to the person a record is
+assigned to, a person for everything else, and nothing at all without one of the
+two. Nothing has actually been delivered, because there is no email or WhatsApp
+account connected — and the outbox says so on every row rather than implying a
+delivery it cannot perform.
 
 **The blocker before a customer has moved.** Sign-in exists and the database
 enforces the boundary rather than trusting the code to. What is left is that the

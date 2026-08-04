@@ -30,6 +30,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatDate } from "@/lib/utils"
 import { AssignPicker, ContactButtons } from "@/lib/actions"
+import { DraftButton } from "@/lib/messages"
 import { AlertTriangle, PhoneCall, Timer, UserX, Users } from "lucide-react"
 
 const STATE: Record<
@@ -368,6 +369,18 @@ export default function Leads() {
                                   role="SALES_EXEC"
                                   currentEmpCode={row.ddms.reassignedToEmpCode}
                                   currentLabel={row.ddms.reassignedToEmpCode ? `reassigned` : null}
+                                />
+                              )}
+                              {/* Reassigning an orphaned lead is only half of
+                                  it — the person it landed on has to find out,
+                                  and on a screen about leads nobody is working
+                                  that is the half that was missing. */}
+                              {row.ddms.reassignedToEmpCode && (
+                                <DraftButton
+                                  template="LEAD_HANDOVER"
+                                  showroomId={row.showroomId}
+                                  recordKey={row.enqId}
+                                  label="Email them"
                                 />
                               )}
                             </div>

@@ -24,6 +24,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatDate } from "@/lib/utils"
 import { ActionButton } from "@/lib/actions"
+import { DraftButton } from "@/lib/messages"
 import { AlertTriangle, Clock, PhoneCall, Wrench } from "lucide-react"
 
 const STATE: Record<
@@ -306,7 +307,7 @@ export default function ServiceWorklist() {
                                 {row.customerMobile}
                               </a>
                             )}
-                            <div className="mt-1.5">
+                            <div className="mt-1.5 flex flex-wrap items-center gap-3">
                               <ActionButton
                                 action="JOB_CARD_MARK_INFORMED"
                                 target={{ showroomId: row.showroomId, recordKey: row.jcNo }}
@@ -315,6 +316,19 @@ export default function ServiceWorklist() {
                                 done={Boolean(row.ddms.customerInformedAt)}
                                 icon={<PhoneCall className="w-3 h-3" />}
                               />
+                              {/* Only where the work is actually finished. The
+                                  server checks the same thing and refuses
+                                  otherwise, but offering a button that is
+                                  always refused teaches people to ignore
+                                  refusals. */}
+                              {row.state === "READY_UNCOLLECTED" && !row.ddms.customerInformedAt && (
+                                <DraftButton
+                                  template="SERVICE_VEHICLE_READY"
+                                  showroomId={row.showroomId}
+                                  recordKey={row.jcNo}
+                                  label="Draft a message"
+                                />
+                              )}
                             </div>
                           </div>
                         </div>

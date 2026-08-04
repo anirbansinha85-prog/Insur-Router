@@ -129,6 +129,7 @@ async function syncDealerEnquiries(
         dateOfLeaving: toIsoDate(emp.dol) || null,
         isActive: emp.activeFlg,
         mobileNo: emp.mobileNo,
+        emailId: emp.emailId,
         lastSyncedAt: new Date(),
       })
       .onConflictDoUpdate({
@@ -139,6 +140,7 @@ async function syncDealerEnquiries(
           dateOfLeaving: toIsoDate(emp.dol) || null,
           isActive: emp.activeFlg,
           mobileNo: emp.mobileNo,
+          emailId: emp.emailId,
           lastSyncedAt: new Date(),
         },
       });

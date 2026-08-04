@@ -12,6 +12,11 @@ export interface StaffMember {
   role: string;
   /** @nullable */
   mobileNo?: string | null;
+  /**
+     * Null once they have left, and null is what stops an internal email going.
+     * @nullable
+     */
+  emailId?: string | null;
   /** Live enquiries and registration files already on this person. */
   carrying: number;
 }

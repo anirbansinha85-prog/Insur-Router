@@ -41,6 +41,15 @@ export const dmsEmployeesTable = pgTable(
     dateOfLeaving: date("date_of_leaving", { mode: "string" }),
     isActive: text("is_active").notNull(),
     mobileNo: text("mobile_no"),
+    /**
+     * Work email, and null once somebody has left.
+     *
+     * Mirrored rather than composed from the name, because a dealership's
+     * mailbox naming is theirs and guessing it would send an assignment
+     * notification into the void while the screen reported it delivered. Null
+     * is a real answer here: it is why the approval gate refuses to send.
+     */
+    emailId: text("email_id"),
     lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique("dms_employees_dealer_emp_unique").on(t.dealerCode, t.empCode)],

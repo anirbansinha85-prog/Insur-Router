@@ -850,6 +850,236 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /dms/messages:
+    post:
+      operationId: draftDmsMessage
+      tags: [dms]
+      summary: Compose a message against a worklist row
+      description: >
+        Composing is not sending and does not imply it. What comes back is a
+        DRAFT, plus the gate's verdict on what would happen if somebody pressed
+        send — which for anything addressed to a customer is always "a person has
+        to approve this first".
+
+        The template's premise is checked against the row's derived state before
+        anything is written. "Your vehicle is ready" sent about a vehicle still in
+        the bay is worse than saying nothing at all.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DraftMessageInput"
+      responses:
+        "200":
+          description: An open draft already existed for this record and was returned unchanged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DraftMessageResponse"
+        "201":
+          description: Drafted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DraftMessageResponse"
+        "400":
+          description: Unknown template, or a required field missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No such record for this owner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: >
+            The row's state does not support this message — the vehicle is not
+            ready, the certificate is not in the drawer, nobody is assigned yet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      operationId: listDmsMessages
+      tags: [dms]
+      summary: The outbox, with the gate's verdict on every row
+      description: >
+        The verdict is computed on read rather than stored, for the same reason
+        reconciliation is: an approval that was valid when it was written can stop
+        being valid once the recipient leaves, and a cached "may send" is exactly
+        the stale flag that would let one through.
+      parameters:
+        - name: showroomId
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: status
+          in: query
+          required: false
+          description: Comma-separated. DRAFT, APPROVED, SENT, HELD_NO_TRANSPORT, FAILED, CANCELLED.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Newest first, capped at 200
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/OutboxRow"
+                  summary:
+                    $ref: "#/components/schemas/OutboxSummary"
+                required: [rows, summary]
+        "404":
+          description: No such showroom
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /dms/messages/{id}/approve:
+    post:
+      operationId: approveDmsMessage
+      tags: [dms]
+      summary: A person takes responsibility for a message
+      description: >
+        Approving does not send it. Approval is a judgement and sending is an act,
+        and collapsing the two turns a mis-click straight into a message somebody
+        received.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageNoteInput"
+      responses:
+        "200":
+          description: Approved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageWithGate"
+        "404":
+          description: No such message for this owner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Already sent, or cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /dms/messages/{id}/cancel:
+    post:
+      operationId: cancelDmsMessage
+      tags: [dms]
+      summary: Decided against
+      description: >
+        Kept as a row rather than deleted. "We chose not to contact this customer"
+        and "nobody ever drafted anything" are different facts about a dealership,
+        and only one of them can be defended later.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageNoteInput"
+      responses:
+        "200":
+          description: Cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    $ref: "#/components/schemas/OutboundMessage"
+                required: [message]
+        "404":
+          description: No such message for this owner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Already sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /dms/messages/{id}/send:
+    post:
+      operationId: sendDmsMessage
+      tags: [dms]
+      summary: Send it, if it may go
+      description: >
+        The gate. Nothing leaves without either a rule permitting it or a person
+        approving it, and this is the only endpoint that can set sentAt.
+
+        409 with the reason when it may not, and the reason is the useful part: a
+        customer message nobody approved, a recipient who has left, a file that is
+        no longer theirs.
+
+        A message that is authorised but has no configured transport comes back
+        HELD_NO_TRANSPORT with sentAt still null. There is no SMTP credential and
+        no WhatsApp Business account, so nothing is delivered to anybody — and
+        showing a green "sent" for something no customer received would be the
+        same defect as a simulated policy number that looks issued.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Authorised. Check status — SENT, HELD_NO_TRANSPORT or FAILED.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    $ref: "#/components/schemas/OutboundMessage"
+                required: [message]
+        "404":
+          description: No such message for this owner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Refused. The body carries the reason.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /dms/staff:
     get:
       operationId: listShowroomStaff
@@ -2298,6 +2528,148 @@ components:
         note: { type: string }
       required: [action, showroomId, recordKey]
 
+    DraftMessageInput:
+      type: object
+      properties:
+        template:
+          $ref: "#/components/schemas/MessageTemplate"
+        showroomId: { type: integer }
+        recordKey:
+          type: string
+          description: The mirror row's own key — jcNo, regnFileNo, enqId.
+      required: [template, showroomId, recordKey]
+
+    MessageTemplate:
+      type: string
+      enum: [SERVICE_VEHICLE_READY, REGISTRATION_RC_READY, REGISTRATION_AGENT_ASSIGNED, LEAD_HANDOVER]
+      description: >
+        Two customer messages and two internal ones. The internal pair require the
+        record to have been assigned first, which is what makes them a
+        notification rather than a broadcast.
+
+    OutboundMessage:
+      type: object
+      properties:
+        id: { type: integer }
+        ownerId: { type: integer }
+        showroomId: { type: integer }
+        module:
+          type: string
+          enum: [DEAL, JOB_CARD, ENQUIRY, REGISTRATION, PART]
+        recordKey: { type: string }
+        audience:
+          type: string
+          enum: [INTERNAL, CUSTOMER]
+          description: >
+            The axis the whole gate turns on. A rule may permit an internal
+            message. Nothing permits a customer one except a person.
+        channel:
+          type: string
+          enum: [EMAIL, WHATSAPP, SMS]
+        toName: { type: ["string", "null"] }
+        toAddress: { type: ["string", "null"] }
+        toEmpCode: { type: ["string", "null"] }
+        subject: { type: ["string", "null"] }
+        body: { type: string }
+        template: { type: string }
+        draftedBy:
+          type: string
+          enum: [RULE, AGENT]
+          description: >
+            AGENT means a model rephrased the template draft and the rephrasing
+            passed a check that it asserted no figure the facts do not support. A
+            rewrite that failed that check never reaches this row.
+        facts:
+          type: ["object", "null"]
+          additionalProperties: true
+          description: The values the body is permitted to assert.
+        status:
+          type: string
+          enum: [DRAFT, APPROVED, SENT, HELD_NO_TRANSPORT, FAILED, CANCELLED]
+        authorisedBasis:
+          type: ["string", "null"]
+        authorisedRule: { type: ["string", "null"] }
+        approvedByUserId: { type: ["integer", "null"] }
+        approvedAt: { type: ["string", "null"] }
+        sentAt:
+          type: ["string", "null"]
+          description: Written only by the send endpoint, and only after the gate returned a basis.
+        failureReason: { type: ["string", "null"] }
+        createdByUserId: { type: ["integer", "null"] }
+        createdAt: { type: string }
+      required: [id, ownerId, showroomId, module, recordKey, audience, channel, body, template, draftedBy, status, createdAt]
+
+    MessageNoteInput:
+      type: object
+      description: An optional note recorded against the approval or the cancellation.
+      properties:
+        note: { type: string }
+
+    MessageGate:
+      type: object
+      description: What would happen if somebody pressed send right now.
+      properties:
+        ok: { type: boolean }
+        basis:
+          type: string
+          enum: [RULE, PERSON]
+        rule: { type: string }
+        userId: { type: integer }
+        reason:
+          type: string
+          description: Present when ok is false. Why it may not go.
+      required: [ok]
+
+    MessageWithGate:
+      type: object
+      properties:
+        message:
+          $ref: "#/components/schemas/OutboundMessage"
+        gate:
+          $ref: "#/components/schemas/MessageGate"
+      required: [message, gate]
+
+    DraftMessageResponse:
+      type: object
+      properties:
+        message:
+          $ref: "#/components/schemas/OutboundMessage"
+        reused:
+          type: boolean
+          description: True when an open draft already existed and was returned unchanged.
+        rationale:
+          type: string
+          description: Why this message exists, for the person deciding whether to approve it.
+        gate:
+          $ref: "#/components/schemas/MessageGate"
+      required: [message, reused, rationale, gate]
+
+    OutboxRow:
+      type: object
+      properties:
+        message:
+          $ref: "#/components/schemas/OutboundMessage"
+        gate:
+          $ref: "#/components/schemas/MessageGate"
+      required: [message, gate]
+
+    OutboxSummary:
+      type: object
+      properties:
+        drafts: { type: integer }
+        awaitingApproval:
+          type: integer
+          description: Drafts no rule permits — somebody has to read these.
+        approvedNotSent: { type: integer }
+        held:
+          type: integer
+          description: Authorised, but no transport is configured, so nothing was delivered.
+        sent: { type: integer }
+        ruleWouldSend:
+          type: integer
+          description: Drafts a rule would send right now with nobody reading them.
+      required: [drafts, awaitingApproval, approvedNotSent, held, sent, ruleWouldSend]
+
     StaffMember:
       type: object
       properties:
@@ -2305,6 +2677,9 @@ components:
         empName: { type: string }
         role: { type: string }
         mobileNo: { type: ["string", "null"] }
+        emailId:
+          type: ["string", "null"]
+          description: Null once they have left, and null is what stops an internal email going.
         carrying:
           type: integer
           description: Live enquiries and registration files already on this person.

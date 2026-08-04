@@ -28,8 +28,17 @@ import {
 import {
   DmsError,
   applyAction,
+  approveMessage,
+  authoriseSend,
+  cancelMessage,
+  createDraft,
+  listMessages,
   listStaff,
+  sendMessage,
+  summariseOutbox,
+  TEMPLATE_IDS,
   type ActionId,
+  type TemplateId,
   adapterForDealer,
   fetchDeal,
   resolveTenantByDealerCode,
@@ -421,6 +430,152 @@ router.post("/dms/actions", async (req, res): Promise<void> => {
   }
 
   res.json({ ok: true, module: result.module });
+});
+
+/**
+ * Draft a message against a worklist row.
+ *
+ * Composing is not sending and does not imply it. What comes back is a draft
+ * with a status of `DRAFT` and, alongside it, the gate's verdict on what would
+ * happen if somebody pressed send — which for anything addressed to a customer
+ * is always "a person has to approve this first".
+ *
+ * 409 when the row's state does not support the message. "Your vehicle is
+ * ready" about a vehicle still in the bay is worse than saying nothing, and the
+ * only thing that knows whether it is ready is the same `classify()` the screen
+ * uses.
+ */
+router.post("/dms/messages", async (req, res): Promise<void> => {
+  const body = req.body as Record<string, unknown>;
+  const template = String(body.template ?? "");
+  if (!TEMPLATE_IDS.has(template)) {
+    res.status(400).json({ error: `Unknown template ${template || "(none)"}` });
+    return;
+  }
+
+  const showroomId = Number(body.showroomId);
+  const recordKey = String(body.recordKey ?? "");
+  if (!Number.isInteger(showroomId) || showroomId <= 0 || !recordKey) {
+    res.status(400).json({ error: "showroomId and recordKey are required" });
+    return;
+  }
+
+  const result = await createDraft({
+    ownerId: req.sessionUser!.ownerId,
+    userId: req.sessionUser!.userId,
+    showroomId,
+    template: template as TemplateId,
+    recordKey,
+  });
+
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+
+  res.status(result.reused ? 200 : 201).json({
+    message: result.message,
+    reused: result.reused,
+    rationale: result.rationale,
+    gate: await authoriseSend(result.message),
+  });
+});
+
+/**
+ * The outbox — everything drafted, and whether it may go.
+ *
+ * The gate's verdict is computed on read rather than stored, for the same
+ * reason reconciliation is: an approval that was valid when it was written can
+ * stop being valid, and a cached "may send" is precisely the stale flag that
+ * would let one through after the recipient left.
+ */
+router.get("/dms/messages", async (req, res): Promise<void> => {
+  const showroomRaw = req.query.showroomId;
+  let showroomId: number | undefined;
+  if (typeof showroomRaw === "string" && showroomRaw !== "") {
+    const parsed = parseShowroomId(showroomRaw);
+    if (parsed === null) {
+      res.status(400).json({ error: "showroomId must be a positive integer" });
+      return;
+    }
+    if (!(await assertShowroomAccess(req, res, parsed))) return;
+    showroomId = parsed;
+  }
+
+  const status =
+    typeof req.query.status === "string" && req.query.status !== ""
+      ? req.query.status.split(",")
+      : undefined;
+
+  const rows = await listMessages(req.sessionUser!.ownerId, { showroomId, status });
+  res.json({ rows, summary: summariseOutbox(rows) });
+});
+
+/**
+ * A person takes responsibility for a message.
+ *
+ * Approving does not send it. That separation is the point: approval is a
+ * judgement and sending is an act, and collapsing the two turns a mis-click
+ * straight into a message somebody received.
+ */
+router.post("/dms/messages/:id/approve", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: "id must be a positive integer" });
+    return;
+  }
+  const note = typeof (req.body as Record<string, unknown>)?.note === "string"
+    ? ((req.body as Record<string, unknown>).note as string)
+    : undefined;
+
+  const result = await approveMessage(req.sessionUser!.ownerId, req.sessionUser!.userId, id, note);
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+  res.json({ message: result.message, gate: await authoriseSend(result.message) });
+});
+
+/** Decided against. Kept as a row — "we chose not to" is a fact worth keeping. */
+router.post("/dms/messages/:id/cancel", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: "id must be a positive integer" });
+    return;
+  }
+  const note = typeof (req.body as Record<string, unknown>)?.note === "string"
+    ? ((req.body as Record<string, unknown>).note as string)
+    : undefined;
+
+  const result = await cancelMessage(req.sessionUser!.ownerId, req.sessionUser!.userId, id, note);
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+  res.json({ message: result.message });
+});
+
+/**
+ * Send it, if it may go.
+ *
+ * **409 with the reason when it may not**, and the reason is the useful part —
+ * a customer message nobody approved, a recipient who has left, a file that is
+ * no longer theirs. This is the endpoint R-48 is tested against: point it at a
+ * draft that neither a rule permits nor a person has approved and it refuses.
+ */
+router.post("/dms/messages/:id/send", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: "id must be a positive integer" });
+    return;
+  }
+
+  const result = await sendMessage(req.sessionUser!.ownerId, req.sessionUser!.userId, id);
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+  res.json({ message: result.message });
 });
 
 /**

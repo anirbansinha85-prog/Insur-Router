@@ -33,6 +33,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatDate } from "@/lib/utils"
 import { ActionButton, AssignPicker } from "@/lib/actions"
+import { DraftButton } from "@/lib/messages"
 import { AlertTriangle, FileText, IdCard, ShieldAlert, Wallet } from "lucide-react"
 
 const STATE: Record<
@@ -342,6 +343,21 @@ export default function Registrations() {
                           placeholder="Assign…"
                         />
                       </div>
+                      {/* Assigning a file changes who owns it; this is what
+                          tells them. It appears only once somebody is assigned,
+                          which is what keeps it a notification rather than a
+                          broadcast — and it is the one message a rule will send
+                          without anybody reading it first. */}
+                      {row.ddms.assignedAgentEmpCode && (
+                        <div className="mt-1.5">
+                          <DraftButton
+                            template="REGISTRATION_AGENT_ASSIGNED"
+                            showroomId={row.showroomId}
+                            recordKey={row.regnFileNo}
+                            label="Email the agent"
+                          />
+                        </div>
+                      )}
                     </TableCell>
 
                     <TableCell className="align-top text-right">
@@ -401,6 +417,14 @@ export default function Registrations() {
                                   label="Mark customer told"
                                   doneLabel="customer told"
                                   done={Boolean(row.ddms.customerNotifiedAt)}
+                                />
+                              )}
+                              {row.state === "RC_IN_DRAWER" && !row.ddms.customerNotifiedAt && (
+                                <DraftButton
+                                  template="REGISTRATION_RC_READY"
+                                  showroomId={row.showroomId}
+                                  recordKey={row.regnFileNo}
+                                  label="Draft a message"
                                 />
                               )}
                               {/* Recency, not presence — the derived state asks

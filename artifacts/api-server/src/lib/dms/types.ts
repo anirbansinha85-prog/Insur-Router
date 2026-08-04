@@ -213,6 +213,8 @@ export interface DmsEmployee {
   dol: DmsDate | null;
   activeFlg: "Y" | "N";
   mobileNo: string | null;
+  /** Work email, null once they have left. The address internal mail goes to. */
+  emailId: string | null;
 }
 
 // ── Workshop ────────────────────────────────────────────────────────────────

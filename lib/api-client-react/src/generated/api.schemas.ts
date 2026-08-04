@@ -1071,12 +1071,202 @@ export interface DmsActionInput {
   note?: string;
 }
 
+/**
+ * Two customer messages and two internal ones. The internal pair require the record to have been assigned first, which is what makes them a notification rather than a broadcast.
+ */
+export type MessageTemplate = typeof MessageTemplate[keyof typeof MessageTemplate];
+
+
+export const MessageTemplate = {
+  SERVICE_VEHICLE_READY: 'SERVICE_VEHICLE_READY',
+  REGISTRATION_RC_READY: 'REGISTRATION_RC_READY',
+  REGISTRATION_AGENT_ASSIGNED: 'REGISTRATION_AGENT_ASSIGNED',
+  LEAD_HANDOVER: 'LEAD_HANDOVER',
+} as const;
+
+export interface DraftMessageInput {
+  template: MessageTemplate;
+  showroomId: number;
+  /** The mirror row's own key — jcNo, regnFileNo, enqId. */
+  recordKey: string;
+}
+
+export type OutboundMessageModule = typeof OutboundMessageModule[keyof typeof OutboundMessageModule];
+
+
+export const OutboundMessageModule = {
+  DEAL: 'DEAL',
+  JOB_CARD: 'JOB_CARD',
+  ENQUIRY: 'ENQUIRY',
+  REGISTRATION: 'REGISTRATION',
+  PART: 'PART',
+} as const;
+
+/**
+ * The axis the whole gate turns on. A rule may permit an internal message. Nothing permits a customer one except a person.
+ */
+export type OutboundMessageAudience = typeof OutboundMessageAudience[keyof typeof OutboundMessageAudience];
+
+
+export const OutboundMessageAudience = {
+  INTERNAL: 'INTERNAL',
+  CUSTOMER: 'CUSTOMER',
+} as const;
+
+export type OutboundMessageChannel = typeof OutboundMessageChannel[keyof typeof OutboundMessageChannel];
+
+
+export const OutboundMessageChannel = {
+  EMAIL: 'EMAIL',
+  WHATSAPP: 'WHATSAPP',
+  SMS: 'SMS',
+} as const;
+
+/**
+ * AGENT means a model rephrased the template draft and the rephrasing passed a check that it asserted no figure the facts do not support. A rewrite that failed that check never reaches this row.
+ */
+export type OutboundMessageDraftedBy = typeof OutboundMessageDraftedBy[keyof typeof OutboundMessageDraftedBy];
+
+
+export const OutboundMessageDraftedBy = {
+  RULE: 'RULE',
+  AGENT: 'AGENT',
+} as const;
+
+/**
+ * The values the body is permitted to assert.
+ * @nullable
+ */
+export type OutboundMessageFacts = { [key: string]: unknown } | null;
+
+export type OutboundMessageStatus = typeof OutboundMessageStatus[keyof typeof OutboundMessageStatus];
+
+
+export const OutboundMessageStatus = {
+  DRAFT: 'DRAFT',
+  APPROVED: 'APPROVED',
+  SENT: 'SENT',
+  HELD_NO_TRANSPORT: 'HELD_NO_TRANSPORT',
+  FAILED: 'FAILED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+export interface OutboundMessage {
+  id: number;
+  ownerId: number;
+  showroomId: number;
+  module: OutboundMessageModule;
+  recordKey: string;
+  /** The axis the whole gate turns on. A rule may permit an internal message. Nothing permits a customer one except a person. */
+  audience: OutboundMessageAudience;
+  channel: OutboundMessageChannel;
+  /** @nullable */
+  toName?: string | null;
+  /** @nullable */
+  toAddress?: string | null;
+  /** @nullable */
+  toEmpCode?: string | null;
+  /** @nullable */
+  subject?: string | null;
+  body: string;
+  template: string;
+  /** AGENT means a model rephrased the template draft and the rephrasing passed a check that it asserted no figure the facts do not support. A rewrite that failed that check never reaches this row. */
+  draftedBy: OutboundMessageDraftedBy;
+  /**
+     * The values the body is permitted to assert.
+     * @nullable
+     */
+  facts?: OutboundMessageFacts;
+  status: OutboundMessageStatus;
+  /** @nullable */
+  authorisedBasis?: string | null;
+  /** @nullable */
+  authorisedRule?: string | null;
+  /** @nullable */
+  approvedByUserId?: number | null;
+  /** @nullable */
+  approvedAt?: string | null;
+  /**
+     * Written only by the send endpoint, and only after the gate returned a basis.
+     * @nullable
+     */
+  sentAt?: string | null;
+  /** @nullable */
+  failureReason?: string | null;
+  /** @nullable */
+  createdByUserId?: number | null;
+  createdAt: string;
+}
+
+/**
+ * An optional note recorded against the approval or the cancellation.
+ */
+export interface MessageNoteInput {
+  note?: string;
+}
+
+export type MessageGateBasis = typeof MessageGateBasis[keyof typeof MessageGateBasis];
+
+
+export const MessageGateBasis = {
+  RULE: 'RULE',
+  PERSON: 'PERSON',
+} as const;
+
+/**
+ * What would happen if somebody pressed send right now.
+ */
+export interface MessageGate {
+  ok: boolean;
+  basis?: MessageGateBasis;
+  rule?: string;
+  userId?: number;
+  /** Present when ok is false. Why it may not go. */
+  reason?: string;
+}
+
+export interface MessageWithGate {
+  message: OutboundMessage;
+  gate: MessageGate;
+}
+
+export interface DraftMessageResponse {
+  message: OutboundMessage;
+  /** True when an open draft already existed and was returned unchanged. */
+  reused: boolean;
+  /** Why this message exists, for the person deciding whether to approve it. */
+  rationale: string;
+  gate: MessageGate;
+}
+
+export interface OutboxRow {
+  message: OutboundMessage;
+  gate: MessageGate;
+}
+
+export interface OutboxSummary {
+  drafts: number;
+  /** Drafts no rule permits — somebody has to read these. */
+  awaitingApproval: number;
+  approvedNotSent: number;
+  /** Authorised, but no transport is configured, so nothing was delivered. */
+  held: number;
+  sent: number;
+  /** Drafts a rule would send right now with nobody reading them. */
+  ruleWouldSend: number;
+}
+
 export interface StaffMember {
   empCode: string;
   empName: string;
   role: string;
   /** @nullable */
   mobileNo?: string | null;
+  /**
+     * Null once they have left, and null is what stops an internal email going.
+     * @nullable
+     */
+  emailId?: string | null;
   /** Live enquiries and registration files already on this person. */
   carrying: number;
 }
@@ -1711,6 +1901,27 @@ export type GetRegistrationWorklist200 = {
 export type ApplyDmsAction200 = {
   ok: boolean;
   module: string;
+};
+
+export type ListDmsMessagesParams = {
+showroomId?: number;
+/**
+ * Comma-separated. DRAFT, APPROVED, SENT, HELD_NO_TRANSPORT, FAILED, CANCELLED.
+ */
+status?: string;
+};
+
+export type ListDmsMessages200 = {
+  rows: OutboxRow[];
+  summary: OutboxSummary;
+};
+
+export type CancelDmsMessage200 = {
+  message: OutboundMessage;
+};
+
+export type SendDmsMessage200 = {
+  message: OutboundMessage;
 };
 
 export type ListShowroomStaffParams = {

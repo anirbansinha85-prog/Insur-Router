@@ -26,9 +26,12 @@ import type {
   ApplicationUpdate,
   ApplyDmsAction200,
   BrowserScrapeInput,
+  CancelDmsMessage200,
   DashboardStats,
   DmsActionInput,
   DmsPullInput,
+  DraftMessageInput,
+  DraftMessageResponse,
   DuplicateDealError,
   EntityDossier,
   ErrorResponse,
@@ -51,9 +54,13 @@ import type {
   IngestPushResult,
   IngestResult,
   ListApplicationsParams,
+  ListDmsMessages200,
+  ListDmsMessagesParams,
   ListShowroomStaff200,
   ListShowroomStaffParams,
   LoginInput,
+  MessageNoteInput,
+  MessageWithGate,
   OcrEngineStatus,
   OcrInput,
   Policy,
@@ -63,6 +70,7 @@ import type {
   RecentApplication,
   SearchEntities200,
   SearchEntitiesParams,
+  SendDmsMessage200,
   SessionUser,
   ShowroomSummary,
   SubmissionLog,
@@ -2070,6 +2078,384 @@ export const useApplyDmsAction = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getApplyDmsActionMutationOptions(options));
+    }
+
+export const getDraftDmsMessageUrl = () => {
+
+
+
+
+  return `/api/dms/messages`
+}
+
+/**
+ * Composing is not sending and does not imply it. What comes back is a DRAFT, plus the gate's verdict on what would happen if somebody pressed send — which for anything addressed to a customer is always "a person has to approve this first".
+ * The template's premise is checked against the row's derived state before anything is written. "Your vehicle is ready" sent about a vehicle still in the bay is worse than saying nothing at all.
+ * @summary Compose a message against a worklist row
+ */
+export const draftDmsMessage = async (draftMessageInput: DraftMessageInput, options?: Parameters<typeof customFetch>[1]): Promise<DraftMessageResponse> => {
+
+  return customFetch<DraftMessageResponse>(getDraftDmsMessageUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(draftMessageInput)
+  }
+);}
+
+
+
+
+
+export const getDraftDmsMessageMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof draftDmsMessage>>, TError,{data: BodyType<DraftMessageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof draftDmsMessage>>, TError,{data: BodyType<DraftMessageInput>}, TContext> => {
+
+const mutationKey = ['draftDmsMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof draftDmsMessage>>, {data: BodyType<DraftMessageInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  draftDmsMessage(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DraftDmsMessageMutationResult = NonNullable<Awaited<ReturnType<typeof draftDmsMessage>>>
+    export type DraftDmsMessageMutationBody = BodyType<DraftMessageInput>
+    export type DraftDmsMessageMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Compose a message against a worklist row
+ */
+export const useDraftDmsMessage = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof draftDmsMessage>>, TError,{data: BodyType<DraftMessageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof draftDmsMessage>>,
+        TError,
+        {data: BodyType<DraftMessageInput>},
+        TContext
+      > => {
+      return useMutation(getDraftDmsMessageMutationOptions(options));
+    }
+
+export const getListDmsMessagesUrl = (params?: ListDmsMessagesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/dms/messages?${stringifiedParams}` : `/api/dms/messages`
+}
+
+/**
+ * The verdict is computed on read rather than stored, for the same reason reconciliation is: an approval that was valid when it was written can stop being valid once the recipient leaves, and a cached "may send" is exactly the stale flag that would let one through.
+ * @summary The outbox, with the gate's verdict on every row
+ */
+export const listDmsMessages = async (params?: ListDmsMessagesParams, options?: Parameters<typeof customFetch>[1]): Promise<ListDmsMessages200> => {
+
+  return customFetch<ListDmsMessages200>(getListDmsMessagesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListDmsMessagesQueryKey = (params?: ListDmsMessagesParams,) => {
+    return [
+    `/api/dms/messages`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListDmsMessagesQueryOptions = <TData = Awaited<ReturnType<typeof listDmsMessages>>, TError = ErrorType<ErrorResponse>>(params?: ListDmsMessagesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDmsMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListDmsMessagesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listDmsMessages>>> = ({ signal }) => listDmsMessages(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listDmsMessages>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListDmsMessagesQueryResult = NonNullable<Awaited<ReturnType<typeof listDmsMessages>>>
+export type ListDmsMessagesQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary The outbox, with the gate's verdict on every row
+ */
+
+export function useListDmsMessages<TData = Awaited<ReturnType<typeof listDmsMessages>>, TError = ErrorType<ErrorResponse>>(
+ params?: ListDmsMessagesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDmsMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListDmsMessagesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getApproveDmsMessageUrl = (id: number,) => {
+
+
+
+
+  return `/api/dms/messages/${id}/approve`
+}
+
+/**
+ * Approving does not send it. Approval is a judgement and sending is an act, and collapsing the two turns a mis-click straight into a message somebody received.
+ * @summary A person takes responsibility for a message
+ */
+export const approveDmsMessage = async (id: number,
+    messageNoteInput?: MessageNoteInput, options?: Parameters<typeof customFetch>[1]): Promise<MessageWithGate> => {
+
+  return customFetch<MessageWithGate>(getApproveDmsMessageUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(messageNoteInput)
+  }
+);}
+
+
+
+
+
+export const getApproveDmsMessageMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveDmsMessage>>, TError,{id: number;data?: BodyType<MessageNoteInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof approveDmsMessage>>, TError,{id: number;data?: BodyType<MessageNoteInput>}, TContext> => {
+
+const mutationKey = ['approveDmsMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof approveDmsMessage>>, {id: number;data?: BodyType<MessageNoteInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  approveDmsMessage(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApproveDmsMessageMutationResult = NonNullable<Awaited<ReturnType<typeof approveDmsMessage>>>
+    export type ApproveDmsMessageMutationBody = BodyType<MessageNoteInput> | undefined
+    export type ApproveDmsMessageMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary A person takes responsibility for a message
+ */
+export const useApproveDmsMessage = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveDmsMessage>>, TError,{id: number;data?: BodyType<MessageNoteInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof approveDmsMessage>>,
+        TError,
+        {id: number;data?: BodyType<MessageNoteInput>},
+        TContext
+      > => {
+      return useMutation(getApproveDmsMessageMutationOptions(options));
+    }
+
+export const getCancelDmsMessageUrl = (id: number,) => {
+
+
+
+
+  return `/api/dms/messages/${id}/cancel`
+}
+
+/**
+ * Kept as a row rather than deleted. "We chose not to contact this customer" and "nobody ever drafted anything" are different facts about a dealership, and only one of them can be defended later.
+ * @summary Decided against
+ */
+export const cancelDmsMessage = async (id: number,
+    messageNoteInput?: MessageNoteInput, options?: Parameters<typeof customFetch>[1]): Promise<CancelDmsMessage200> => {
+
+  return customFetch<CancelDmsMessage200>(getCancelDmsMessageUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(messageNoteInput)
+  }
+);}
+
+
+
+
+
+export const getCancelDmsMessageMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelDmsMessage>>, TError,{id: number;data?: BodyType<MessageNoteInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof cancelDmsMessage>>, TError,{id: number;data?: BodyType<MessageNoteInput>}, TContext> => {
+
+const mutationKey = ['cancelDmsMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof cancelDmsMessage>>, {id: number;data?: BodyType<MessageNoteInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  cancelDmsMessage(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CancelDmsMessageMutationResult = NonNullable<Awaited<ReturnType<typeof cancelDmsMessage>>>
+    export type CancelDmsMessageMutationBody = BodyType<MessageNoteInput> | undefined
+    export type CancelDmsMessageMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Decided against
+ */
+export const useCancelDmsMessage = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelDmsMessage>>, TError,{id: number;data?: BodyType<MessageNoteInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof cancelDmsMessage>>,
+        TError,
+        {id: number;data?: BodyType<MessageNoteInput>},
+        TContext
+      > => {
+      return useMutation(getCancelDmsMessageMutationOptions(options));
+    }
+
+export const getSendDmsMessageUrl = (id: number,) => {
+
+
+
+
+  return `/api/dms/messages/${id}/send`
+}
+
+/**
+ * The gate. Nothing leaves without either a rule permitting it or a person approving it, and this is the only endpoint that can set sentAt.
+ * 409 with the reason when it may not, and the reason is the useful part: a customer message nobody approved, a recipient who has left, a file that is no longer theirs.
+ * A message that is authorised but has no configured transport comes back HELD_NO_TRANSPORT with sentAt still null. There is no SMTP credential and no WhatsApp Business account, so nothing is delivered to anybody — and showing a green "sent" for something no customer received would be the same defect as a simulated policy number that looks issued.
+ * @summary Send it, if it may go
+ */
+export const sendDmsMessage = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<SendDmsMessage200> => {
+
+  return customFetch<SendDmsMessage200>(getSendDmsMessageUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getSendDmsMessageMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendDmsMessage>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendDmsMessage>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['sendDmsMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendDmsMessage>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  sendDmsMessage(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendDmsMessageMutationResult = NonNullable<Awaited<ReturnType<typeof sendDmsMessage>>>
+
+    export type SendDmsMessageMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Send it, if it may go
+ */
+export const useSendDmsMessage = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendDmsMessage>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendDmsMessage>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getSendDmsMessageMutationOptions(options));
     }
 
 export const getListShowroomStaffUrl = (params: ListShowroomStaffParams,) => {

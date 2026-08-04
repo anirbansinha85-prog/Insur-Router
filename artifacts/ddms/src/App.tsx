@@ -15,6 +15,7 @@ import ServiceWorklist from '@/pages/ServiceWorklist';
 import Registrations from '@/pages/Registrations';
 import Spares from '@/pages/Spares';
 import Dossier from '@/pages/Dossier';
+import Outbox from '@/pages/Outbox';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -77,6 +78,9 @@ function Gate() {
           <Route path="/registrations" component={Registrations} />
           <Route path="/service" component={ServiceWorklist} />
           <Route path="/spares" component={Spares} />
+          {/* The only screen where DDMS proposes to speak for the dealership,
+              which is why it is its own place rather than a panel on a row. */}
+          <Route path="/outbox" component={Outbox} />
           {/* Not in the sidebar: you arrive here from the search box or from a
               row, never by browsing. It is a lens on one record, not a screen. */}
           <Route path="/who/:entityId" component={Dossier} />

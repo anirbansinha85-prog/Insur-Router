@@ -403,6 +403,8 @@ export interface StaffMember {
   empName: string;
   role: string;
   mobileNo: string | null;
+  /** Null once they have left, and null is what stops an internal email going. */
+  emailId: string | null;
   /** How many live enquiries and registration files they are already carrying. */
   carrying: number;
 }
@@ -425,6 +427,7 @@ export async function listStaff(showroomId: number, role?: string): Promise<Staf
       empName: dmsEmployeesTable.empName,
       role: dmsEmployeesTable.role,
       mobileNo: dmsEmployeesTable.mobileNo,
+      emailId: dmsEmployeesTable.emailId,
     })
     .from(dmsEmployeesTable)
     .where(

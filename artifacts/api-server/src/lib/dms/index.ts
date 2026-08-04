@@ -32,6 +32,10 @@
  *
  *   actions.ts                the controls behind every "what to do" — all
  *                             deterministic, all reversible, all logged
+ *   composer.ts               what DDMS would say — templates, and a model
+ *                             allowed to rephrase but not to assert
+ *   outbound.ts               the approval gate: nothing leaves without either
+ *                             a rule permitting it or a person approving it
  *   entity-graph.ts           one person, one vehicle, one member of staff,
  *                             resolved across all five — the join the dealer's
  *                             own system does not have, because a DMS keys
@@ -69,6 +73,32 @@ export {
   summariseSpares,
 } from "./spares-worklist";
 export { applyAction, listStaff } from "./actions";
+export {
+  authoriseSend,
+  approveMessage,
+  cancelMessage,
+  createDraft,
+  listMessages,
+  sendMessage,
+  summariseOutbox,
+  TEMPLATE_IDS,
+} from "./outbound";
+export type {
+  Authorisation,
+  DraftInput,
+  DraftResult,
+  MessageResult,
+  OutboxRow,
+  OutboxSummary,
+  TemplateId,
+} from "./outbound";
+export { checkRewrite } from "./composer";
+export type {
+  ComposedDraft,
+  MessageAudience,
+  MessageChannel,
+  MessageModule,
+} from "./composer";
 export type {
   ActionId,
   ActionModule,

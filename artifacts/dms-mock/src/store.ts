@@ -132,7 +132,8 @@ create table if not exists employees (
   doj         text not null,
   dol         text,
   active_flg  text not null,
-  mobile_no   text
+  mobile_no   text,
+  email_id    text
 );
 
 create table if not exists part_master (
@@ -328,6 +329,7 @@ export function openStore(opts: OpenOptions = {}): void {
   db.exec("pragma journal_mode = wal");
   db.exec("pragma foreign_keys = on");
   db.exec(SCHEMA);
+  migrate();
 
   if (opts.reset) {
     for (const t of [
@@ -343,6 +345,22 @@ export function openStore(opts: OpenOptions = {}): void {
   hydrateDeals();
 }
 
+/**
+ * Columns added after somebody already had a database file.
+ *
+ * `create table if not exists` does nothing to a table that already exists, so
+ * a field added to the seed is invisible on any machine that has run this mock
+ * before — and the next insert fails on an argument count nobody expects. This
+ * is the mock's whole migration story and it is meant to stay this small.
+ */
+function migrate(): void {
+  const cols = db.prepare("pragma table_info(employees)").all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === "email_id")) {
+    db.exec("alter table employees add column email_id text");
+    db.exec("delete from employees");
+  }
+}
+
 function count(table: string): number {
   const row = db.prepare(`select count(*) as n from ${table}`).get() as { n: number };
   return row.n;
@@ -355,11 +373,11 @@ function seedIfEmpty(): void {
 
   if (count("employees") === 0) {
     const ins = db.prepare(
-      `insert into employees (emp_code, emp_name, dealer_code, role, doj, dol, active_flg, mobile_no)
-       values (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `insert into employees (emp_code, emp_name, dealer_code, role, doj, dol, active_flg, mobile_no, email_id)
+       values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const e of EMPLOYEES) {
-      ins.run(e.empCode, e.empName, e.dealerCode, e.role, e.doj, e.dol, e.activeFlg, e.mobileNo);
+      ins.run(e.empCode, e.empName, e.dealerCode, e.role, e.doj, e.dol, e.activeFlg, e.mobileNo, e.emailId);
     }
   }
 
@@ -767,6 +785,7 @@ export function listEmployees(dealerCode?: string, activeOnly?: boolean): DmsEmp
     .all(...args) as Array<{
       emp_code: string; emp_name: string; dealer_code: string; role: string;
       doj: string; dol: string | null; active_flg: string; mobile_no: string | null;
+      email_id: string | null;
     }>;
 
   return rows.map((r) => ({
@@ -778,6 +797,7 @@ export function listEmployees(dealerCode?: string, activeOnly?: boolean): DmsEmp
     dol: r.dol,
     activeFlg: r.active_flg as "Y" | "N",
     mobileNo: r.mobile_no,
+    emailId: r.email_id ?? null,
   }));
 }
 

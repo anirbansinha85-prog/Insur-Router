@@ -755,6 +755,243 @@ export const ApplyDmsActionResponse = zod.object({
 
 
 /**
+ * Composing is not sending and does not imply it. What comes back is a DRAFT, plus the gate's verdict on what would happen if somebody pressed send — which for anything addressed to a customer is always "a person has to approve this first".
+ * The template's premise is checked against the row's derived state before anything is written. "Your vehicle is ready" sent about a vehicle still in the bay is worse than saying nothing at all.
+ * @summary Compose a message against a worklist row
+ */
+export const DraftDmsMessageBody = zod.object({
+  "template": zod.enum(['SERVICE_VEHICLE_READY', 'REGISTRATION_RC_READY', 'REGISTRATION_AGENT_ASSIGNED', 'LEAD_HANDOVER']).describe('Two customer messages and two internal ones. The internal pair require the record to have been assigned first, which is what makes them a notification rather than a broadcast.\n'),
+  "showroomId": zod.number().int(),
+  "recordKey": zod.string().describe('The mirror row\'s own key — jcNo, regnFileNo, enqId.')
+})
+
+export const DraftDmsMessageResponse = zod.object({
+  "message": zod.object({
+  "id": zod.number().int(),
+  "ownerId": zod.number().int(),
+  "showroomId": zod.number().int(),
+  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART']),
+  "recordKey": zod.string(),
+  "audience": zod.enum(['INTERNAL', 'CUSTOMER']).describe('The axis the whole gate turns on. A rule may permit an internal message. Nothing permits a customer one except a person.\n'),
+  "channel": zod.enum(['EMAIL', 'WHATSAPP', 'SMS']),
+  "toName": zod.string().nullish(),
+  "toAddress": zod.string().nullish(),
+  "toEmpCode": zod.string().nullish(),
+  "subject": zod.string().nullish(),
+  "body": zod.string(),
+  "template": zod.string(),
+  "draftedBy": zod.enum(['RULE', 'AGENT']).describe('AGENT means a model rephrased the template draft and the rephrasing passed a check that it asserted no figure the facts do not support. A rewrite that failed that check never reaches this row.\n'),
+  "facts": zod.record(zod.string(), zod.unknown()).nullish().describe('The values the body is permitted to assert.'),
+  "status": zod.enum(['DRAFT', 'APPROVED', 'SENT', 'HELD_NO_TRANSPORT', 'FAILED', 'CANCELLED']),
+  "authorisedBasis": zod.string().nullish(),
+  "authorisedRule": zod.string().nullish(),
+  "approvedByUserId": zod.number().int().nullish(),
+  "approvedAt": zod.string().nullish(),
+  "sentAt": zod.string().nullish().describe('Written only by the send endpoint, and only after the gate returned a basis.'),
+  "failureReason": zod.string().nullish(),
+  "createdByUserId": zod.number().int().nullish(),
+  "createdAt": zod.string()
+}),
+  "reused": zod.boolean().describe('True when an open draft already existed and was returned unchanged.'),
+  "rationale": zod.string().describe('Why this message exists, for the person deciding whether to approve it.'),
+  "gate": zod.object({
+  "ok": zod.boolean(),
+  "basis": zod.enum(['RULE', 'PERSON']).optional(),
+  "rule": zod.string().optional(),
+  "userId": zod.number().int().optional(),
+  "reason": zod.string().optional().describe('Present when ok is false. Why it may not go.')
+}).describe('What would happen if somebody pressed send right now.')
+})
+
+
+/**
+ * The verdict is computed on read rather than stored, for the same reason reconciliation is: an approval that was valid when it was written can stop being valid once the recipient leaves, and a cached "may send" is exactly the stale flag that would let one through.
+ * @summary The outbox, with the gate's verdict on every row
+ */
+export const ListDmsMessagesQueryParams = zod.object({
+  "showroomId": zod.coerce.number().int().optional(),
+  "status": zod.coerce.string().optional().describe('Comma-separated. DRAFT, APPROVED, SENT, HELD_NO_TRANSPORT, FAILED, CANCELLED.')
+})
+
+export const ListDmsMessagesResponse = zod.object({
+  "rows": zod.array(zod.object({
+  "message": zod.object({
+  "id": zod.number().int(),
+  "ownerId": zod.number().int(),
+  "showroomId": zod.number().int(),
+  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART']),
+  "recordKey": zod.string(),
+  "audience": zod.enum(['INTERNAL', 'CUSTOMER']).describe('The axis the whole gate turns on. A rule may permit an internal message. Nothing permits a customer one except a person.\n'),
+  "channel": zod.enum(['EMAIL', 'WHATSAPP', 'SMS']),
+  "toName": zod.string().nullish(),
+  "toAddress": zod.string().nullish(),
+  "toEmpCode": zod.string().nullish(),
+  "subject": zod.string().nullish(),
+  "body": zod.string(),
+  "template": zod.string(),
+  "draftedBy": zod.enum(['RULE', 'AGENT']).describe('AGENT means a model rephrased the template draft and the rephrasing passed a check that it asserted no figure the facts do not support. A rewrite that failed that check never reaches this row.\n'),
+  "facts": zod.record(zod.string(), zod.unknown()).nullish().describe('The values the body is permitted to assert.'),
+  "status": zod.enum(['DRAFT', 'APPROVED', 'SENT', 'HELD_NO_TRANSPORT', 'FAILED', 'CANCELLED']),
+  "authorisedBasis": zod.string().nullish(),
+  "authorisedRule": zod.string().nullish(),
+  "approvedByUserId": zod.number().int().nullish(),
+  "approvedAt": zod.string().nullish(),
+  "sentAt": zod.string().nullish().describe('Written only by the send endpoint, and only after the gate returned a basis.'),
+  "failureReason": zod.string().nullish(),
+  "createdByUserId": zod.number().int().nullish(),
+  "createdAt": zod.string()
+}),
+  "gate": zod.object({
+  "ok": zod.boolean(),
+  "basis": zod.enum(['RULE', 'PERSON']).optional(),
+  "rule": zod.string().optional(),
+  "userId": zod.number().int().optional(),
+  "reason": zod.string().optional().describe('Present when ok is false. Why it may not go.')
+}).describe('What would happen if somebody pressed send right now.')
+})),
+  "summary": zod.object({
+  "drafts": zod.number().int(),
+  "awaitingApproval": zod.number().int().describe('Drafts no rule permits — somebody has to read these.'),
+  "approvedNotSent": zod.number().int(),
+  "held": zod.number().int().describe('Authorised, but no transport is configured, so nothing was delivered.'),
+  "sent": zod.number().int(),
+  "ruleWouldSend": zod.number().int().describe('Drafts a rule would send right now with nobody reading them.')
+})
+})
+
+
+/**
+ * Approving does not send it. Approval is a judgement and sending is an act, and collapsing the two turns a mis-click straight into a message somebody received.
+ * @summary A person takes responsibility for a message
+ */
+export const ApproveDmsMessageParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const ApproveDmsMessageBody = zod.object({
+  "note": zod.string().optional()
+}).describe('An optional note recorded against the approval or the cancellation.')
+
+export const ApproveDmsMessageResponse = zod.object({
+  "message": zod.object({
+  "id": zod.number().int(),
+  "ownerId": zod.number().int(),
+  "showroomId": zod.number().int(),
+  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART']),
+  "recordKey": zod.string(),
+  "audience": zod.enum(['INTERNAL', 'CUSTOMER']).describe('The axis the whole gate turns on. A rule may permit an internal message. Nothing permits a customer one except a person.\n'),
+  "channel": zod.enum(['EMAIL', 'WHATSAPP', 'SMS']),
+  "toName": zod.string().nullish(),
+  "toAddress": zod.string().nullish(),
+  "toEmpCode": zod.string().nullish(),
+  "subject": zod.string().nullish(),
+  "body": zod.string(),
+  "template": zod.string(),
+  "draftedBy": zod.enum(['RULE', 'AGENT']).describe('AGENT means a model rephrased the template draft and the rephrasing passed a check that it asserted no figure the facts do not support. A rewrite that failed that check never reaches this row.\n'),
+  "facts": zod.record(zod.string(), zod.unknown()).nullish().describe('The values the body is permitted to assert.'),
+  "status": zod.enum(['DRAFT', 'APPROVED', 'SENT', 'HELD_NO_TRANSPORT', 'FAILED', 'CANCELLED']),
+  "authorisedBasis": zod.string().nullish(),
+  "authorisedRule": zod.string().nullish(),
+  "approvedByUserId": zod.number().int().nullish(),
+  "approvedAt": zod.string().nullish(),
+  "sentAt": zod.string().nullish().describe('Written only by the send endpoint, and only after the gate returned a basis.'),
+  "failureReason": zod.string().nullish(),
+  "createdByUserId": zod.number().int().nullish(),
+  "createdAt": zod.string()
+}),
+  "gate": zod.object({
+  "ok": zod.boolean(),
+  "basis": zod.enum(['RULE', 'PERSON']).optional(),
+  "rule": zod.string().optional(),
+  "userId": zod.number().int().optional(),
+  "reason": zod.string().optional().describe('Present when ok is false. Why it may not go.')
+}).describe('What would happen if somebody pressed send right now.')
+})
+
+
+/**
+ * Kept as a row rather than deleted. "We chose not to contact this customer" and "nobody ever drafted anything" are different facts about a dealership, and only one of them can be defended later.
+ * @summary Decided against
+ */
+export const CancelDmsMessageParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const CancelDmsMessageBody = zod.object({
+  "note": zod.string().optional()
+}).describe('An optional note recorded against the approval or the cancellation.')
+
+export const CancelDmsMessageResponse = zod.object({
+  "message": zod.object({
+  "id": zod.number().int(),
+  "ownerId": zod.number().int(),
+  "showroomId": zod.number().int(),
+  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART']),
+  "recordKey": zod.string(),
+  "audience": zod.enum(['INTERNAL', 'CUSTOMER']).describe('The axis the whole gate turns on. A rule may permit an internal message. Nothing permits a customer one except a person.\n'),
+  "channel": zod.enum(['EMAIL', 'WHATSAPP', 'SMS']),
+  "toName": zod.string().nullish(),
+  "toAddress": zod.string().nullish(),
+  "toEmpCode": zod.string().nullish(),
+  "subject": zod.string().nullish(),
+  "body": zod.string(),
+  "template": zod.string(),
+  "draftedBy": zod.enum(['RULE', 'AGENT']).describe('AGENT means a model rephrased the template draft and the rephrasing passed a check that it asserted no figure the facts do not support. A rewrite that failed that check never reaches this row.\n'),
+  "facts": zod.record(zod.string(), zod.unknown()).nullish().describe('The values the body is permitted to assert.'),
+  "status": zod.enum(['DRAFT', 'APPROVED', 'SENT', 'HELD_NO_TRANSPORT', 'FAILED', 'CANCELLED']),
+  "authorisedBasis": zod.string().nullish(),
+  "authorisedRule": zod.string().nullish(),
+  "approvedByUserId": zod.number().int().nullish(),
+  "approvedAt": zod.string().nullish(),
+  "sentAt": zod.string().nullish().describe('Written only by the send endpoint, and only after the gate returned a basis.'),
+  "failureReason": zod.string().nullish(),
+  "createdByUserId": zod.number().int().nullish(),
+  "createdAt": zod.string()
+})
+})
+
+
+/**
+ * The gate. Nothing leaves without either a rule permitting it or a person approving it, and this is the only endpoint that can set sentAt.
+ * 409 with the reason when it may not, and the reason is the useful part: a customer message nobody approved, a recipient who has left, a file that is no longer theirs.
+ * A message that is authorised but has no configured transport comes back HELD_NO_TRANSPORT with sentAt still null. There is no SMTP credential and no WhatsApp Business account, so nothing is delivered to anybody — and showing a green "sent" for something no customer received would be the same defect as a simulated policy number that looks issued.
+ * @summary Send it, if it may go
+ */
+export const SendDmsMessageParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const SendDmsMessageResponse = zod.object({
+  "message": zod.object({
+  "id": zod.number().int(),
+  "ownerId": zod.number().int(),
+  "showroomId": zod.number().int(),
+  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART']),
+  "recordKey": zod.string(),
+  "audience": zod.enum(['INTERNAL', 'CUSTOMER']).describe('The axis the whole gate turns on. A rule may permit an internal message. Nothing permits a customer one except a person.\n'),
+  "channel": zod.enum(['EMAIL', 'WHATSAPP', 'SMS']),
+  "toName": zod.string().nullish(),
+  "toAddress": zod.string().nullish(),
+  "toEmpCode": zod.string().nullish(),
+  "subject": zod.string().nullish(),
+  "body": zod.string(),
+  "template": zod.string(),
+  "draftedBy": zod.enum(['RULE', 'AGENT']).describe('AGENT means a model rephrased the template draft and the rephrasing passed a check that it asserted no figure the facts do not support. A rewrite that failed that check never reaches this row.\n'),
+  "facts": zod.record(zod.string(), zod.unknown()).nullish().describe('The values the body is permitted to assert.'),
+  "status": zod.enum(['DRAFT', 'APPROVED', 'SENT', 'HELD_NO_TRANSPORT', 'FAILED', 'CANCELLED']),
+  "authorisedBasis": zod.string().nullish(),
+  "authorisedRule": zod.string().nullish(),
+  "approvedByUserId": zod.number().int().nullish(),
+  "approvedAt": zod.string().nullish(),
+  "sentAt": zod.string().nullish().describe('Written only by the send endpoint, and only after the gate returned a basis.'),
+  "failureReason": zod.string().nullish(),
+  "createdByUserId": zod.number().int().nullish(),
+  "createdAt": zod.string()
+})
+})
+
+
+/**
  * Behind the reassignment pickers. Departed employees are excluded rather than greyed out — they are the reason the reassignment field exists, and a list containing them invites handing work back to somebody who left in February. `carrying` is included because reassigning an orphaned lead to whoever is already busiest is a decision DDMS would have made worse.
  * @summary Staff who still work at this outlet, and what each already carries
  */
@@ -769,6 +1006,7 @@ export const ListShowroomStaffResponse = zod.object({
   "empName": zod.string(),
   "role": zod.string(),
   "mobileNo": zod.string().nullish(),
+  "emailId": zod.string().nullish().describe('Null once they have left, and null is what stops an internal email going.'),
   "carrying": zod.number().int().describe('Live enquiries and registration files already on this person.')
 }))
 })
