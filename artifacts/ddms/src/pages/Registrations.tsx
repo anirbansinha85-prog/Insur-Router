@@ -32,6 +32,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatDate } from "@/lib/utils"
+import { ActionButton, AssignPicker } from "@/lib/actions"
 import { AlertTriangle, FileText, IdCard, ShieldAlert, Wallet } from "lucide-react"
 
 const STATE: Record<
@@ -327,6 +328,20 @@ export default function Registrations() {
                       ) : (
                         <div className="text-[11px] text-amber-600">no agent assigned</div>
                       )}
+                      {/* Their agentEmpCode is read-only. Ours says who is
+                          working it today, which is a decision a dealership
+                          with one RTO agent and forty open files has nowhere
+                          else to put. */}
+                      <div className="mt-1.5">
+                        <AssignPicker
+                          action="REGISTRATION_ASSIGN_AGENT"
+                          target={{ showroomId: row.showroomId, recordKey: row.regnFileNo }}
+                          role="RTO_AGENT"
+                          currentEmpCode={row.ddms.assignedAgentEmpCode}
+                          currentLabel={row.ddms.assignedAgentEmpCode}
+                          placeholder="Assign…"
+                        />
+                      </div>
                     </TableCell>
 
                     <TableCell className="align-top text-right">
@@ -335,9 +350,6 @@ export default function Registrations() {
 
                     <TableCell className="align-top">
                       <Badge variant={tone.variant}>{tone.label}</Badge>
-                      {row.ddms.customerNotifiedAt && (
-                        <div className="text-[11px] text-green-700 mt-1">customer told</div>
-                      )}
                       {row.ddms.rtoChasedAt && (
                         <div className="text-[11px] text-green-700 mt-1">chased</div>
                       )}
@@ -373,10 +385,39 @@ export default function Registrations() {
                               </div>
                             )}
                             {row.customerMobile && row.state === "RC_IN_DRAWER" && (
-                              <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+                              <a
+                                href={`tel:${row.customerMobile}`}
+                                className="block text-[11px] font-mono text-blue-600 hover:text-blue-700 mt-0.5"
+                              >
                                 {row.customerMobile}
-                              </div>
+                              </a>
                             )}
+
+                            <div className="flex flex-wrap items-center gap-3 mt-1.5">
+                              {row.state === "RC_IN_DRAWER" && (
+                                <ActionButton
+                                  action="REGISTRATION_MARK_NOTIFIED"
+                                  target={{ showroomId: row.showroomId, recordKey: row.regnFileNo }}
+                                  label="Mark customer told"
+                                  doneLabel="customer told"
+                                  done={Boolean(row.ddms.customerNotifiedAt)}
+                                />
+                              )}
+                              {/* Recency, not presence — the derived state asks
+                                  when it was last chased, so this is worth
+                                  pressing again on a file chased a fortnight
+                                  ago. */}
+                              {(row.state === "RTO_SILENT" || row.dms.submittedDate) && (
+                                <ActionButton
+                                  action="REGISTRATION_LOG_CHASE"
+                                  target={{ showroomId: row.showroomId, recordKey: row.regnFileNo }}
+                                  label="Log a chase"
+                                  doneLabel="chased"
+                                  done={false}
+                                  tone="slate"
+                                />
+                              )}
+                            </div>
                           </div>
                         </div>
                       ) : (

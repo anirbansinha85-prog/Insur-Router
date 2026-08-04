@@ -29,6 +29,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatDate } from "@/lib/utils"
+import { AssignPicker, ContactButtons } from "@/lib/actions"
 import { AlertTriangle, PhoneCall, Timer, UserX, Users } from "lucide-react"
 
 const STATE: Record<
@@ -330,15 +331,61 @@ export default function Leads() {
                                 : "text-amber-500"
                             }`}
                           />
-                          <div>
+                          <div className="min-w-0">
                             <div className="text-sm text-slate-800">{row.actionRequired}</div>
                             {row.note && (
                               <div className="text-[11px] text-slate-400 mt-0.5">{row.note}</div>
                             )}
+
+                            {/* The honest limit, and only when it is true: we
+                                have a contact logged and their CRM does not.
+                                The integration is read-only, so the OEM's clock
+                                is still running however diligent we have been —
+                                and a screen that implied otherwise would tell
+                                an owner they were compliant while the
+                                manufacturer's report said they were not. */}
+                            {row.slaNote && (
+                              <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-1">
+                                {row.slaNote}
+                              </div>
+                            )}
+
+                            <div className="flex flex-wrap items-center gap-3 mt-1.5">
+                              <ContactButtons
+                                target={{ showroomId: row.showroomId, recordKey: row.enqId }}
+                                mobile={row.customerMobile}
+                                contactedAt={row.ddms.contactedAt}
+                                customerName={row.customerName}
+                              />
+                              {/* Offered whenever the assigned executive has
+                                  left, not only in the NO_OWNER state — a lead
+                                  can be both orphaned and breaching, and the
+                                  state can only name one of those. */}
+                              {!row.dms.assignedEmpActive && (
+                                <AssignPicker
+                                  action="ENQUIRY_REASSIGN"
+                                  target={{ showroomId: row.showroomId, recordKey: row.enqId }}
+                                  role="SALES_EXEC"
+                                  currentEmpCode={row.ddms.reassignedToEmpCode}
+                                  currentLabel={row.ddms.reassignedToEmpCode ? `reassigned` : null}
+                                />
+                              )}
+                            </div>
                           </div>
                         </div>
                       ) : (
-                        <span className="text-xs text-slate-400">{row.note ?? "Nothing to do"}</span>
+                        <div>
+                          <span className="text-xs text-slate-400">{row.note ?? "Nothing to do"}</span>
+                          {row.ddms.contactedAt && (
+                            <div className="mt-1.5">
+                              <ContactButtons
+                                target={{ showroomId: row.showroomId, recordKey: row.enqId }}
+                                mobile={row.customerMobile}
+                                contactedAt={row.ddms.contactedAt}
+                              />
+                            </div>
+                          )}
+                        </div>
                       )}
                     </TableCell>
                   </TableRow>

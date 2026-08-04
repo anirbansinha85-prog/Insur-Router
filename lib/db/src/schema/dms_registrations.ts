@@ -127,6 +127,21 @@ export const dmsRegistrationsTable = pgTable(
      * not. Storing only "was it ever chased" would call both of them done.
      */
     rtoChasedAt: timestamp("rto_chased_at", { withTimezone: true }),
+    /**
+     * Who we have put on this file.
+     *
+     * Separate from `agentEmpCode` above, which is the DMS's own record and
+     * read-only. A dealership with one RTO agent and forty open files has no
+     * way to say "this one is yours today" without editing their system, so
+     * that decision has nowhere to live — and a file with nobody on it is the
+     * one that sits.
+     *
+     * Load-bearing in the same way as the enquiry reassignment: the derived
+     * state distinguishes an unowned file from an owned one, and the picker
+     * only offers staff who still work here.
+     */
+    assignedAgentEmpCode: text("assigned_agent_emp_code"),
+    assignedAgentAt: timestamp("assigned_agent_at", { withTimezone: true }),
 
     // ── Sync metadata ───────────────────────────────────────────────────────
     firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),

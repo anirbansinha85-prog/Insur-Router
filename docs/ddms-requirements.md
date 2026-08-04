@@ -66,12 +66,12 @@ Status: **✅ done** · **◑ partial** · **○ not started**
 
 | # | Requirement | Status |
 |---|---|---|
-| R-20 | **Dual role**: a control panel *with action buttons*, not a report | ◑ one button in five screens — **the weakest cell in this register**, and OBJ-10 is now next but one |
-| R-21 | Action buttons call the real `/api` pipeline — *locked decision, after the owner tier* | ○ |
+| R-20 | **Dual role**: a control panel *with action buttons*, not a report | ✅ every screen acts |
+| R-21 | Action buttons call the real `/api` pipeline — *locked decision, after the owner tier* | ✅ |
 | R-22 | Multi-agent automation orchestration — agents propose, rules dispose, actions execute | ○ split into OBJ-10 / 11 / 12 |
-| R-23 | Deterministic if/else rules where the logic is knowable, not a model guessing | ◑ derivations are rules |
+| R-23 | Deterministic if/else rules where the logic is knowable, not a model guessing | ✅ derivations *and* actions are rules |
 | R-24 | What the software cannot do becomes an explicit tracked task with the exact value to copy | ✅ |
-| R-46 | **Our record of a contact is ours, and does not stop the manufacturer's clock.** The DMS is read-only, so a call logged in DDMS cannot write `firstContactAt` in their CRM. The row shows both and states the limit, with the exact value to key in | ○ |
+| R-46 | **Our record of a contact is ours, and does not stop the manufacturer's clock.** The DMS is read-only, so a call logged in DDMS cannot write `firstContactAt` in their CRM. The row shows both and states the limit, with the exact value to key in | ✅ |
 | R-47 | **Identity resolved on a mobile number is probable, not certain** — families share a handset, numbers are reassigned, switchboard numbers get typed into walk-in records. Confidence travels with the entity and nothing irreversible is driven by it alone. **And an explicit reference beats a probable one**: a registration file names its deal, so that wins over a matching number | ✅ |
 | R-48 | Nothing leaves the building without either a rule permitting it or a person approving it | ○ |
 | R-49 | **The agent proposes, explains and drafts. Rules authorise.** A model may never decide whether an action is permitted or whether a record is in breach — that logic is knowable, and a rule that is right every time beats a model that is right most of the time | ○ |
@@ -403,7 +403,7 @@ Also 13× faster after batching the writes: 4,942ms → 382ms for the same graph
 The cost was never Postgres, it was 160 round trips to a pooler in another
 region.
 
-### OBJ-10 — The screens act
+### OBJ-10 — The screens act  ✅ **done 4 Aug**
 *Covers R-20, R-21, R-46.*
 
 Every "what to do" that can be resolved deterministically becomes a control. No
@@ -423,6 +423,25 @@ pressing it moves the row rather than logging a note nobody reads.
 **Done when:** no row on any of the five screens says "call the customer"
 without a way to call them and record it, and pressing a control changes that
 row's derived state on the next render.
+
+**Verified**, through the browser and against the numbers:
+
+| | |
+|---|---|
+| Registration actions | needsAction 8 → 6 |
+| Spares transfer requested | needsAction 6 → 5 |
+| Assign to Imtiaz Khan, who left 28-02-2026 | **409** — *"assigning work to them is the problem this is meant to fix"* |
+| Assign to Vikram Chandel, still employed | 200 |
+| Transfer from another owner's outlet | 404 |
+| Decision log | six rows, each with a user, an action and a before/after |
+
+**And the one that matters most.** Logging a call on a breached OEM lead moved
+the advice from *"Call now — this is already reportable to the OEM"* to *"Key
+the contact into the OEM portal against this lead"*, added the note explaining
+why, and left **`slaBreached` at 2**. Our record does not stop the
+manufacturer's clock, the derived state still uses their field, and the screen
+says so. A version that cleared the breach would have told an owner they were
+compliant while the OEM's report disagreed.
 
 ### OBJ-11 — Nothing leaves the building unapproved
 *Covers R-22 in part, R-48, R-50.*

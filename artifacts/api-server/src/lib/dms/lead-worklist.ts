@@ -286,8 +286,20 @@ export interface LeadWorklistRow {
   };
   ddms: {
     reassignedToEmpCode: string | null;
+    /**
+     * When *we* recorded a contact. Never conflated with the DMS's own
+     * `firstContactAt` above — see `slaNote`.
+     */
+    contactedAt: string | null;
+    contactChannel: string | null;
   };
   state: LeadState;
+  /**
+   * The honest limit, present only when it matters: we have logged a contact
+   * and the dealer's CRM still has not. The manufacturer measures their field,
+   * so their clock is still running however diligent the dealership has been.
+   */
+  slaNote: string | null;
   note: string | null;
   actionRequired: string | null;
   /**
@@ -301,11 +313,23 @@ export interface LeadWorklistRow {
   lastSyncedAt: string;
 }
 
+/** "by phone", "over WhatsApp" — for a sentence rather than a badge. */
+function describeContact(channel: string | null): string {
+  switch (channel) {
+    case "WHATSAPP": return "over WhatsApp";
+    case "SMS": return "by text";
+    case "EMAIL": return "by email";
+    case "VISIT": return "in person";
+    default: return "by phone";
+  }
+}
+
 function classify(args: {
   source: string;
   stage: string;
   enquiredAt: Date | null;
   firstContactAt: Date | null;
+  contactedAt: Date | null;
   ownerActive: boolean;
   ownerName: string | null;
   ownerLeftOn: string | null;
@@ -317,9 +341,14 @@ function classify(args: {
   now: Date;
 }): { state: LeadState; note: string | null; action: string | null } {
   const {
-    source, stage, firstContactAt, ownerActive, ownerName, ownerLeftOn,
+    source, stage, firstContactAt, contactedAt, ownerActive, ownerName, ownerLeftOn,
     reassignedTo, followUpDaysOverdue, minutesToSla, responseMinutes,
   } = args;
+
+  // Either system having a contact means somebody rang them. Only the DMS's
+  // field stops the manufacturer's clock, and `slaNote` on the row says so —
+  // but for "is anybody working this lead", ours counts.
+  const anyContact = firstContactAt ?? contactedAt;
 
   if (stage === "BOOKED") {
     return { state: "CONVERTED", note: "Booked. Converted to a deal.", action: null };
@@ -332,19 +361,40 @@ function classify(args: {
 
   // The clock first, because it is the only thing here measured in minutes and
   // the only one with the manufacturer watching.
+  //
+  // Deliberately keyed on the DMS's `firstContactAt` and not on ours. The
+  // manufacturer measures their own field; a call we logged and nobody keyed
+  // into the OEM portal does not stop their clock, and a screen that pretended
+  // otherwise would tell an owner they were compliant while the manufacturer's
+  // report said they were not. What our record changes is the *advice*.
   if (oemMandated && !firstContactAt) {
+    const keyIn = `Key the contact into the OEM portal against this lead`;
+
     if (minutesToSla !== null && minutesToSla <= 0) {
-      return {
-        state: "SLA_BREACHED",
-        note: `Manufacturer lead, ${responseMinutes} minutes old and still not contacted. The response window closed ${Math.abs(minutesToSla)} minutes ago.`,
-        action: "Call now — this is already reportable to the OEM",
-      };
+      return contactedAt
+        ? {
+            state: "SLA_BREACHED",
+            note: `Contacted and recorded here, but the manufacturer's record still shows no contact and the window closed ${Math.abs(minutesToSla)} minutes ago.`,
+            action: keyIn,
+          }
+        : {
+            state: "SLA_BREACHED",
+            note: `Manufacturer lead, ${responseMinutes} minutes old and still not contacted. The response window closed ${Math.abs(minutesToSla)} minutes ago.`,
+            action: "Call now — this is already reportable to the OEM",
+          };
     }
-    return {
-      state: "CLOCK_RUNNING",
-      note: `Manufacturer lead. ${minutesToSla} minutes left to make first contact.`,
-      action: "Call now, before the response window closes",
-    };
+
+    return contactedAt
+      ? {
+          state: "CLOCK_RUNNING",
+          note: `Contacted and recorded here. ${minutesToSla} minutes left to get it into the manufacturer's portal.`,
+          action: keyIn,
+        }
+      : {
+          state: "CLOCK_RUNNING",
+          note: `Manufacturer lead. ${minutesToSla} minutes left to make first contact.`,
+          action: "Call now, before the response window closes",
+        };
   }
 
   // Contacted, but too late. Nothing to do now — it is already a number in the
@@ -369,7 +419,7 @@ function classify(args: {
     };
   }
 
-  if (!firstContactAt) {
+  if (!anyContact) {
     return {
       state: "UNCONTACTED",
       note: "Nobody has made contact yet.",
@@ -448,6 +498,9 @@ export async function buildLeadWorklist(opts: {
       ownerName: emp?.empName ?? null,
       ownerLeftOn: emp?.dateOfLeaving ?? null,
       reassignedTo: e.reassignedToEmpCode,
+      // Our own contact record counts for the derived state — a lead somebody
+      // has actually rung is not "uncontacted", whatever their CRM says.
+      contactedAt: e.contactedAt,
       followUpDaysOverdue,
       minutesToSla,
       responseMinutes,
@@ -476,10 +529,24 @@ export async function buildLeadWorklist(opts: {
         lostReason: e.lostReason,
         convertedDealId: e.convertedDealId,
       },
-      ddms: { reassignedToEmpCode: e.reassignedToEmpCode },
+      ddms: {
+        reassignedToEmpCode: e.reassignedToEmpCode,
+        contactedAt: e.contactedAt?.toISOString() ?? null,
+        contactChannel: e.contactChannel,
+      },
       state,
       note,
       actionRequired: action,
+      // Said only when it is true and only when it matters: we have a contact
+      // logged and the dealer's CRM does not. The integration is read-only, so
+      // this gap cannot be closed by us — and the manufacturer measures their
+      // field, not ours.
+      slaNote:
+        e.contactedAt && !e.firstContactAt && e.source === "OEM_PORTAL"
+          ? `Contacted ${describeContact(e.contactChannel)} and recorded here. ` +
+            `The manufacturer's clock only stops once this is keyed into their ` +
+            `portal against ${e.enqId} — their record still shows no contact.`
+          : null,
       responseMinutes,
       minutesToSla,
       followUpDaysOverdue,

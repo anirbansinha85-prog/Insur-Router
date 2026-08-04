@@ -714,6 +714,7 @@ export const GetRegistrationWorklistResponse = zod.object({
 }).describe('What the dealer\'s own system believes.'),
   "ddms": zod.object({
   "customerNotifiedAt": zod.string().nullable(),
+  "assignedAgentEmpCode": zod.string().nullable().describe('Ours, and separate from the DMS\'s read-only agentEmpCode. A dealership with one RTO agent and forty open files has nowhere else to put \"this one is yours today\".\n'),
   "rtoChasedAt": zod.string().nullable().describe('Read as recency, not presence — a file lodged three weeks ago and chased yesterday is being handled; the same file chased once a fortnight back is not.\n')
 }).describe('Ours. The DMS has no column for either of these.'),
   "state": zod.enum(['OBJECTION', 'BLOCKED_NO_INSURANCE', 'AWAITING_DOCS', 'TAX_HELD', 'RC_IN_DRAWER', 'RTO_SILENT', 'HSRP_PENDING', 'ON_TRACK', 'CLOSED']).describe('\*\*Why\*\* a registration file is not moving. Each has a different owner: the RTO, the insurance desk, the customer, accounts, the agent, us.\nA lapsed temporary registration is deliberately not one of these. It is a consequence rather than a cause — it raises the urgency of whatever the real blockage is — so it lives on the row as tempRegDaysLeft and in the note. An earlier draft made it a state, and a file the RTO had rejected whose temporary registration had also lapsed came out advising somebody to take it to the RTO, with the objection nowhere on screen.\nRC_IN_DRAWER is the quiet one: as far as the DMS is concerned the transaction finished when the number was allotted, and a plastic card the customer has never seen is in a drawer.\n'),
@@ -726,6 +727,49 @@ export const GetRegistrationWorklistResponse = zod.object({
   "daysInStatus": zod.number().int(),
   "lastSyncedAt": zod.string(),
   "disappearedFromDms": zod.boolean()
+}))
+})
+
+
+/**
+ * One endpoint for every control on every screen, because they all do the same thing: write a decision field that already changes a derived state, and log who did it.
+ * Nothing here writes to the dealer's DMS and nothing here calls a model. What may be done is knowable, so it is a rule.
+ * **Every action takes `clear: true` to undo it.** These fields remove work from a screen — marking a customer as told takes their row out of the calls-to-make count — so an irreversible mis-click would silently delete a phone call somebody still needs to make.
+ * @summary Record a decision against a mirrored record
+ */
+export const ApplyDmsActionBody = zod.object({
+  "action": zod.enum(['ENQUIRY_LOG_CONTACT', 'ENQUIRY_REASSIGN', 'JOB_CARD_MARK_INFORMED', 'REGISTRATION_ASSIGN_AGENT', 'REGISTRATION_MARK_NOTIFIED', 'REGISTRATION_LOG_CHASE', 'PART_REQUEST_TRANSFER', 'PART_RAISE_REORDER']),
+  "showroomId": zod.number().int(),
+  "recordKey": zod.string().describe('The mirror row\'s own key — enqId, jcNo, regnFileNo, partNo.'),
+  "clear": zod.boolean().optional().describe('Undo rather than do. Supported by every action.'),
+  "empCode": zod.string().optional().describe('Required by the two assignment actions. Must be somebody still employed.'),
+  "channel": zod.enum(['CALL', 'WHATSAPP', 'SMS', 'EMAIL', 'VISIT']).optional().describe('ENQUIRY_LOG_CONTACT only. Defaults to CALL.'),
+  "fromShowroomId": zod.number().int().optional().describe('PART_REQUEST_TRANSFER only — which outlet is sending it. Must be the same owner\'s.'),
+  "note": zod.string().optional()
+})
+
+export const ApplyDmsActionResponse = zod.object({
+  "ok": zod.boolean(),
+  "module": zod.string()
+})
+
+
+/**
+ * Behind the reassignment pickers. Departed employees are excluded rather than greyed out — they are the reason the reassignment field exists, and a list containing them invites handing work back to somebody who left in February. `carrying` is included because reassigning an orphaned lead to whoever is already busiest is a decision DDMS would have made worse.
+ * @summary Staff who still work at this outlet, and what each already carries
+ */
+export const ListShowroomStaffQueryParams = zod.object({
+  "showroomId": zod.coerce.number().int(),
+  "role": zod.coerce.string().optional().describe('e.g. SALES_EXEC, RTO_AGENT, SERVICE_ADVISOR')
+})
+
+export const ListShowroomStaffResponse = zod.object({
+  "staff": zod.array(zod.object({
+  "empCode": zod.string(),
+  "empName": zod.string(),
+  "role": zod.string(),
+  "mobileNo": zod.string().nullish(),
+  "carrying": zod.number().int().describe('Live enquiries and registration files already on this person.')
 }))
 })
 
@@ -910,9 +954,12 @@ export const GetLeadWorklistResponse = zod.object({
   "convertedDealId": zod.string().nullish()
 }).describe('What the dealer\'s CRM holds.'),
   "ddms": zod.object({
-  "reassignedToEmpCode": zod.string().nullable()
-}),
+  "reassignedToEmpCode": zod.string().nullable(),
+  "contactedAt": zod.string().nullable().describe('When \*we\* recorded a contact. Never conflated with the DMS\'s own firstContactAt above — see slaNote.\n'),
+  "contactChannel": zod.string().nullish()
+}).describe('Ours. The DMS has no column for any of this.'),
   "state": zod.enum(['SLA_BREACHED', 'CLOCK_RUNNING', 'NO_OWNER', 'UNCONTACTED', 'FOLLOW_UP_OVERDUE', 'ON_TRACK', 'CONVERTED', 'LOST']).describe('SLA_BREACHED and CLOCK_RUNNING apply only to manufacturer-generated leads, which carry a timed first-response mandate. NO_OWNER means the assigned executive has left and nobody has picked the lead up — worse than late, because late at least implies somebody is on it.\n'),
+  "slaNote": zod.string().nullish().describe('Present only when we have logged a contact and the dealer\'s CRM has not. The integration is read-only, so this gap cannot be closed from here — and the manufacturer measures their field, not ours. Saying so is the difference between a useful screen and one that tells an owner they are compliant when the OEM\'s report disagrees.\n'),
   "note": zod.string().nullish(),
   "actionRequired": zod.string().nullish(),
   "responseMinutes": zod.number().int().nullish().describe('Minutes to first contact, or minutes elapsed so far when nobody has made contact at all.\n'),

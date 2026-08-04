@@ -21,8 +21,14 @@ export interface LeadWorklistRow {
   modelInterest?: string | null;
   /** What the dealer's CRM holds. */
   dms: LeadWorklistRowDms;
+  /** Ours. The DMS has no column for any of this. */
   ddms: LeadWorklistRowDdms;
   state: LeadState;
+  /**
+     * Present only when we have logged a contact and the dealer's CRM has not. The integration is read-only, so this gap cannot be closed from here — and the manufacturer measures their field, not ours. Saying so is the difference between a useful screen and one that tells an owner they are compliant when the OEM's report disagrees.
+     * @nullable
+     */
+  slaNote?: string | null;
   /** @nullable */
   note?: string | null;
   /** @nullable */

@@ -204,6 +204,18 @@ create policy entity_links_own on public.entity_links
   using (owner_id = app.current_owner_id())
   with check (owner_id = app.current_owner_id());
 
+/*
+ * The decision log. Insert and select only — no update, no delete, and the
+ * grants below match. It is the record of who decided what, and a record that
+ * can be edited after the fact answers a different question from the one it was
+ * written to answer.
+ */
+drop policy if exists decision_log_own on public.decision_log;
+create policy decision_log_own on public.decision_log
+  for all to ddms_app
+  using (owner_id = app.current_owner_id())
+  with check (owner_id = app.current_owner_id());
+
 drop policy if exists insurer_panel_own on public.insurer_panel_entries;
 create policy insurer_panel_own on public.insurer_panel_entries
   for select to ddms_app
@@ -266,6 +278,8 @@ grant select on
   public.providers,
   public.ocr_engines
 to ddms_app;
+
+grant select, insert on public.decision_log to ddms_app;
 
 grant select, insert, update on
   public.dms_deals,

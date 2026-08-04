@@ -100,6 +100,25 @@ export const dmsEnquiriesTable = pgTable(
      */
     reassignedToEmpCode: text("reassigned_to_emp_code"),
     reassignedAt: timestamp("reassigned_at", { withTimezone: true }),
+    /**
+     * When *we* recorded that somebody contacted this lead.
+     *
+     * Emphatically not the same field as the DMS's `first_contact_at`, and the
+     * screen has to say so. The integration is read-only, permanently, so a
+     * call logged here cannot be written into the dealer's CRM — and the
+     * manufacturer measures **their** field, not ours. A lead contacted in DDMS
+     * and not keyed into the OEM portal is still an SLA breach as far as the
+     * manufacturer is concerned.
+     *
+     * That is not a defect to hide. It is the same shape as every other gap
+     * this product surfaces: we know something their system does not, and the
+     * honest move is to show both and name the limit, with the exact value to
+     * copy across (R-24, R-46).
+     */
+    contactedAt: timestamp("contacted_at", { withTimezone: true }),
+    contactChannel: text("contact_channel", { enum: ["CALL", "WHATSAPP", "SMS", "EMAIL", "VISIT"] }),
+    /** What was said, if the person recording it bothered. Free text, unread by rules. */
+    contactNote: text("contact_note"),
 
     // ── Sync metadata ───────────────────────────────────────────────────────
     firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),

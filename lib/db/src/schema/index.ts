@@ -7,6 +7,7 @@ export * from "./dms_enquiries";
 export * from "./dms_registrations";
 export * from "./dms_part_stock";
 export * from "./entities";
+export * from "./decision_log";
 export * from "./providers";
 export * from "./insurer_panel";
 export * from "./applications";

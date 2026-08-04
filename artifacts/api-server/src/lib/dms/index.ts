@@ -30,6 +30,8 @@
  * *cannot* answer, rather than one it merely failed to. That is the difference
  * between a better screen and an owner-level product.
  *
+ *   actions.ts                the controls behind every "what to do" — all
+ *                             deterministic, all reversible, all logged
  *   entity-graph.ts           one person, one vehicle, one member of staff,
  *                             resolved across all five — the join the dealer's
  *                             own system does not have, because a DMS keys
@@ -66,6 +68,14 @@ export {
   buildSparesWorklist,
   summariseSpares,
 } from "./spares-worklist";
+export { applyAction, listStaff } from "./actions";
+export type {
+  ActionId,
+  ActionModule,
+  ApplyActionInput,
+  ApplyResult,
+  StaffMember,
+} from "./actions";
 export {
   rebuildEntityGraph,
   searchEntities,

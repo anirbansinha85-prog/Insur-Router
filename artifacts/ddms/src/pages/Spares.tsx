@@ -25,6 +25,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatDate } from "@/lib/utils"
+import { ActionButton } from "@/lib/actions"
 import { ArrowLeftRight, Boxes, PackageX, Wallet } from "lucide-react"
 
 const STATE: Record<
@@ -312,12 +313,7 @@ export default function Spares() {
 
                     <TableCell className="align-top">
                       <Badge variant={tone.variant}>{tone.label}</Badge>
-                      {row.ddms.transferRequestedAt && (
-                        <div className="text-[11px] text-green-700 mt-1">transfer asked</div>
-                      )}
-                      {row.ddms.reorderRaisedAt && (
-                        <div className="text-[11px] text-green-700 mt-1">order raised</div>
-                      )}
+
                     </TableCell>
 
                     <TableCell className="align-top">
@@ -335,6 +331,34 @@ export default function Spares() {
                             {row.note && (
                               <div className="text-[11px] text-slate-400 mt-0.5">{row.note}</div>
                             )}
+                            <div className="flex flex-wrap items-center gap-3 mt-1.5">
+                              {/* Only offered when there is somewhere to ask. A
+                                  transfer button on a part nobody in the group
+                                  has would be advice dressed as a control. */}
+                              {elsewhere.length > 0 && (
+                                <ActionButton
+                                  action="PART_REQUEST_TRANSFER"
+                                  target={{ showroomId: row.showroomId, recordKey: row.partNo }}
+                                  label={`Ask ${elsewhere[0].showroomCode ?? "the other branch"}`}
+                                  doneLabel="transfer asked"
+                                  done={Boolean(row.ddms.transferRequestedAt)}
+                                  extra={{ fromShowroomId: elsewhere[0].showroomId }}
+                                />
+                              )}
+                              {(row.state === "BELOW_REORDER" ||
+                                row.state === "FULLY_RESERVED" ||
+                                row.state === "STOCKOUT_BLOCKING") && (
+                                <ActionButton
+                                  action="PART_RAISE_REORDER"
+                                  target={{ showroomId: row.showroomId, recordKey: row.partNo }}
+                                  label="Mark reorder raised"
+                                  doneLabel="order raised"
+                                  done={Boolean(row.ddms.reorderRaisedAt)}
+                                  tone="slate"
+                                />
+                              )}
+                            </div>
+
                             {/* Who is actually waiting. A part shortage with no
                                 name against it is an inventory statistic. */}
                             {waiting.length > 0 && (

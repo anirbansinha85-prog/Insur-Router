@@ -148,7 +148,7 @@ pnpm run typecheck:libs                         # before checking leaf packages
 
 ## Data model
 
-Nineteen tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
+Twenty-one tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
 which of them `ddms_app` may read, and on what terms, is in `lib/db/sql/rls.sql`.
 
 **The owner tier** — who the data belongs to:
@@ -183,6 +183,10 @@ which of them `ddms_app` may read, and on what terms, is in `lib/db/sql/rls.sql`
   entities upserted — because an entity id is addressable (it is in a URL) and
   `firstSeenAt` is a claim about how long the dealership has known somebody.
   Deleting both reassigned every id on each scheduled sync.
+- **decision_log** — every decision-field change, with a name and a
+  before/after against it. Append-only by convention: `ddms_app` is granted
+  insert and select and nothing else, because a record of who decided what is
+  answering a different question if it can be edited afterwards.
 - **insurer_panel_entries** — one insurer on one outlet's panel: quota, payout,
   turnaround, integration surface. Hangs off the *DMS account*, not the
   showroom. `route` is deliberately absent — it is the account's
@@ -203,6 +207,47 @@ reads across every outlet the *session's owner* holds — the scope comes from
 one query is the product's whole premise: a DMS keeps the parts ledger against a
 dealer code, so an owner with three outlets gets three ledgers and no way to ask
 whether the part a customer is waiting for is on a shelf in the next branch.
+
+## The screens act
+
+Every "what to do" that can be resolved deterministically is a control. **None
+of them uses a model** — `classify()` decides what is wrong, `lib/dms/actions.ts`
+decides what may be done about it, and both are knowable, so both are rules.
+
+| Screen | Controls |
+|---|---|
+| Enquiries | call · WhatsApp · reassign to active staff |
+| Service | call · mark customer told |
+| Registration | assign an RTO agent · mark customer told · log a chase |
+| Spares | request a transfer from the branch that has it · mark reorder raised |
+
+One endpoint, `POST /api/dms/actions`, because they all do the same thing:
+write a decision field that already changes a derived state, and log who did it.
+
+**Three properties every action has, and each was a decision:**
+
+- **Reversible.** `clear: true` undoes any of them. These marks *remove work
+  from a screen* — marking a customer as told takes their row out of the
+  calls-to-make count — so an irreversible mis-click would silently delete a
+  phone call somebody still needs to make.
+- **Attributed.** `decision_log` records who, what, and the before/after. "We
+  told the customer" is a claim somebody may later dispute, and a bare
+  timestamp cannot say who made it. It is also the substrate the approval gate
+  will need.
+- **Refusable.** Assigning work to somebody who has left returns **409 with the
+  reason**, because that is the bug these actions exist to fix. The staff picker
+  excludes them rather than greying them out, for the same reason.
+
+**Nothing here writes to the dealer's DMS**, and nothing will. Where the only
+real fix is a person keying something into their system, the row says so and
+gives the exact value to copy rather than offering a button that pretends
+otherwise. `ENQUIRY_LOG_CONTACT` is the sharpest case: logging a call in DDMS
+does **not** stop the manufacturer's response clock, because the OEM measures
+their own `firstContactAt` and the integration is read-only. So the derived
+state keeps using *their* field, our record changes only the *advice* — "call
+now" becomes "key the contact into the OEM portal" — and `slaNote` says the
+limit out loud. A screen that let a logged call clear an SLA breach would tell
+an owner they were compliant while the manufacturer's report said otherwise.
 
 **Identity: prefer an explicit reference over a probable one.** A registration
 file *names* its deal, so the customer resolves through that named deal before

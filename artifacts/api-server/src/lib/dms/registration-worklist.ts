@@ -316,6 +316,8 @@ export interface RegistrationWorklistRow {
   ddms: {
     customerNotifiedAt: string | null;
     rtoChasedAt: string | null;
+    /** Ours, and separate from the DMS's read-only `agentEmpCode` above. */
+    assignedAgentEmpCode: string | null;
   };
   state: RegistrationState;
   note: string | null;
@@ -589,6 +591,7 @@ export async function buildRegistrationWorklist(
       ddms: {
         customerNotifiedAt: f.customerNotifiedAt?.toISOString() ?? null,
         rtoChasedAt: f.rtoChasedAt?.toISOString() ?? null,
+        assignedAgentEmpCode: f.assignedAgentEmpCode,
       },
       state,
       note,

@@ -27,6 +27,9 @@ import {
 } from "@workspace/db";
 import {
   DmsError,
+  applyAction,
+  listStaff,
+  type ActionId,
   adapterForDealer,
   fetchDeal,
   resolveTenantByDealerCode,
@@ -353,6 +356,93 @@ router.get("/dms/spares-worklist", async (req, res): Promise<void> => {
   });
 
   res.json({ summary: summariseSpares(rows), rows });
+});
+
+const ACTION_IDS = new Set<string>([
+  "ENQUIRY_LOG_CONTACT",
+  "ENQUIRY_REASSIGN",
+  "JOB_CARD_MARK_INFORMED",
+  "REGISTRATION_ASSIGN_AGENT",
+  "REGISTRATION_MARK_NOTIFIED",
+  "REGISTRATION_LOG_CHASE",
+  "PART_REQUEST_TRANSFER",
+  "PART_RAISE_REORDER",
+]);
+
+/**
+ * Record a decision.
+ *
+ * One endpoint for every control on every screen, because they all do the same
+ * thing: write a decision field that already changes a derived state, and log
+ * who did it. Eight of them rather than eight endpoints — the shape is
+ * identical and eight near-identical routes would drift.
+ *
+ * Nothing here writes to the dealer's DMS and nothing here calls a model. What
+ * may be done is knowable, so it is a rule (R-23, R-49).
+ *
+ * Every action takes `clear: true` to undo it. These fields *remove work from a
+ * screen* — marking a customer as told takes their row out of the calls-to-make
+ * count — so an irreversible mis-click would silently delete a phone call
+ * somebody still needs to make.
+ */
+router.post("/dms/actions", async (req, res): Promise<void> => {
+  const body = req.body as Record<string, unknown>;
+  const action = String(body.action ?? "");
+
+  if (!ACTION_IDS.has(action)) {
+    res.status(400).json({ error: `Unknown action ${action || "(none)"}` });
+    return;
+  }
+
+  const showroomId = Number(body.showroomId);
+  const recordKey = String(body.recordKey ?? "");
+  if (!Number.isInteger(showroomId) || showroomId <= 0 || !recordKey) {
+    res.status(400).json({ error: "showroomId and recordKey are required" });
+    return;
+  }
+
+  const result = await applyAction({
+    ownerId: req.sessionUser!.ownerId,
+    userId: req.sessionUser!.userId,
+    action: action as ActionId,
+    recordKey,
+    showroomId,
+    clear: body.clear === true,
+    empCode: typeof body.empCode === "string" ? body.empCode : undefined,
+    channel: typeof body.channel === "string" ? (body.channel as never) : undefined,
+    fromShowroomId:
+      typeof body.fromShowroomId === "number" ? body.fromShowroomId : undefined,
+    note: typeof body.note === "string" ? body.note : undefined,
+  });
+
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+
+  res.json({ ok: true, module: result.module });
+});
+
+/**
+ * Staff who still work here.
+ *
+ * Behind the reassignment pickers. Departed employees are excluded rather than
+ * greyed out — they are the reason the reassignment field exists at all, and a
+ * list containing them invites handing work back to somebody who left in
+ * February. Each carries a count of what they already hold, because reassigning
+ * an orphaned lead to whoever is busiest is a decision DDMS would have made
+ * worse rather than better.
+ */
+router.get("/dms/staff", async (req, res): Promise<void> => {
+  const showroomId = parseShowroomId(String(req.query.showroomId ?? ""));
+  if (showroomId === null) {
+    res.status(400).json({ error: "showroomId query parameter is required and must be a positive integer" });
+    return;
+  }
+  if (!(await assertShowroomAccess(req, res, showroomId))) return;
+
+  const role = typeof req.query.role === "string" ? req.query.role : undefined;
+  res.json({ staff: await listStaff(showroomId, role) });
 });
 
 /**

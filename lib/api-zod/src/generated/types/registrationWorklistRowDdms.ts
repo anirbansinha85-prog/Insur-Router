@@ -13,6 +13,11 @@ export type RegistrationWorklistRowDdms = {
   /** @nullable */
   customerNotifiedAt: string | null;
   /**
+     * Ours, and separate from the DMS's read-only agentEmpCode. A dealership with one RTO agent and forty open files has nowhere else to put "this one is yours today".
+     * @nullable
+     */
+  assignedAgentEmpCode: string | null;
+  /**
      * Read as recency, not presence — a file lodged three weeks ago and chased yesterday is being handled; the same file chased once a fortnight back is not.
      * @nullable
      */

@@ -6,7 +6,17 @@
  * OpenAPI spec version: 0.1.0
  */
 
+/**
+ * Ours. The DMS has no column for any of this.
+ */
 export type LeadWorklistRowDdms = {
   /** @nullable */
   reassignedToEmpCode: string | null;
+  /**
+     * When *we* recorded a contact. Never conflated with the DMS's own firstContactAt above — see slaNote.
+     * @nullable
+     */
+  contactedAt: string | null;
+  /** @nullable */
+  contactChannel?: string | null;
 };

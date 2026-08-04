@@ -24,8 +24,10 @@ import type {
   ApplicationDetail,
   ApplicationInput,
   ApplicationUpdate,
+  ApplyDmsAction200,
   BrowserScrapeInput,
   DashboardStats,
+  DmsActionInput,
   DmsPullInput,
   DuplicateDealError,
   EntityDossier,
@@ -49,6 +51,8 @@ import type {
   IngestPushResult,
   IngestResult,
   ListApplicationsParams,
+  ListShowroomStaff200,
+  ListShowroomStaffParams,
   LoginInput,
   OcrEngineStatus,
   OcrInput,
@@ -1982,6 +1986,165 @@ export function useGetRegistrationWorklist<TData = Awaited<ReturnType<typeof get
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetRegistrationWorklistQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getApplyDmsActionUrl = () => {
+
+
+
+
+  return `/api/dms/actions`
+}
+
+/**
+ * One endpoint for every control on every screen, because they all do the same thing: write a decision field that already changes a derived state, and log who did it.
+ * Nothing here writes to the dealer's DMS and nothing here calls a model. What may be done is knowable, so it is a rule.
+ * **Every action takes `clear: true` to undo it.** These fields remove work from a screen — marking a customer as told takes their row out of the calls-to-make count — so an irreversible mis-click would silently delete a phone call somebody still needs to make.
+ * @summary Record a decision against a mirrored record
+ */
+export const applyDmsAction = async (dmsActionInput: DmsActionInput, options?: Parameters<typeof customFetch>[1]): Promise<ApplyDmsAction200> => {
+
+  return customFetch<ApplyDmsAction200>(getApplyDmsActionUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(dmsActionInput)
+  }
+);}
+
+
+
+
+
+export const getApplyDmsActionMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof applyDmsAction>>, TError,{data: BodyType<DmsActionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof applyDmsAction>>, TError,{data: BodyType<DmsActionInput>}, TContext> => {
+
+const mutationKey = ['applyDmsAction'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof applyDmsAction>>, {data: BodyType<DmsActionInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  applyDmsAction(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApplyDmsActionMutationResult = NonNullable<Awaited<ReturnType<typeof applyDmsAction>>>
+    export type ApplyDmsActionMutationBody = BodyType<DmsActionInput>
+    export type ApplyDmsActionMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Record a decision against a mirrored record
+ */
+export const useApplyDmsAction = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof applyDmsAction>>, TError,{data: BodyType<DmsActionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof applyDmsAction>>,
+        TError,
+        {data: BodyType<DmsActionInput>},
+        TContext
+      > => {
+      return useMutation(getApplyDmsActionMutationOptions(options));
+    }
+
+export const getListShowroomStaffUrl = (params: ListShowroomStaffParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/dms/staff?${stringifiedParams}` : `/api/dms/staff`
+}
+
+/**
+ * Behind the reassignment pickers. Departed employees are excluded rather than greyed out — they are the reason the reassignment field exists, and a list containing them invites handing work back to somebody who left in February. `carrying` is included because reassigning an orphaned lead to whoever is already busiest is a decision DDMS would have made worse.
+ * @summary Staff who still work at this outlet, and what each already carries
+ */
+export const listShowroomStaff = async (params: ListShowroomStaffParams, options?: Parameters<typeof customFetch>[1]): Promise<ListShowroomStaff200> => {
+
+  return customFetch<ListShowroomStaff200>(getListShowroomStaffUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListShowroomStaffQueryKey = (params?: ListShowroomStaffParams,) => {
+    return [
+    `/api/dms/staff`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListShowroomStaffQueryOptions = <TData = Awaited<ReturnType<typeof listShowroomStaff>>, TError = ErrorType<ErrorResponse>>(params: ListShowroomStaffParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listShowroomStaff>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListShowroomStaffQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listShowroomStaff>>> = ({ signal }) => listShowroomStaff(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listShowroomStaff>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListShowroomStaffQueryResult = NonNullable<Awaited<ReturnType<typeof listShowroomStaff>>>
+export type ListShowroomStaffQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Staff who still work at this outlet, and what each already carries
+ */
+
+export function useListShowroomStaff<TData = Awaited<ReturnType<typeof listShowroomStaff>>, TError = ErrorType<ErrorResponse>>(
+ params: ListShowroomStaffParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listShowroomStaff>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListShowroomStaffQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

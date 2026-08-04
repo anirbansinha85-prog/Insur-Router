@@ -795,6 +795,104 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /dms/actions:
+    post:
+      operationId: applyDmsAction
+      tags: [dms]
+      summary: Record a decision against a mirrored record
+      description: >
+        One endpoint for every control on every screen, because they all do the
+        same thing: write a decision field that already changes a derived state,
+        and log who did it.
+
+        Nothing here writes to the dealer's DMS and nothing here calls a model.
+        What may be done is knowable, so it is a rule.
+
+        **Every action takes `clear: true` to undo it.** These fields remove work
+        from a screen — marking a customer as told takes their row out of the
+        calls-to-make count — so an irreversible mis-click would silently delete
+        a phone call somebody still needs to make.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DmsActionInput"
+      responses:
+        "200":
+          description: Recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  module: { type: string }
+                required: [ok, module]
+        "400":
+          description: Unknown action, or a required field missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No such record for this owner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: >
+            Refused. The commonest case is assigning work to somebody who has
+            left the dealership — the problem these actions exist to fix.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /dms/staff:
+    get:
+      operationId: listShowroomStaff
+      tags: [dms]
+      summary: Staff who still work at this outlet, and what each already carries
+      description: >
+        Behind the reassignment pickers. Departed employees are excluded rather
+        than greyed out — they are the reason the reassignment field exists, and
+        a list containing them invites handing work back to somebody who left in
+        February. `carrying` is included because reassigning an orphaned lead to
+        whoever is already busiest is a decision DDMS would have made worse.
+      parameters:
+        - name: showroomId
+          in: query
+          required: true
+          schema:
+            type: integer
+        - name: role
+          in: query
+          required: false
+          description: e.g. SALES_EXEC, RTO_AGENT, SERVICE_ADVISOR
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Active staff, least-loaded first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  staff:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/StaffMember"
+                required: [staff]
+        "404":
+          description: No such showroom
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /dms/entities:
     get:
       operationId: searchEntities
@@ -2042,11 +2140,26 @@ components:
           required: [source, stage, assignedEmpActive]
         ddms:
           type: object
+          description: Ours. The DMS has no column for any of this.
           properties:
             reassignedToEmpCode: { type: ["string", "null"] }
-          required: [reassignedToEmpCode]
+            contactedAt:
+              type: ["string", "null"]
+              description: >
+                When *we* recorded a contact. Never conflated with the DMS's own
+                firstContactAt above — see slaNote.
+            contactChannel: { type: ["string", "null"] }
+          required: [reassignedToEmpCode, contactedAt]
         state:
           $ref: "#/components/schemas/LeadState"
+        slaNote:
+          type: ["string", "null"]
+          description: >
+            Present only when we have logged a contact and the dealer's CRM has
+            not. The integration is read-only, so this gap cannot be closed from
+            here — and the manufacturer measures their field, not ours. Saying
+            so is the difference between a useful screen and one that tells an
+            owner they are compliant when the OEM's report disagrees.
         note: { type: ["string", "null"] }
         actionRequired: { type: ["string", "null"] }
         responseMinutes:
@@ -2155,6 +2268,47 @@ components:
         worstDaysLate: { type: integer }
         lastSyncedAt: { type: ["string", "null"] }
       required: [total, byState, needsAction, readyUncollected, worstDaysLate]
+
+    DmsActionInput:
+      type: object
+      properties:
+        action:
+          type: string
+          enum:
+            [ENQUIRY_LOG_CONTACT, ENQUIRY_REASSIGN, JOB_CARD_MARK_INFORMED,
+             REGISTRATION_ASSIGN_AGENT, REGISTRATION_MARK_NOTIFIED,
+             REGISTRATION_LOG_CHASE, PART_REQUEST_TRANSFER, PART_RAISE_REORDER]
+        showroomId: { type: integer }
+        recordKey:
+          type: string
+          description: The mirror row's own key — enqId, jcNo, regnFileNo, partNo.
+        clear:
+          type: boolean
+          description: Undo rather than do. Supported by every action.
+        empCode:
+          type: string
+          description: Required by the two assignment actions. Must be somebody still employed.
+        channel:
+          type: string
+          enum: [CALL, WHATSAPP, SMS, EMAIL, VISIT]
+          description: ENQUIRY_LOG_CONTACT only. Defaults to CALL.
+        fromShowroomId:
+          type: integer
+          description: PART_REQUEST_TRANSFER only — which outlet is sending it. Must be the same owner's.
+        note: { type: string }
+      required: [action, showroomId, recordKey]
+
+    StaffMember:
+      type: object
+      properties:
+        empCode: { type: string }
+        empName: { type: string }
+        role: { type: string }
+        mobileNo: { type: ["string", "null"] }
+        carrying:
+          type: integer
+          description: Live enquiries and registration files already on this person.
+      required: [empCode, empName, role, carrying]
 
     EntityKind:
       type: string
@@ -2452,13 +2606,19 @@ components:
           description: Ours. The DMS has no column for either of these.
           properties:
             customerNotifiedAt: { type: ["string", "null"] }
+            assignedAgentEmpCode:
+              type: ["string", "null"]
+              description: >
+                Ours, and separate from the DMS's read-only agentEmpCode. A
+                dealership with one RTO agent and forty open files has nowhere
+                else to put "this one is yours today".
             rtoChasedAt:
               type: ["string", "null"]
               description: >
                 Read as recency, not presence — a file lodged three weeks ago
                 and chased yesterday is being handled; the same file chased once
                 a fortnight back is not.
-          required: [customerNotifiedAt, rtoChasedAt]
+          required: [customerNotifiedAt, rtoChasedAt, assignedAgentEmpCode]
         state:
           $ref: "#/components/schemas/RegistrationState"
         note: { type: ["string", "null"] }

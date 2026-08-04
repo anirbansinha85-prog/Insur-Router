@@ -869,9 +869,19 @@ export type LeadWorklistRowDms = {
   convertedDealId?: string | null;
 };
 
+/**
+ * Ours. The DMS has no column for any of this.
+ */
 export type LeadWorklistRowDdms = {
   /** @nullable */
   reassignedToEmpCode: string | null;
+  /**
+     * When *we* recorded a contact. Never conflated with the DMS's own firstContactAt above — see slaNote.
+     * @nullable
+     */
+  contactedAt: string | null;
+  /** @nullable */
+  contactChannel?: string | null;
 };
 
 export interface LeadWorklistRow {
@@ -886,8 +896,14 @@ export interface LeadWorklistRow {
   modelInterest?: string | null;
   /** What the dealer's CRM holds. */
   dms: LeadWorklistRowDms;
+  /** Ours. The DMS has no column for any of this. */
   ddms: LeadWorklistRowDdms;
   state: LeadState;
+  /**
+     * Present only when we have logged a contact and the dealer's CRM has not. The integration is read-only, so this gap cannot be closed from here — and the manufacturer measures their field, not ours. Saying so is the difference between a useful screen and one that tells an owner they are compliant when the OEM's report disagrees.
+     * @nullable
+     */
+  slaNote?: string | null;
   /** @nullable */
   note?: string | null;
   /** @nullable */
@@ -1009,6 +1025,60 @@ export interface ServiceWorklistSummary {
   worstDaysLate: number;
   /** @nullable */
   lastSyncedAt?: string | null;
+}
+
+export type DmsActionInputAction = typeof DmsActionInputAction[keyof typeof DmsActionInputAction];
+
+
+export const DmsActionInputAction = {
+  ENQUIRY_LOG_CONTACT: 'ENQUIRY_LOG_CONTACT',
+  ENQUIRY_REASSIGN: 'ENQUIRY_REASSIGN',
+  JOB_CARD_MARK_INFORMED: 'JOB_CARD_MARK_INFORMED',
+  REGISTRATION_ASSIGN_AGENT: 'REGISTRATION_ASSIGN_AGENT',
+  REGISTRATION_MARK_NOTIFIED: 'REGISTRATION_MARK_NOTIFIED',
+  REGISTRATION_LOG_CHASE: 'REGISTRATION_LOG_CHASE',
+  PART_REQUEST_TRANSFER: 'PART_REQUEST_TRANSFER',
+  PART_RAISE_REORDER: 'PART_RAISE_REORDER',
+} as const;
+
+/**
+ * ENQUIRY_LOG_CONTACT only. Defaults to CALL.
+ */
+export type DmsActionInputChannel = typeof DmsActionInputChannel[keyof typeof DmsActionInputChannel];
+
+
+export const DmsActionInputChannel = {
+  CALL: 'CALL',
+  WHATSAPP: 'WHATSAPP',
+  SMS: 'SMS',
+  EMAIL: 'EMAIL',
+  VISIT: 'VISIT',
+} as const;
+
+export interface DmsActionInput {
+  action: DmsActionInputAction;
+  showroomId: number;
+  /** The mirror row's own key — enqId, jcNo, regnFileNo, partNo. */
+  recordKey: string;
+  /** Undo rather than do. Supported by every action. */
+  clear?: boolean;
+  /** Required by the two assignment actions. Must be somebody still employed. */
+  empCode?: string;
+  /** ENQUIRY_LOG_CONTACT only. Defaults to CALL. */
+  channel?: DmsActionInputChannel;
+  /** PART_REQUEST_TRANSFER only — which outlet is sending it. Must be the same owner's. */
+  fromShowroomId?: number;
+  note?: string;
+}
+
+export interface StaffMember {
+  empCode: string;
+  empName: string;
+  role: string;
+  /** @nullable */
+  mobileNo?: string | null;
+  /** Live enquiries and registration files already on this person. */
+  carrying: number;
 }
 
 /**
@@ -1308,6 +1378,11 @@ export type RegistrationWorklistRowDms = {
 export type RegistrationWorklistRowDdms = {
   /** @nullable */
   customerNotifiedAt: string | null;
+  /**
+     * Ours, and separate from the DMS's read-only agentEmpCode. A dealership with one RTO agent and forty open files has nowhere else to put "this one is yours today".
+     * @nullable
+     */
+  assignedAgentEmpCode: string | null;
   /**
      * Read as recency, not presence — a file lodged three weeks ago and chased yesterday is being handled; the same file chased once a fortnight back is not.
      * @nullable
@@ -1631,6 +1706,23 @@ includeDisappeared?: boolean;
 export type GetRegistrationWorklist200 = {
   summary: RegistrationWorklistSummary;
   rows: RegistrationWorklistRow[];
+};
+
+export type ApplyDmsAction200 = {
+  ok: boolean;
+  module: string;
+};
+
+export type ListShowroomStaffParams = {
+showroomId: number;
+/**
+ * e.g. SALES_EXEC, RTO_AGENT, SERVICE_ADVISOR
+ */
+role?: string;
+};
+
+export type ListShowroomStaff200 = {
+  staff: StaffMember[];
 };
 
 export type SearchEntitiesParams = {

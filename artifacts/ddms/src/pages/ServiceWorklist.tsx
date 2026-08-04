@@ -23,6 +23,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatDate } from "@/lib/utils"
+import { ActionButton } from "@/lib/actions"
 import { AlertTriangle, Clock, PhoneCall, Wrench } from "lucide-react"
 
 const STATE: Record<
@@ -275,9 +276,6 @@ export default function ServiceWorklist() {
 
                     <TableCell className="align-top">
                       <Badge variant={tone.variant}>{tone.label}</Badge>
-                      {row.ddms.customerInformedAt && (
-                        <div className="text-[11px] text-green-700 mt-1">customer told</div>
-                      )}
                     </TableCell>
 
                     <TableCell className="align-top">
@@ -295,15 +293,46 @@ export default function ServiceWorklist() {
                             {row.note && (
                               <div className="text-[11px] text-slate-400 mt-0.5">{row.note}</div>
                             )}
+                            {/* The number was on the row and doing nothing.
+                                Ringing it and recording that somebody did are
+                                two different things, and the second is what
+                                takes the row off the calls-to-make count. */}
                             {row.customerMobile && (
-                              <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+                              <a
+                                href={`tel:${row.customerMobile}`}
+                                className="inline-flex items-center gap-1 text-[11px] font-mono text-blue-600 hover:text-blue-700 mt-0.5"
+                              >
+                                <PhoneCall className="w-3 h-3" />
                                 {row.customerMobile}
-                              </div>
+                              </a>
                             )}
+                            <div className="mt-1.5">
+                              <ActionButton
+                                action="JOB_CARD_MARK_INFORMED"
+                                target={{ showroomId: row.showroomId, recordKey: row.jcNo }}
+                                label="Mark customer told"
+                                doneLabel="customer told"
+                                done={Boolean(row.ddms.customerInformedAt)}
+                                icon={<PhoneCall className="w-3 h-3" />}
+                              />
+                            </div>
                           </div>
                         </div>
                       ) : (
-                        <span className="text-xs text-slate-400">{row.note ?? "Nothing to do"}</span>
+                        <div>
+                          <span className="text-xs text-slate-400">{row.note ?? "Nothing to do"}</span>
+                          {row.ddms.customerInformedAt && (
+                            <div className="mt-1.5">
+                              <ActionButton
+                                action="JOB_CARD_MARK_INFORMED"
+                                target={{ showroomId: row.showroomId, recordKey: row.jcNo }}
+                                label="Mark customer told"
+                                doneLabel="customer told"
+                                done
+                              />
+                            </div>
+                          )}
+                        </div>
                       )}
                     </TableCell>
                   </TableRow>
