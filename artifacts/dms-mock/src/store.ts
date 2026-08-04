@@ -37,12 +37,14 @@ import { DEALERS, DEALS, FREE_STOCK } from "./deals.ts";
 import { EMPLOYEES, JOB_CARD_SEEDS, PARTS } from "./workshop.ts";
 import { ENQUIRY_SEEDS } from "./crm.ts";
 import { REGN_FILE_SEEDS } from "./registration.ts";
+import { PART_STOCK_SEEDS } from "./spares.ts";
 import type {
   DmsDeal,
   DmsEmployee,
   DmsEnquiry,
   DmsJobCard,
   DmsJobCardStatus,
+  DmsPartStock,
   DmsRegnDoc,
   DmsRegnFile,
   DmsRegnStatus,
@@ -288,6 +290,27 @@ create table if not exists regn_docs (
   received_dt  text,
   primary key (regn_file_no, seq)
 );
+
+create table if not exists part_stock (
+  dealer_code       text not null,
+  part_no           text not null,
+  part_desc         text not null,
+  bin_location      text,
+  qty_on_hand       integer not null,
+  qty_reserved      integer not null,
+  reorder_level     integer not null,
+  mrp_amt           text not null,
+  cost_amt          text not null,
+  last_received_dt  text,
+  last_issued_dt    text,
+  on_order_qty      integer not null,
+  on_order_eta_dt   text,
+  modified_at       text not null,
+  last_issued_iso   text,
+  on_order_eta_iso  text,
+  modified_iso      text not null,
+  primary key (dealer_code, part_no)
+);
 `;
 
 export interface OpenOptions {
@@ -310,7 +333,7 @@ export function openStore(opts: OpenOptions = {}): void {
     for (const t of [
       "deals", "employees", "part_master", "job_cards", "jc_labour", "jc_parts",
       "jc_psf", "enquiries", "enquiry_followups", "test_rides",
-      "regn_files", "regn_docs",
+      "regn_files", "regn_docs", "part_stock",
     ]) {
       db.exec(`delete from ${t}`);
     }
@@ -348,6 +371,35 @@ function seedIfEmpty(): void {
   if (count("job_cards") === 0) seedJobCards();
   if (count("enquiries") === 0) seedEnquiries();
   if (count("regn_files") === 0) seedRegnFiles();
+  if (count("part_stock") === 0) seedPartStock();
+}
+
+function seedPartStock(): void {
+  const ins = db.prepare(
+    `insert into part_stock (
+       dealer_code, part_no, part_desc, bin_location, qty_on_hand, qty_reserved,
+       reorder_level, mrp_amt, cost_amt, last_received_dt, last_issued_dt,
+       on_order_qty, on_order_eta_dt, modified_at,
+       last_issued_iso, on_order_eta_iso, modified_iso
+     ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+
+  for (const s of PART_STOCK_SEEDS) {
+    const lastIssued = s.lastIssuedDaysAgo === null ? null : daysAgo(s.lastIssuedDaysAgo);
+    const eta = s.onOrderEtaInDays === null ? null : daysAgo(-s.onOrderEtaInDays);
+    const modified = daysAgo(s.modifiedDaysAgo);
+
+    ins.run(
+      s.dealerCode, s.partNo, s.partDesc, s.binLocation, s.qtyOnHand, s.qtyReserved,
+      s.reorderLevel, s.mrpAmt, s.costAmt,
+      s.lastReceivedDaysAgo === null ? null : dmsDate(daysAgo(s.lastReceivedDaysAgo)),
+      lastIssued ? dmsDate(lastIssued) : null,
+      s.onOrderQty, eta ? dmsDate(eta) : null, dmsTimestamp(modified),
+      lastIssued ? isoOf(lastIssued) : null,
+      eta ? isoOf(eta) : null,
+      isoStampOf(modified),
+    );
+  }
 }
 
 /**
@@ -919,6 +971,61 @@ export function listRegnFiles(filter: RegnFileFilter = {}): DmsRegnFile[] {
 export function getRegnFile(regnFileNo: string): DmsRegnFile | null {
   const row = db.prepare(`select * from regn_files where regn_file_no = ?`).get(regnFileNo) as RegnFileRow | undefined;
   return row ? toRegnFile(row, true) : null;
+}
+
+// ── Spares ──────────────────────────────────────────────────────────────────
+
+interface PartStockRow {
+  dealer_code: string; part_no: string; part_desc: string; bin_location: string | null;
+  qty_on_hand: number; qty_reserved: number; reorder_level: number;
+  mrp_amt: string; cost_amt: string; last_received_dt: string | null;
+  last_issued_dt: string | null; on_order_qty: number; on_order_eta_dt: string | null;
+  modified_at: string;
+}
+
+function toPartStock(r: PartStockRow): DmsPartStock {
+  return {
+    dealerCode: r.dealer_code,
+    partNo: r.part_no,
+    partDesc: r.part_desc,
+    binLocation: r.bin_location,
+    qtyOnHand: r.qty_on_hand,
+    qtyReserved: r.qty_reserved,
+    reorderLevel: r.reorder_level,
+    mrpAmt: r.mrp_amt,
+    costAmt: r.cost_amt,
+    lastReceivedDt: r.last_received_dt,
+    lastIssuedDt: r.last_issued_dt,
+    onOrderQty: r.on_order_qty,
+    onOrderEtaDt: r.on_order_eta_dt,
+    modifiedAt: r.modified_at,
+  };
+}
+
+export interface PartStockFilter {
+  dealerCode?: string;
+  partNo?: string;
+  modifiedSince?: Date;
+  /** Only lines where free stock is at or below the reorder level. */
+  belowReorderOnly?: boolean;
+}
+
+export function listPartStock(filter: PartStockFilter = {}): DmsPartStock[] {
+  const where: string[] = [];
+  const args: string[] = [];
+
+  if (filter.dealerCode) { where.push("dealer_code = ?"); args.push(filter.dealerCode); }
+  if (filter.partNo) { where.push("part_no = ?"); args.push(filter.partNo); }
+  // Free stock, not shelf stock. A real DMS counter screen shows the second and
+  // that is how a part gets promised to two job cards.
+  if (filter.belowReorderOnly) where.push("(qty_on_hand - qty_reserved) <= reorder_level");
+  if (filter.modifiedSince) { where.push("modified_iso >= ?"); args.push(isoStampOf(filter.modifiedSince)); }
+
+  const rows = db
+    .prepare(`select * from part_stock${where.length ? ` where ${where.join(" and ")}` : ""} order by dealer_code, part_no`)
+    .all(...args) as unknown as PartStockRow[];
+
+  return rows.map(toPartStock);
 }
 
 /** Reference data the API still serves straight from the fixtures. */

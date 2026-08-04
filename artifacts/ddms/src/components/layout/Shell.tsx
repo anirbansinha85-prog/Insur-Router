@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter"
 import {
   Users, ListChecks, Wrench, LayoutDashboard, ShieldCheck, Bell,
-  ExternalLink, LogOut, IdCard,
+  ExternalLink, LogOut, IdCard, Boxes,
 } from "lucide-react"
 import type { SessionUser } from "@workspace/api-client-react"
 import { cn } from "@/lib/utils"
@@ -45,7 +45,13 @@ const GROUPS: NavGroup[] = [
   },
   {
     label: "After sales",
-    items: [{ href: "/service", label: "Service & warranty", icon: Wrench }],
+    items: [
+      { href: "/service", label: "Service & warranty", icon: Wrench },
+      // Under After sales rather than beside stock reports: a part matters here
+      // because somebody's vehicle is waiting for it, and the two screens read
+      // the same job cards from opposite ends.
+      { href: "/spares", label: "Spares", icon: Boxes },
+    ],
   },
 ]
 

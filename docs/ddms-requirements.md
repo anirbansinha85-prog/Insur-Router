@@ -38,7 +38,7 @@ Status: **✅ done** · **◑ partial** · **○ not started**
 
 | # | Requirement | Status |
 |---|---|---|
-| R-1 | Owner-level: one owner, many showrooms, one view across all of them | ✅ |
+| R-1 | Owner-level: one owner, many showrooms, one view across all of them | ✅ and now *load-bearing* — the spares worklist reads across outlets |
 | R-2 | A showroom is its own entity and *has* dealer codes — not 1:1. One address may carry two brands; one brand may sell from three outlets; a service centre has no dealer code at all | ✅ |
 | R-3 | First customer shape: one OEM, several showrooms, one owner | ✅ |
 | R-4 | DDMS sits on top of the OEM's DMS and does not replace it | ✅ |
@@ -57,9 +57,9 @@ Status: **✅ done** · **◑ partial** · **○ not started**
 | R-13 | Sales: deals and insurance status | ✅ |
 | R-14 | Service centre: job cards, what is stuck, what the customer has not been told | ✅ |
 | R-15 | CRM: enquiries, the manufacturer's response clock, leads with no owner | ✅ |
-| R-16 | Spares, finance/receivables, inventory ageing, registration workflow | ◑ registration done |
+| R-16 | Spares, finance/receivables, inventory ageing, registration workflow | ◑ registration and spares done |
 | R-17 | Invoice generation, automated | ○ |
-| R-18 | DDMS holds every DMS field **plus** its own decision fields for each function | ◑ 4 of 9 modules |
+| R-18 | DDMS holds every DMS field **plus** its own decision fields for each function | ◑ 5 of 9 modules |
 | R-19 | Staff shortage made visible from the dealer's own data — attrition, orphaned work | ◑ leads only |
 
 ### What it does
@@ -230,7 +230,7 @@ string with `bypassrls`, and InsurRouter's application list shows only the
 signed-in owner's applications — proven by signing in as the second owner and
 getting an empty list rather than by reading the code.
 
-### OBJ-4 — The remaining modules  ◑ **1 of 5, 4 Aug**
+### OBJ-4 — The remaining modules  ◑ **2 of 5, 4 Aug**
 *Covers R-16, R-17, R-18.*
 
 Spares, receivables, inventory ageing, registration workflow, invoicing. Each
@@ -278,9 +278,44 @@ driven through the browser rather than the API.
 > coexist with all of them. It now lives on the row and in the note, and the
 > rule is written into CLAUDE.md.
 
+#### Spares ✅ **done 4 Aug**
+
+The first module that answers a question a single branch **cannot** answer,
+rather than one it merely failed to. Every module before it read something one
+outlet could in principle have noticed: a policy nobody keyed in, a customer
+nobody rang, a certificate nobody handed over. This one reads across the shelves.
+
+A DMS keeps the parts ledger against a dealer code, because a dealer code is
+what it thinks a business is. Own three outlets and you get three ledgers, none
+of which can answer the only question the counter actually has.
+
+What it produced on Saraswati's screen, from the dealership's own numbers:
+
+| | |
+|---|---|
+| A customer waiting **4 days** for a brake shoe | Deccan has 4 free, bin P-02-1 |
+| A customer waiting **10 days** for a painted panel | genuine stockout — nobody in the group has one, and it has to read differently |
+| 4 spark plugs on the shelf | every one promised to an open job card; the counter screen shows 4 |
+| ₹5,696 of brake pads never issued since they arrived | and Deccan has **4 on order** for the same part |
+
+That last row is the sharpest: the group is about to pay for what it already
+owns, and no screen in either branch could say so. The action is *"Send
+PUN-DECCAN theirs and cancel the order."*
+
+Decision field `transferRequestedAt` proven load-bearing (needsAction 6 → 5).
+
+> **Corrected during the build.** `daysWaiting` first came from `statusSince` —
+> our mirror's clock — which reported a customer waiting *one day* for a vehicle
+> that had been in the bay since last week. That is a number about us presented
+> as a number about them. It now comes from the dealer's own `jcDate`.
+
+**Verified**: 14 part lines across two outlets, every state populated, the
+cross-branch lookup working in both directions, and the screen driven through a
+browser.
+
 #### Still to do
 
-Spares, receivables, inventory ageing, invoicing.
+Receivables, inventory ageing, invoicing.
 
 ### OBJ-5 — Agent orchestration
 *Covers R-22, R-23.*
@@ -309,9 +344,9 @@ the business rather than a question about the data.
 
 ## 4. Where things actually stand
 
-**Built and verified:** owner tier; the read-only mirror across four modules
-(deals, job cards, enquiries, registration files); reconciliation on deals;
-derived state on all four; insurer panel with quota; scheduled sync; API
+**Built and verified:** owner tier; the read-only mirror across five modules
+(deals, job cards, enquiries, registration files, parts); reconciliation on
+deals; derived state on all five; insurer panel with quota; scheduled sync; API
 authentication; per-user sign-in; row-level security on the DDMS request path;
 the one-application-per-deal constraint; DDMS as its own service.
 

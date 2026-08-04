@@ -29,6 +29,7 @@ import type {
   DmsErrorBody,
   DmsJobCard,
   DmsJobCardSummary,
+  DmsPartStock,
   DmsRegnFile,
   DmsRegnFileSummary,
   DmsStockLookup,
@@ -276,6 +277,21 @@ export function fetchRegnFile(regnFileNo: string): Promise<DmsRegnFile | null> {
   return dmsGet<DmsRegnFile>(`/dms/v1/registrations/${encodeURIComponent(regnFileNo)}`, {
     notFoundIsNull: true,
   });
+}
+
+/**
+ * Parts stock for one dealer code.
+ *
+ * The whole ledger rather than summaries, unlike every other list here. A parts
+ * ledger is a few hundred lines of numbers with no personal data in it, and the
+ * cross-branch comparison needs all of them — asking per part would be one HTTP
+ * call per line to answer a question about the whole shelf.
+ */
+export async function dmsPartStock(dealerCode: string): Promise<DmsPartStock[]> {
+  const body = await dmsGet<{ count: number; stock: DmsPartStock[] }>(
+    `/dms/v1/parts/stock?dealerCode=${encodeURIComponent(dealerCode)}`,
+  );
+  return body?.stock ?? [];
 }
 
 /** The dealer's staff master, including who has left. */

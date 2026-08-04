@@ -469,6 +469,40 @@ export interface DmsRegnFile extends DmsRegnFileSummary {
   docs: DmsRegnDoc[];
 }
 
+// ── Spares ──────────────────────────────────────────────────────────────────
+// The parts counter. A DMS holds this per dealer code, because a dealer code is
+// what it thinks a business is — which is precisely why a group that owns three
+// outlets cannot see across them and keeps ordering what it already has.
+
+/**
+ * One part, in one branch's bin.
+ *
+ * `qtyOnHand` minus `qtyReserved` is what can actually be issued today; a real
+ * DMS shows the first of those on the counter screen and the difference is how
+ * a storeman promises a part twice.
+ */
+export interface DmsPartStock {
+  dealerCode: string;
+  partNo: string;
+  partDesc: string;
+  /** Where it physically is. Useless across branches, which is the point. */
+  binLocation: string | null;
+  qtyOnHand: number;
+  /** Committed to an open job card. Not free, though the shelf says otherwise. */
+  qtyReserved: number;
+  reorderLevel: number;
+  mrpAmt: DmsAmount;
+  /** What the dealership paid. What ageing stock is costing, in other words. */
+  costAmt: DmsAmount;
+  lastReceivedDt: DmsDate | null;
+  /** Null means it has never moved since it arrived. */
+  lastIssuedDt: DmsDate | null;
+  /** Raised on the OEM and not yet delivered. */
+  onOrderQty: number;
+  onOrderEtaDt: DmsDate | null;
+  modifiedAt: DmsTimestamp;
+}
+
 export type DmsJobCardType =
   | "FREE"
   | "PAID"

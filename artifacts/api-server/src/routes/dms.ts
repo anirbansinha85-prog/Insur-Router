@@ -33,6 +33,7 @@ import {
   buildLeadWorklist,
   buildRegistrationWorklist,
   buildServiceWorklist,
+  buildSparesWorklist,
   buildWorklist,
   isDmsConfigured,
   panelForShowroom,
@@ -40,9 +41,11 @@ import {
   summariseLeads,
   summariseRegistrations,
   summariseService,
+  summariseSpares,
   syncShowroom,
   syncShowroomEnquiries,
   syncShowroomJobCards,
+  syncShowroomParts,
   syncShowroomRegistrations,
 } from "../lib/dms";
 import { createDraftApplication } from "../lib/draft-application";
@@ -154,6 +157,7 @@ router.post("/dms/showrooms/:showroomId/sync", async (req, res): Promise<void> =
     const jobCardResults = await syncShowroomJobCards(showroomId);
     const enquiryResults = await syncShowroomEnquiries(showroomId);
     const registrationResults = await syncShowroomRegistrations(showroomId);
+    const partsResults = await syncShowroomParts(showroomId);
 
     if (results.length === 0) {
       // The showroom exists but has no active DMS account, which is a
@@ -166,7 +170,7 @@ router.post("/dms/showrooms/:showroomId/sync", async (req, res): Promise<void> =
       return;
     }
 
-    res.json({ results, jobCardResults, enquiryResults, registrationResults });
+    res.json({ results, jobCardResults, enquiryResults, registrationResults, partsResults });
   } catch (err) {
     if (err instanceof DmsError) {
       const status = err.kind === "bad_response" ? 502 : 503;
@@ -294,6 +298,43 @@ router.get("/dms/registration-worklist", async (req, res): Promise<void> => {
   });
 
   res.json({ summary: summariseRegistrations(rows), rows });
+});
+
+/**
+ * The parts counter, read across every outlet the owner holds.
+ *
+ * The only route in this file that deliberately reads outside the showroom in
+ * the query string, and the reason is the product's whole premise. A DMS keeps
+ * the stock ledger against a dealer code; an owner with three outlets gets
+ * three ledgers and no way to ask whether the part a customer has been waiting
+ * three days for is sitting on a shelf in the next branch.
+ *
+ * The cross-branch scope comes from the **session**, never from the request —
+ * `showroomsTable.ownerId = req.sessionUser.ownerId` — so widening the read
+ * cannot widen it past the owner. Row-level security is the backstop underneath
+ * that, and would return nothing for another owner's showroom even if this
+ * query asked for it.
+ */
+router.get("/dms/spares-worklist", async (req, res): Promise<void> => {
+  const showroomId = parseShowroomId(String(req.query.showroomId ?? ""));
+  if (showroomId === null) {
+    res.status(400).json({ error: "showroomId query parameter is required and must be a positive integer" });
+    return;
+  }
+
+  if (!(await assertShowroomAccess(req, res, showroomId))) return;
+
+  const owned = await db
+    .select({ id: showroomsTable.id })
+    .from(showroomsTable)
+    .where(eq(showroomsTable.ownerId, req.sessionUser!.ownerId));
+
+  const rows = await buildSparesWorklist({
+    showroomId,
+    ownerShowroomIds: owned.map((s) => s.id),
+  });
+
+  res.json({ summary: summariseSpares(rows), rows });
 });
 
 /**

@@ -13,6 +13,7 @@ import Leads from '@/pages/Leads';
 import Worklist from '@/pages/Worklist';
 import ServiceWorklist from '@/pages/ServiceWorklist';
 import Registrations from '@/pages/Registrations';
+import Spares from '@/pages/Spares';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -74,6 +75,7 @@ function Gate() {
           <Route path="/worklist" component={Worklist} />
           <Route path="/registrations" component={Registrations} />
           <Route path="/service" component={ServiceWorklist} />
+          <Route path="/spares" component={Spares} />
           <Route component={NotFound} />
         </Switch>
       </Shell>

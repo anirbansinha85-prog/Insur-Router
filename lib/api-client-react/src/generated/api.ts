@@ -40,6 +40,8 @@ import type {
   GetShowroomPanel200,
   GetShowroomWorklist200,
   GetShowroomWorklistParams,
+  GetSparesWorklist200,
+  GetSparesWorklistParams,
   HealthStatus,
   IncompleteDealError,
   IngestPushInput,
@@ -1977,6 +1979,92 @@ export function useGetRegistrationWorklist<TData = Awaited<ReturnType<typeof get
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetRegistrationWorklistQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetSparesWorklistUrl = (params: GetSparesWorklistParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/dms/spares-worklist?${stringifiedParams}` : `/api/dms/spares-worklist`
+}
+
+/**
+ * The only DDMS read that deliberately looks outside the showroom in the query string, and the reason is the product's whole premise. A DMS keeps the stock ledger against a dealer code, because a dealer code is what it thinks a business is. An owner with three outlets gets three ledgers and no way to ask whether the part a customer has been waiting three days for is on a shelf in the next branch.
+ * The cross-branch scope comes from the session, never from the request, so widening the read cannot widen it past the owner. Row-level security is the backstop underneath that.
+ * @summary The parts counter, read across every outlet the owner holds
+ */
+export const getSparesWorklist = async (params: GetSparesWorklistParams, options?: Parameters<typeof customFetch>[1]): Promise<GetSparesWorklist200> => {
+
+  return customFetch<GetSparesWorklist200>(getGetSparesWorklistUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSparesWorklistQueryKey = (params?: GetSparesWorklistParams,) => {
+    return [
+    `/api/dms/spares-worklist`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetSparesWorklistQueryOptions = <TData = Awaited<ReturnType<typeof getSparesWorklist>>, TError = ErrorType<ErrorResponse>>(params: GetSparesWorklistParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSparesWorklist>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSparesWorklistQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSparesWorklist>>> = ({ signal }) => getSparesWorklist(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSparesWorklist>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSparesWorklistQueryResult = NonNullable<Awaited<ReturnType<typeof getSparesWorklist>>>
+export type GetSparesWorklistQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary The parts counter, read across every outlet the owner holds
+ */
+
+export function useGetSparesWorklist<TData = Awaited<ReturnType<typeof getSparesWorklist>>, TError = ErrorType<ErrorResponse>>(
+ params: GetSparesWorklistParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSparesWorklist>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSparesWorklistQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

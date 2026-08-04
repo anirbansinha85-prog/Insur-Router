@@ -16,13 +16,19 @@
  *   worklist.ts      the mirror versus our own record, reconciled on read
  *   scheduler.ts     run the pull on a timer, so nobody has to remember
  *
- * Four modules now mirror the same way — deals, job cards, enquiries,
- * registration files. Each is a table and a projection rather than a fresh
- * integration, which is the return on having built the pattern once:
+ * Five modules now mirror the same way — deals, job cards, enquiries,
+ * registration files, parts. Each is a table and a projection rather than a
+ * fresh integration, which is the return on having built the pattern once:
  *
  *   service-worklist.ts       the workshop, and who has not been told
  *   lead-worklist.ts          the manufacturer's clock, and leads with no owner
  *   registration-worklist.ts  the RTO file, and the certificates in the drawer
+ *   spares-worklist.ts        the part a customer is waiting for that the
+ *                             company already owns, in the other branch
+ *
+ * The last of those is the only one answering a question a single outlet
+ * *cannot* answer, rather than one it merely failed to. That is the difference
+ * between a better screen and an owner-level product.
  */
 
 export {
@@ -30,6 +36,7 @@ export {
   dmsEmployees,
   dmsEnquiries,
   dmsJobCards,
+  dmsPartStock,
   dmsRegistrations,
   fetchDeal,
   fetchEnquiry,
@@ -49,6 +56,17 @@ export type {
   RegistrationWorklistRow,
   RegistrationWorklistSummary,
 } from "./registration-worklist";
+export {
+  syncShowroomParts,
+  buildSparesWorklist,
+  summariseSpares,
+} from "./spares-worklist";
+export type {
+  SparesSyncResult,
+  SparesState,
+  SparesWorklistRow,
+  SparesWorklistSummary,
+} from "./spares-worklist";
 export { syncShowroomEnquiries, buildLeadWorklist, summariseLeads } from "./lead-worklist";
 export type {
   EnquirySyncResult,

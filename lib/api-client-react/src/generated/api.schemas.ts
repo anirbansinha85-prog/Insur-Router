@@ -1012,6 +1012,133 @@ export interface ServiceWorklistSummary {
 }
 
 /**
+ * AVAILABLE_ELSEWHERE is the one that justifies the module: a customer is waiting for a part the company already owns, on a shelf in another outlet, and neither branch's system can see the other's. Everything else here a good storeman would eventually catch on their own screen.
+ * FULLY_RESERVED is the quiet one. The shelf holds four and every one is promised to an open job card, so the counter can issue none — and only the first of those numbers is on the storeman's screen.
+ */
+export type SparesState = typeof SparesState[keyof typeof SparesState];
+
+
+export const SparesState = {
+  AVAILABLE_ELSEWHERE: 'AVAILABLE_ELSEWHERE',
+  STOCKOUT_BLOCKING: 'STOCKOUT_BLOCKING',
+  ORDER_OVERDUE: 'ORDER_OVERDUE',
+  BELOW_REORDER: 'BELOW_REORDER',
+  FULLY_RESERVED: 'FULLY_RESERVED',
+  DEAD_STOCK: 'DEAD_STOCK',
+  OK: 'OK',
+} as const;
+
+/**
+ * What this branch's own ledger holds.
+ */
+export type SparesWorklistRowDms = {
+  qtyOnHand: number;
+  qtyReserved: number;
+  /** On hand minus reserved. What the counter can issue today. */
+  qtyFree: number;
+  reorderLevel: number;
+  /** @nullable */
+  mrpAmount?: number | null;
+  /** @nullable */
+  costAmount?: number | null;
+  /** @nullable */
+  lastReceivedDate?: string | null;
+  /** @nullable */
+  lastIssuedDate?: string | null;
+  onOrderQty: number;
+  /** @nullable */
+  onOrderEtaDate?: string | null;
+};
+
+/**
+ * Ours. An inter-branch transfer is not an event either branch's system has a concept of, because each one only knows its own shelf.
+ */
+export type SparesWorklistRowDdms = {
+  /** @nullable */
+  transferRequestedAt: string | null;
+  /** @nullable */
+  transferFromShowroomId: number | null;
+  /** @nullable */
+  reorderRaisedAt: string | null;
+};
+
+export type SparesWorklistRowWaitingJobCardsItem = {
+  jcNo: string;
+  /** @nullable */
+  customerName?: string | null;
+  daysWaiting: number;
+};
+
+export type SparesWorklistRowAvailableAtItem = {
+  showroomId: number;
+  /** @nullable */
+  showroomCode?: string | null;
+  qtyFree: number;
+  /** @nullable */
+  binLocation?: string | null;
+};
+
+export type SparesWorklistRowShortAtItem = {
+  showroomId: number;
+  /** @nullable */
+  showroomCode?: string | null;
+  qtyFree: number;
+  reorderLevel: number;
+  onOrderQty: number;
+};
+
+export interface SparesWorklistRow {
+  partNo: string;
+  /** @nullable */
+  partDesc?: string | null;
+  showroomId: number;
+  /** @nullable */
+  showroomCode?: string | null;
+  dealerCode: string;
+  /** @nullable */
+  binLocation?: string | null;
+  /** What this branch's own ledger holds. */
+  dms: SparesWorklistRowDms;
+  /** Ours. An inter-branch transfer is not an event either branch's system has a concept of, because each one only knows its own shelf. */
+  ddms: SparesWorklistRowDdms;
+  /** Open job cards at this outlet held up on this exact part. */
+  waitingJobCards: SparesWorklistRowWaitingJobCardsItem[];
+  /** The same part, free, at another outlet this owner holds. */
+  availableAt: SparesWorklistRowAvailableAtItem[];
+  /** The same part, at or below its reorder level, at another outlet. The inverse finding: eight pads nobody here has ever issued are not a write-off if the branch that sells the model is about to buy more. */
+  shortAt: SparesWorklistRowShortAtItem[];
+  state: SparesState;
+  /** @nullable */
+  note?: string | null;
+  /** @nullable */
+  actionRequired?: string | null;
+  /** @nullable */
+  daysSinceIssued?: number | null;
+  /**
+     * Cost of stock sitting still. What makes dead stock a decision.
+     * @nullable
+     */
+  idleCapital?: number | null;
+  lastSyncedAt: string;
+}
+
+export type SparesWorklistSummaryByState = {[key: string]: number};
+
+export interface SparesWorklistSummary {
+  total: number;
+  byState: SparesWorklistSummaryByState;
+  needsAction: number;
+  /** Customers waiting for a part the company already owns, in another outlet. No single branch's system can produce this number. */
+  availableElsewhere: number;
+  stockoutBlocking: number;
+  belowReorder: number;
+  /** Cost of stock that has not moved. Capital, not inventory. */
+  idleCapital: number;
+  /** @nullable */
+  lastSyncedAt?: string | null;
+}
+
+/**
  * **Why** a registration file is not moving. Each has a different owner: the RTO, the insurance desk, the customer, accounts, the agent, us.
  * A lapsed temporary registration is deliberately not one of these. It is a consequence rather than a cause — it raises the urgency of whatever the real blockage is — so it lives on the row as tempRegDaysLeft and in the note. An earlier draft made it a state, and a file the RTO had rejected whose temporary registration had also lapsed came out advising somebody to take it to the RTO, with the objection nowhere on screen.
  * RC_IN_DRAWER is the quiet one: as far as the DMS is concerned the transaction finished when the number was allotted, and a plastic card the customer has never seen is in a drawer.
@@ -1404,6 +1531,15 @@ includeDisappeared?: boolean;
 export type GetRegistrationWorklist200 = {
   summary: RegistrationWorklistSummary;
   rows: RegistrationWorklistRow[];
+};
+
+export type GetSparesWorklistParams = {
+showroomId: number;
+};
+
+export type GetSparesWorklist200 = {
+  summary: SparesWorklistSummary;
+  rows: SparesWorklistRow[];
 };
 
 export type GetLeadWorklistParams = {

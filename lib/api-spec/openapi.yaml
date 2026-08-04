@@ -795,6 +795,50 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /dms/spares-worklist:
+    get:
+      operationId: getSparesWorklist
+      tags: [dms]
+      summary: The parts counter, read across every outlet the owner holds
+      description: >
+        The only DDMS read that deliberately looks outside the showroom in the
+        query string, and the reason is the product's whole premise. A DMS keeps
+        the stock ledger against a dealer code, because a dealer code is what it
+        thinks a business is. An owner with three outlets gets three ledgers and
+        no way to ask whether the part a customer has been waiting three days
+        for is on a shelf in the next branch.
+
+        The cross-branch scope comes from the session, never from the request,
+        so widening the read cannot widen it past the owner. Row-level security
+        is the backstop underneath that.
+      parameters:
+        - name: showroomId
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Part lines for this outlet, plus a summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  summary:
+                    $ref: "#/components/schemas/SparesWorklistSummary"
+                  rows:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SparesWorklistRow"
+                required: [summary, rows]
+        "404":
+          description: No such showroom
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /dms/lead-worklist:
     get:
       operationId: getLeadWorklist
@@ -2035,6 +2079,129 @@ components:
         worstDaysLate: { type: integer }
         lastSyncedAt: { type: ["string", "null"] }
       required: [total, byState, needsAction, readyUncollected, worstDaysLate]
+
+    SparesState:
+      type: string
+      enum:
+        [AVAILABLE_ELSEWHERE, STOCKOUT_BLOCKING, ORDER_OVERDUE, BELOW_REORDER,
+         FULLY_RESERVED, DEAD_STOCK, OK]
+      description: >
+        AVAILABLE_ELSEWHERE is the one that justifies the module: a customer is
+        waiting for a part the company already owns, on a shelf in another
+        outlet, and neither branch's system can see the other's. Everything else
+        here a good storeman would eventually catch on their own screen.
+
+        FULLY_RESERVED is the quiet one. The shelf holds four and every one is
+        promised to an open job card, so the counter can issue none — and only
+        the first of those numbers is on the storeman's screen.
+
+    SparesWorklistRow:
+      type: object
+      properties:
+        partNo: { type: string }
+        partDesc: { type: ["string", "null"] }
+        showroomId: { type: integer }
+        showroomCode: { type: ["string", "null"] }
+        dealerCode: { type: string }
+        binLocation: { type: ["string", "null"] }
+        dms:
+          type: object
+          description: What this branch's own ledger holds.
+          properties:
+            qtyOnHand: { type: integer }
+            qtyReserved: { type: integer }
+            qtyFree:
+              type: integer
+              description: On hand minus reserved. What the counter can issue today.
+            reorderLevel: { type: integer }
+            mrpAmount: { type: ["number", "null"] }
+            costAmount: { type: ["number", "null"] }
+            lastReceivedDate: { type: ["string", "null"] }
+            lastIssuedDate: { type: ["string", "null"] }
+            onOrderQty: { type: integer }
+            onOrderEtaDate: { type: ["string", "null"] }
+          required: [qtyOnHand, qtyReserved, qtyFree, reorderLevel, onOrderQty]
+        ddms:
+          type: object
+          description: >
+            Ours. An inter-branch transfer is not an event either branch's
+            system has a concept of, because each one only knows its own shelf.
+          properties:
+            transferRequestedAt: { type: ["string", "null"] }
+            transferFromShowroomId: { type: ["integer", "null"] }
+            reorderRaisedAt: { type: ["string", "null"] }
+          required: [transferRequestedAt, transferFromShowroomId, reorderRaisedAt]
+        waitingJobCards:
+          type: array
+          description: Open job cards at this outlet held up on this exact part.
+          items:
+            type: object
+            properties:
+              jcNo: { type: string }
+              customerName: { type: ["string", "null"] }
+              daysWaiting: { type: integer }
+            required: [jcNo, daysWaiting]
+        availableAt:
+          type: array
+          description: The same part, free, at another outlet this owner holds.
+          items:
+            type: object
+            properties:
+              showroomId: { type: integer }
+              showroomCode: { type: ["string", "null"] }
+              qtyFree: { type: integer }
+              binLocation: { type: ["string", "null"] }
+            required: [showroomId, qtyFree]
+        shortAt:
+          type: array
+          description: >
+            The same part, at or below its reorder level, at another outlet.
+            The inverse finding: eight pads nobody here has ever issued are not
+            a write-off if the branch that sells the model is about to buy more.
+          items:
+            type: object
+            properties:
+              showroomId: { type: integer }
+              showroomCode: { type: ["string", "null"] }
+              qtyFree: { type: integer }
+              reorderLevel: { type: integer }
+              onOrderQty: { type: integer }
+            required: [showroomId, qtyFree, reorderLevel, onOrderQty]
+        state:
+          $ref: "#/components/schemas/SparesState"
+        note: { type: ["string", "null"] }
+        actionRequired: { type: ["string", "null"] }
+        daysSinceIssued: { type: ["integer", "null"] }
+        idleCapital:
+          type: ["number", "null"]
+          description: Cost of stock sitting still. What makes dead stock a decision.
+        lastSyncedAt: { type: string }
+      required:
+        [partNo, showroomId, dealerCode, dms, ddms, waitingJobCards, availableAt,
+         shortAt, state, lastSyncedAt]
+
+    SparesWorklistSummary:
+      type: object
+      properties:
+        total: { type: integer }
+        byState:
+          type: object
+          additionalProperties: { type: integer }
+        needsAction: { type: integer }
+        availableElsewhere:
+          type: integer
+          description: >
+            Customers waiting for a part the company already owns, in another
+            outlet. No single branch's system can produce this number.
+        stockoutBlocking: { type: integer }
+        belowReorder: { type: integer }
+        idleCapital:
+          type: number
+          description: Cost of stock that has not moved. Capital, not inventory.
+        lastSyncedAt: { type: ["string", "null"] }
+      required:
+        [total, byState, needsAction, availableElsewhere, stockoutBlocking,
+         belowReorder, idleCapital]
 
     RegistrationState:
       type: string

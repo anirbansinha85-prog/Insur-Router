@@ -337,6 +337,32 @@ export interface DmsRegnFile extends DmsRegnFileSummary {
   docs: DmsRegnDoc[];
 }
 
+// ── Spares ──────────────────────────────────────────────────────────────────
+
+/**
+ * One part in one branch's bin.
+ *
+ * `qtyOnHand - qtyReserved` is what can actually be issued today. A DMS counter
+ * screen shows the first number, and the difference is how one part gets
+ * promised to two customers.
+ */
+export interface DmsPartStock {
+  dealerCode: string;
+  partNo: string;
+  partDesc: string;
+  binLocation: string | null;
+  qtyOnHand: number;
+  qtyReserved: number;
+  reorderLevel: number;
+  mrpAmt: DmsAmount;
+  costAmt: DmsAmount;
+  lastReceivedDt: DmsDate | null;
+  lastIssuedDt: DmsDate | null;
+  onOrderQty: number;
+  onOrderEtaDt: DmsDate | null;
+  modifiedAt: string;
+}
+
 /** Every non-2xx response from the mock carries this shape. */
 export interface DmsErrorBody {
   errCode?: string;

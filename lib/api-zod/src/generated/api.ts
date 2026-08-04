@@ -731,6 +731,78 @@ export const GetRegistrationWorklistResponse = zod.object({
 
 
 /**
+ * The only DDMS read that deliberately looks outside the showroom in the query string, and the reason is the product's whole premise. A DMS keeps the stock ledger against a dealer code, because a dealer code is what it thinks a business is. An owner with three outlets gets three ledgers and no way to ask whether the part a customer has been waiting three days for is on a shelf in the next branch.
+ * The cross-branch scope comes from the session, never from the request, so widening the read cannot widen it past the owner. Row-level security is the backstop underneath that.
+ * @summary The parts counter, read across every outlet the owner holds
+ */
+export const GetSparesWorklistQueryParams = zod.object({
+  "showroomId": zod.coerce.number().int()
+})
+
+export const GetSparesWorklistResponse = zod.object({
+  "summary": zod.object({
+  "total": zod.number().int(),
+  "byState": zod.record(zod.string(), zod.number().int()),
+  "needsAction": zod.number().int(),
+  "availableElsewhere": zod.number().int().describe('Customers waiting for a part the company already owns, in another outlet. No single branch\'s system can produce this number.\n'),
+  "stockoutBlocking": zod.number().int(),
+  "belowReorder": zod.number().int(),
+  "idleCapital": zod.number().describe('Cost of stock that has not moved. Capital, not inventory.'),
+  "lastSyncedAt": zod.string().nullish()
+}),
+  "rows": zod.array(zod.object({
+  "partNo": zod.string(),
+  "partDesc": zod.string().nullish(),
+  "showroomId": zod.number().int(),
+  "showroomCode": zod.string().nullish(),
+  "dealerCode": zod.string(),
+  "binLocation": zod.string().nullish(),
+  "dms": zod.object({
+  "qtyOnHand": zod.number().int(),
+  "qtyReserved": zod.number().int(),
+  "qtyFree": zod.number().int().describe('On hand minus reserved. What the counter can issue today.'),
+  "reorderLevel": zod.number().int(),
+  "mrpAmount": zod.number().nullish(),
+  "costAmount": zod.number().nullish(),
+  "lastReceivedDate": zod.string().nullish(),
+  "lastIssuedDate": zod.string().nullish(),
+  "onOrderQty": zod.number().int(),
+  "onOrderEtaDate": zod.string().nullish()
+}).describe('What this branch\'s own ledger holds.'),
+  "ddms": zod.object({
+  "transferRequestedAt": zod.string().nullable(),
+  "transferFromShowroomId": zod.number().int().nullable(),
+  "reorderRaisedAt": zod.string().nullable()
+}).describe('Ours. An inter-branch transfer is not an event either branch\'s system has a concept of, because each one only knows its own shelf.\n'),
+  "waitingJobCards": zod.array(zod.object({
+  "jcNo": zod.string(),
+  "customerName": zod.string().nullish(),
+  "daysWaiting": zod.number().int()
+})).describe('Open job cards at this outlet held up on this exact part.'),
+  "availableAt": zod.array(zod.object({
+  "showroomId": zod.number().int(),
+  "showroomCode": zod.string().nullish(),
+  "qtyFree": zod.number().int(),
+  "binLocation": zod.string().nullish()
+})).describe('The same part, free, at another outlet this owner holds.'),
+  "shortAt": zod.array(zod.object({
+  "showroomId": zod.number().int(),
+  "showroomCode": zod.string().nullish(),
+  "qtyFree": zod.number().int(),
+  "reorderLevel": zod.number().int(),
+  "onOrderQty": zod.number().int()
+})).describe('The same part, at or below its reorder level, at another outlet. The inverse finding: eight pads nobody here has ever issued are not a write-off if the branch that sells the model is about to buy more.\n'),
+  "state": zod.enum(['AVAILABLE_ELSEWHERE', 'STOCKOUT_BLOCKING', 'ORDER_OVERDUE', 'BELOW_REORDER', 'FULLY_RESERVED', 'DEAD_STOCK', 'OK']).describe('AVAILABLE_ELSEWHERE is the one that justifies the module: a customer is waiting for a part the company already owns, on a shelf in another outlet, and neither branch\'s system can see the other\'s. Everything else here a good storeman would eventually catch on their own screen.\nFULLY_RESERVED is the quiet one. The shelf holds four and every one is promised to an open job card, so the counter can issue none — and only the first of those numbers is on the storeman\'s screen.\n'),
+  "note": zod.string().nullish(),
+  "actionRequired": zod.string().nullish(),
+  "daysSinceIssued": zod.number().int().nullish(),
+  "idleCapital": zod.number().nullish().describe('Cost of stock sitting still. What makes dead stock a decision.'),
+  "lastSyncedAt": zod.string()
+}))
+})
+
+
+/**
  * The CRM mirror. Two things here appear on no screen the dealer has: how many minutes are left on a manufacturer-generated lead's response window — the industry mandate is thirty, and future lead allocation depends on it — and which live enquiries are assigned to somebody who has left.
  * The second needs the enquiry mirror joined to the staff mirror. The dealer's CRM knows the assignment and their HR records know the leaving date; neither knows both.
  * @summary Enquiries, the manufacturer response clock, and leads with no owner

@@ -21,11 +21,11 @@
  * Idempotent, and it finishes by proving the thing it claims: it reconnects as
  * `ddms_app` with no session and checks that the tables read empty.
  *
- * > If a re-run fails with `password authentication failed for user
- * > "ddms_app"` immediately after the policies applied, wait a few seconds and
- * > run it again. Supabase's pooler caches role credentials, and an `alter
- * > role … password` takes a moment to propagate to it. The role is fine; the
- * > pooler is still holding the previous one.
+ * > If it ever does report `password authentication failed for user
+ * > "ddms_app"`, it has just reset the password because the one in
+ * > DATABASE_URL_APP did not work. Supabase's pooler caches credentials, so
+ * > wait a few seconds and run it again — the role is fine, the pooler is still
+ * > holding the previous one.
  */
 
 import { readFileSync } from "node:fs";
@@ -41,6 +41,7 @@ const SCOPED_TABLES = [
   "dms_job_cards",
   "dms_enquiries",
   "dms_registrations",
+  "dms_part_stock",
   "showrooms",
   "owners",
 ];
@@ -92,7 +93,7 @@ function appConnection(): { url: string; role: string; password: string } {
  * which is the property that matters and the only one worth trusting a query
  * about rather than a DDL statement.
  */
-async function createRole(role: string, password: string): Promise<void> {
+async function createRole(role: string, password: string, url: string): Promise<void> {
   const { rows } = await pool.query<{ create_sql: string; alter_sql: string }>(
     `select
        format(
@@ -114,9 +115,35 @@ async function createRole(role: string, password: string): Promise<void> {
   if (existing.length === 0) {
     await pool.query(rows[0].create_sql);
     console.log(`  role     ${role.padEnd(16)} created`);
-  } else {
-    await pool.query(rows[0].alter_sql);
-    console.log(`  role     ${role.padEnd(16)} already existed, password and attributes reset`);
+    return;
+  }
+
+  // The role exists. Try the credentials before touching them.
+  //
+  // Resetting the password unconditionally looks harmless and is not: Supabase's
+  // pooler caches role credentials, so an `alter role … password` — even to the
+  // *same* password — invalidates the cache and the next connection is refused
+  // for a few seconds. That made every re-run of this script fail at its own
+  // verification step, which is a poor property for a script whose entire job is
+  // to verify. Only reset when the credentials do not actually work.
+  if (await canConnect(url)) {
+    console.log(`  role     ${role.padEnd(16)} already exists and the password works, left alone`);
+    return;
+  }
+
+  await pool.query(rows[0].alter_sql);
+  console.log(`  role     ${role.padEnd(16)} password did not work, reset`);
+  console.log(`           the pooler caches credentials — give it a few seconds`);
+}
+
+async function canConnect(url: string): Promise<boolean> {
+  const client = new pg.Client({ connectionString: url });
+  try {
+    await client.connect();
+    await client.end();
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -180,7 +207,7 @@ async function main(): Promise<void> {
   const { url, role, password } = appConnection();
 
   console.log("Applying row-level security\n");
-  await createRole(role, password);
+  await createRole(role, password, url);
 
   await pool.query(readFileSync(SQL_PATH, "utf8"));
 

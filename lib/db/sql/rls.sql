@@ -174,6 +174,18 @@ create policy dms_registrations_own on public.dms_registrations
   using (showroom_id in (select app.owned_showroom_ids()))
   with check (showroom_id in (select app.owned_showroom_ids()));
 
+/*
+ * Parts stock, and the one policy that is read across outlets rather than at
+ * one of them. The scope is still the owner's showrooms — `owned_showroom_ids`
+ * is the same helper every other policy uses — because "the part is in the
+ * other branch" is only a useful answer when the other branch is yours.
+ */
+drop policy if exists dms_part_stock_own on public.dms_part_stock;
+create policy dms_part_stock_own on public.dms_part_stock
+  for all to ddms_app
+  using (showroom_id in (select app.owned_showroom_ids()))
+  with check (showroom_id in (select app.owned_showroom_ids()));
+
 drop policy if exists insurer_panel_own on public.insurer_panel_entries;
 create policy insurer_panel_own on public.insurer_panel_entries
   for select to ddms_app
@@ -243,6 +255,7 @@ grant select, insert, update on
   public.dms_enquiries,
   public.dms_employees,
   public.dms_registrations,
+  public.dms_part_stock,
   public.applications,
   public.submission_logs
 to ddms_app;

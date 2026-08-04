@@ -118,7 +118,7 @@ artifacts/            deployable apps
   api-server/         Express 5 API — the only backend
     src/routes/       health, providers, applications, dashboard, dms, ingest
     src/lib/          api-executor.ts, browser-executor.ts, auth.ts, logger.ts
-    src/lib/dms/      client, adapters, mirror sync, four worklists, panel,
+    src/lib/dms/      client, adapters, mirror sync, five worklists, panel,
                       scheduler
   insur-router/       React 19 + Vite — InsurRouter frontend
   doc-ingest/         React 19 + Vite — VeloDocs frontend
@@ -148,7 +148,7 @@ pnpm run typecheck:libs                         # before checking leaf packages
 
 ## Data model
 
-Sixteen tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
+Seventeen tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
 which of them `ddms_app` may read, and on what terms, is in `lib/db/sql/rls.sql`.
 
 **The owner tier** — who the data belongs to:
@@ -170,20 +170,32 @@ which of them `ddms_app` may read, and on what terms, is in `lib/db/sql/rls.sql`
   on, and `statusSince` / `lastSyncedAt` / `disappearedAt`. Reconciliation is
   **not** stored here; it is derived on read, because a stale "in sync" flag is
   worse than none.
-- **dms_job_cards**, **dms_enquiries** + **dms_employees**, **dms_registrations**
-  — the same shape, three more times. Every mirror table carries **mirror
-  fields** (pulled, never written back) and **decision fields** (what we
-  concluded, and what is still outstanding). A decision field that does not
-  change the derived state is decoration, and the test for one is a query
-  before and after it is set.
+- **dms_job_cards**, **dms_enquiries** + **dms_employees**,
+  **dms_registrations**, **dms_part_stock** — the same shape, four more times.
+  `dms_part_stock` is keyed on `(showroomId, partNo)` rather than
+  `(dealerCode, partNo)` unlike the rest: stock is physically at an outlet, not
+  at a dealer code, and one showroom may carry two brands' codes over one set
+  of shelves.
 - **insurer_panel_entries** — one insurer on one outlet's panel: quota, payout,
   turnaround, integration surface. Hangs off the *DMS account*, not the
   showroom. `route` is deliberately absent — it is the account's
   `insuranceChannel`, and storing it twice would let the two disagree.
 
+Every mirror table carries **mirror fields** (pulled, never written back) and
+**decision fields** (what we concluded, and what is still outstanding). A
+decision field that does not change the derived state is decoration, and the
+test for one is a query before and after it is set.
+
 Adding a module means: a mirror table, a `*-worklist.ts` with `sync…` and
 `build…` and `summarise…`, a route, a spec entry, a screen. It is not a fresh
 integration, and it should not become one.
+
+**Every DDMS read is scoped to one showroom except the spares worklist**, which
+reads across every outlet the *session's owner* holds — the scope comes from
+`req.sessionUser.ownerId`, never from the request, and RLS is the backstop. That
+one query is the product's whole premise: a DMS keeps the parts ledger against a
+dealer code, so an owner with three outlets gets three ledgers and no way to ask
+whether the part a customer is waiting for is on a shelf in the next branch.
 
 **Derived state describes a cause, not a consequence.** `registration-worklist.ts`
 has the counter-example written into it: a lapsed temporary registration was
@@ -516,8 +528,9 @@ assignment (`VAR=x cmd`) and depends on `$REPLIT_EXPO_DEV_DOMAIN`,
 ### Frontend pages
 
 DDMS (`artifacts/ddms/src/pages/`): `Leads` (`/`), `Worklist` (`/worklist`),
-`Registrations` (`/registrations`), `ServiceWorklist` (`/service`). Its own
-`Shell` — an owner looking across showrooms, not an agent working one
+`Registrations` (`/registrations`), `ServiceWorklist` (`/service`),
+`Spares` (`/spares`). Its own `Shell` — an owner looking across showrooms,
+rather than an agent working one
 application — with outbound links to the other two products rather than
 embedded copies of them.
 

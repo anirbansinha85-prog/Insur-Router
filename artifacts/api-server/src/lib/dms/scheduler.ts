@@ -19,6 +19,7 @@ import { logger } from "../logger";
 import { isDmsConfigured } from "./client";
 import { syncShowroomEnquiries } from "./lead-worklist";
 import { syncShowroomRegistrations } from "./registration-worklist";
+import { syncShowroomParts } from "./spares-worklist";
 import { syncShowroomJobCards } from "./service-worklist";
 import { syncShowroom } from "./sync";
 
@@ -86,6 +87,7 @@ async function runOnce(): Promise<void> {
       await syncShowroomJobCards(showroomId);
       await syncShowroomEnquiries(showroomId);
       await syncShowroomRegistrations(showroomId);
+      await syncShowroomParts(showroomId);
       succeeded++;
     } catch (err) {
       // One unreachable dealership must not stop the others. The mirror keeps

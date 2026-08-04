@@ -32,6 +32,7 @@ import {
   listEmployees,
   listEnquiries,
   listJobCards,
+  listPartStock,
   listRegnFiles,
   openStore,
   parseDmsTimestamp,
@@ -412,6 +413,42 @@ app.get("/dms/v1/registrations/:regnFileNo", (req, res) => {
     return;
   }
   res.json(file);
+});
+
+/**
+ * Parts stock, for one dealer code.
+ *
+ * Deliberately per dealer, because that is what a DMS has: the stock ledger
+ * belongs to a dealer code, and a dealer code is what the system thinks a
+ * business is. A group that owns three outlets gets three of these and no way
+ * to ask the only question that matters — *does anybody in this company already
+ * have the part I am about to order?*
+ */
+app.get("/dms/v1/parts/stock", (req, res) => {
+  const { dealerCode, partNo, modifiedSince, belowReorder } =
+    req.query as Record<string, string | undefined>;
+
+  let since: Date | undefined;
+  if (modifiedSince) {
+    const parsed = parseDmsTimestamp(modifiedSince);
+    if (!parsed) {
+      res.status(400).json({
+        errCode: "VALIDATION",
+        errDesc: "modifiedSince must be DD-MM-YYYY or DD-MM-YYYY HH:mm:ss",
+      });
+      return;
+    }
+    since = parsed;
+  }
+
+  const stock = listPartStock({
+    dealerCode,
+    partNo,
+    modifiedSince: since,
+    belowReorderOnly: belowReorder === "Y",
+  });
+
+  res.json({ count: stock.length, stock });
 });
 
 /**
