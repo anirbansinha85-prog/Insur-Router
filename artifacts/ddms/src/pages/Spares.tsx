@@ -28,6 +28,7 @@ import { formatDate } from "@/lib/utils"
 import { ActionButton } from "@/lib/actions"
 import { ExplainButton } from "@/lib/explain"
 import { ArrowLeftRight, Boxes, PackageX, Wallet } from "lucide-react"
+import { FindBox, rowText, useFind } from "@/lib/find"
 
 const STATE: Record<
   SparesState,
@@ -137,6 +138,11 @@ export default function Spares() {
     })
   }, [rows, filter])
 
+  // Searched *after* the state filter rather than instead of it: the chips
+  // narrow to a kind of problem and the box finds one record, and somebody who
+  // has picked a chip and then typed a name means both.
+  const { query, setQuery, found } = useFind(visible, rowText)
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 ease-out">
       <div>
@@ -212,6 +218,8 @@ export default function Spares() {
             )
           })}
         </div>
+        <FindBox query={query} setQuery={setQuery} found={found.length} total={visible.length} />
+
         <div className="text-xs text-slate-400">
           {summary?.lastSyncedAt
             ? `Mirror last updated ${formatDate(summary.lastSyncedAt)}`
@@ -241,7 +249,7 @@ export default function Spares() {
                   <TableCell><Skeleton className="h-4 w-56" /></TableCell>
                 </TableRow>
               ))
-            ) : visible.length === 0 ? (
+            ) : found.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="h-32 text-center text-slate-500">
                   <div className="flex flex-col items-center justify-center space-y-3">
@@ -255,7 +263,7 @@ export default function Spares() {
                 </TableCell>
               </TableRow>
             ) : (
-              visible.map((row) => {
+              found.map((row) => {
                 const tone = STATE[row.state]
                 const waiting = row.waitingJobCards ?? []
                 const elsewhere = row.availableAt ?? []

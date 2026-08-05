@@ -39,10 +39,11 @@
  * genuinely has only one of.
  */
 
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   ownerDb,
   applicationsTable,
+  dmsDealsTable,
   policiesTable,
   providersTable,
   submissionLogsTable,
@@ -549,6 +550,175 @@ const SEEDS: Seed[] = [
   },
 ];
 
+
+/**
+ * The insurance the dealership arranged through DDMS on everything else.
+ *
+ * OBJ-6 deepened the mock to seventy-nine deals, and the reconciliation screen
+ * immediately showed sixty-seven rows of one state: `BEHIND` — *the DMS holds a
+ * policy DDMS did not issue*. Every one of those rows was **true**, and the
+ * screen was still wrong, because it was describing a dealership that had
+ * signed up to DDMS this morning and been handed its entire sales history as a
+ * to-do list. That is an onboarding problem, not a day's work, and a screen
+ * that shows one state sixty-seven times demonstrates nothing about what the
+ * state is for.
+ *
+ * So the seeded dealership has been *using* DDMS. Most recent sales have a
+ * matching policy on both sides and reconcile clean; the interesting states are
+ * left at the rate a real month produces them:
+ *
+ * | | |
+ * |---|---|
+ * | `IN_SYNC`  | both systems agree — the great majority, and the boring one |
+ * | `AHEAD`    | DDMS issued it and the dealer's system has not caught up. The one thing read-only access cannot fix for them |
+ * | `BEHIND`   | somebody arranged cover outside DDMS, or it predates us |
+ * | `CONFLICT` | two different policy numbers against one vehicle, which is the row an owner needs to see today |
+ *
+ * > **Reconciliation is string equality, so a marking applied to one side and
+ * > not the other manufactures a conflict.** The first run of this backfill
+ * > produced fifty-five `CONFLICT` rows — *two different policies against one
+ * > vehicle*, the sharpest state the screen has — from deals where both systems
+ * > held the same policy, because DDMS's copy carried `SIM-` and the dealer's
+ * > did not. The fix was to mark the mock's numbers as well: every number in
+ * > that fixture is a policy no insurer issued, and R-41 does not become
+ * > optional on the side of the boundary we happen not to be writing.
+ *
+ * Deterministic, from the deal id, for the same reason `generate.ts` is: a
+ * reconciliation screen that reshuffles between reseeds cannot be demonstrated
+ * and cannot be debugged.
+ */
+async function backfillGeneratedDeals(
+  byCode: Map<string, { id: number; code: string; name: string }>,
+): Promise<void> {
+  const deals = await ownerDb
+    .select({
+      dealId: dmsDealsTable.dealId,
+      dealerCode: dmsDealsTable.dealerCode,
+      showroomId: dmsDealsTable.showroomId,
+      chassisNo: dmsDealsTable.chassisNo,
+      customerName: dmsDealsTable.customerName,
+      policyNo: dmsDealsTable.dmsPolicyNo,
+      modelDesc: dmsDealsTable.modelDescription,
+      exShowroomAmt: dmsDealsTable.exShowroomAmount,
+    })
+    .from(dmsDealsTable);
+
+  // Only the generated book. The five hand-written deals carry scenarios the
+  // session log names by id, and a bulk pass over them would quietly rewrite
+  // the fixtures every earlier proof was made against.
+  const generated = deals.filter((d) => Number(d.dealId.slice(-6)) >= 100 && Number(d.dealId.slice(-6)) < 180);
+  if (generated.length === 0) return;
+
+  const providerCodes = [...byCode.keys()];
+  let made = 0;
+  let skipped = 0;
+
+  for (const d of generated) {
+    // A stable per-deal number, so the same deal lands in the same state on
+    // every reseed without this script keeping any state of its own.
+    const n = Number(d.dealId.slice(-6));
+    const bucket = (n * 37) % 100;
+
+    let ourPolicy: string | null;
+    if (d.policyNo) {
+      // Their system has one. Ours agrees, differs, or has nothing.
+      ourPolicy = bucket < 78 ? d.policyNo : bucket < 84 ? `${d.policyNo.slice(0, -4)}${(n * 7) % 10000}` : null;
+    } else {
+      // Their system has none. A few we issued and they have not keyed in.
+      ourPolicy = bucket < 22 ? `DDMS-${d.dealerCode.slice(-4)}-${100000 + n}` : null;
+    }
+    if (!ourPolicy) {
+      skipped++;
+      continue;
+    }
+
+    const provider = byCode.get(providerCodes[n % providerCodes.length]!)!;
+    const price = Number(d.exShowroomAmt ?? 80000);
+
+    const values = {
+      showroomId: d.showroomId,
+      dmsDealerCode: d.dealerCode,
+      dmsDealId: d.dealId,
+      status: "completed" as const,
+      executionMode: "API" as const,
+      resolvedExecutionMode: "API" as const,
+      providerId: provider.id,
+      vehicleMake: "Hero MotoCorp",
+      vehicleModel: d.modelDesc ?? "Splendor Plus",
+      vehicleVariant: "",
+      vehicleEngineNumber: d.chassisNo ? `HA${d.chassisNo.slice(-8)}` : "",
+      vehicleChassisNumber: d.chassisNo ?? "",
+      vehicleExShowroomPrice: price,
+      // The date of purchase is not on the mirror's deal row, and inventing one
+      // per record would put a figure on the application that nothing supports.
+      // The booking date is what a real application would carry; this is the
+      // one field this backfill is honestly approximating.
+      vehicleDateOfPurchase: "2026-07-01",
+      vehicleFuelType: "PETROL" as const,
+      vehicleCubicCapacity: 97,
+      vehicleSeatingCapacity: 2,
+      vehicleManufactureMonth: 6,
+      vehicleManufactureYear: 2026,
+      ownerFullName: d.customerName ?? "Unknown",
+      ownerBillingAddress: "New Delhi",
+      ownerPincode: 110015,
+      ownerPhoneNumber: "",
+      ownerEmail: "",
+      ownerDateOfBirth: "1990-01-01",
+      ownerIdProofType: "AADHAR" as const,
+      ownerIdProofNumber: "",
+      ownerEntityType: "INDIVIDUAL" as const,
+      rtoRegistrationCity: "New Delhi",
+      rtoRegistrationState: "Delhi",
+      rtoCode: "DL03",
+      coverageType: "BUNDLED_1OD_5TP" as const,
+      coverageTpTermYears: 5,
+      coverageOdTermYears: 1,
+      coverageIdv: Math.round(price * 0.95),
+    };
+
+    const [existing] = await ownerDb
+      .select({ id: applicationsTable.id })
+      .from(applicationsTable)
+      .where(and(eq(applicationsTable.dmsDealerCode, d.dealerCode), eq(applicationsTable.dmsDealId, d.dealId)));
+
+    let id: number;
+    if (existing) {
+      await ownerDb.update(applicationsTable).set(values).where(eq(applicationsTable.id, existing.id));
+      id = existing.id;
+    } else {
+      const [row] = await ownerDb
+        .insert(applicationsTable)
+        .values(values)
+        .returning({ id: applicationsTable.id });
+      id = row!.id;
+      made++;
+    }
+
+    // `SIM-` on every one of them, without exception. These numbers describe
+    // cover no insurer issued, and the marking is on the policy itself rather
+    // than on the screen for the reason R-41 gives: a label on the chrome is
+    // lost the moment somebody copies the number out of it.
+    const number = ourPolicy.startsWith("SIM-") ? ourPolicy : `SIM-${ourPolicy}`;
+    const [pol] = await ownerDb
+      .select({ id: policiesTable.id })
+      .from(policiesTable)
+      .where(eq(policiesTable.applicationId, id));
+    if (pol) {
+      await ownerDb
+        .update(policiesTable)
+        .set({ policyNumber: number, providerName: provider.name })
+        .where(eq(policiesTable.id, pol.id));
+    } else {
+      await ownerDb
+        .insert(policiesTable)
+        .values({ applicationId: id, policyNumber: number, providerName: provider.name });
+    }
+  }
+
+  console.log(`  generated deals: ${made} application(s) created, ${skipped} deliberately left with none`);
+}
+
 async function main(): Promise<void> {
   const providers = await ownerDb
     .select({ id: providersTable.id, code: providersTable.code, name: providersTable.name })
@@ -670,6 +840,8 @@ async function main(): Promise<void> {
       }
     }
   }
+
+  await backfillGeneratedDeals(byCode);
 
   // Nothing should be left unattributed. If it is, say so rather than leaving
   // somebody to discover it as a missing row on a screen.

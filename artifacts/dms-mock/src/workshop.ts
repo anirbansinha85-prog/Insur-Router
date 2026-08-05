@@ -33,6 +33,7 @@ import type {
   DmsJobCardLabour,
   DmsJobCardPart,
 } from "./types.ts";
+import { generateJobCards, GENERATED_EMPLOYEES, VOLUME } from "./generate.ts";
 
 export const EMPLOYEES: DmsEmployee[] = [
   // ── Saraswati, New Delhi ──────────────────────────────────────────────────
@@ -426,3 +427,26 @@ export const JOB_CARD_SEEDS: JobCardSeed[] = [
     psfDaysAgo: null,
   },
 ];
+
+/*
+ * A month of trading, appended.
+ *
+ * `push` rather than a spread inside the array literal, so that "the
+ * hand-written rows are untouched" is a property of the code rather than a
+ * claim in a comment: everything above this line keeps its id, its dates and
+ * its position, and every proof in the session log that names one of them
+ * stays reproducible. See `generate.ts` for what is being added and why the
+ * ratios are what they are.
+ */
+JOB_CARD_SEEDS.push(...generateJobCards(VOLUME.jobCards));
+
+/*
+ * And the rest of the branch.
+ *
+ * The eleven above were written to make three departures visible on a small
+ * floor, and they stay exactly as they are. Ninety job cards and a hundred and
+ * thirty enquiries need more people behind them than two salesmen and one
+ * advisor, or the workload figures the queue and the agent both reason about
+ * describe a dealership nobody would recognise.
+ */
+EMPLOYEES.push(...GENERATED_EMPLOYEES);

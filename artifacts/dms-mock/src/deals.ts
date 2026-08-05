@@ -21,6 +21,8 @@
 
 import type { DmsDeal, DmsDealer, DmsStockUnit } from "./types.ts";
 import { MODELS } from "./catalogue.ts";
+import { generateDeals } from "./generate-deals.ts";
+import { VOLUME } from "./generate.ts";
 
 export const DEALERS: Record<string, DmsDealer> = {
   "HMC-DL-0417": {
@@ -554,3 +556,17 @@ export const DEALS: DmsDeal[] = [
     },
   },
 ];
+
+/*
+ * A month of sales, appended.
+ *
+ * `push` rather than a spread inside the literal, so the five hand-written
+ * deals above keep their ids, their dates and their position — every proof in
+ * the session log that names 000181 or 000185 stays reproducible.
+ *
+ * The base date is read once, here, and handed down. Every other seed in this
+ * mock is an offset that `store.ts` resolves at seed time; a deal is stored as
+ * a document with its dates already formatted, so somebody has to read the
+ * clock, and doing it in one place keeps the generator itself pure.
+ */
+DEALS.push(...generateDeals(VOLUME.deals, new Date()));

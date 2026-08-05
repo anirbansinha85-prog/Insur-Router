@@ -35,6 +35,7 @@ import { ActionButton } from "@/lib/actions"
 import { ExplainButton } from "@/lib/explain"
 import { DraftButton } from "@/lib/messages"
 import { AlertTriangle, Building2, Clock, HandCoins, Wallet } from "lucide-react"
+import { FindBox, rowText, useFind } from "@/lib/find"
 
 const STATE: Record<
   ReceivableState,
@@ -150,6 +151,11 @@ export default function Receivables() {
     })
   }, [rows, filter])
 
+  // Searched *after* the state filter rather than instead of it: the chips
+  // narrow to a kind of problem and the box finds one record, and somebody who
+  // has picked a chip and then typed a name means both.
+  const { query, setQuery, found } = useFind(visible, rowText)
+
   const exposure = summary?.largestGroupExposure
 
   return (
@@ -231,6 +237,8 @@ export default function Receivables() {
             )
           })}
         </div>
+        <FindBox query={query} setQuery={setQuery} found={found.length} total={visible.length} />
+
         <div className="text-xs text-slate-400">
           {summary?.lastSyncedAt ? `Mirror last updated ${formatDate(summary.lastSyncedAt)}` : "Never synced"}
         </div>
@@ -257,14 +265,14 @@ export default function Receivables() {
                   </TableCell>
                 </TableRow>
               ))
-            ) : visible.length === 0 ? (
+            ) : found.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="py-12 text-center text-sm text-slate-400">
                   Nothing outstanding here.
                 </TableCell>
               </TableRow>
             ) : (
-              visible.map((row) => (
+              found.map((row) => (
                 <TableRow key={row.receivableId}>
                   <TableCell className="align-top">
                     <div className="text-sm font-medium text-slate-800">{row.partyName}</div>

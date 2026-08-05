@@ -42,6 +42,7 @@ import {
   ShieldAlert,
   Store,
 } from "lucide-react"
+import { FindBox, rowText, useFind } from "@/lib/find"
 
 /**
  * How each reconcile state should read at a glance.
@@ -231,6 +232,11 @@ export default function Worklist() {
     })
   }, [rows, filter])
 
+  // Searched *after* the state filter rather than instead of it: the chips
+  // narrow to a kind of problem and the box finds one record, and somebody who
+  // has picked a chip and then typed a name means both.
+  const { query, setQuery, found } = useFind(visible, rowText)
+
   const handleSync = () => {
     if (!selected) return
     sync.mutate(
@@ -372,6 +378,8 @@ export default function Worklist() {
           })}
         </div>
 
+        <FindBox query={query} setQuery={setQuery} found={found.length} total={visible.length} />
+
         {/* Staleness stated plainly. A mirror that hides its age is worse than
             no mirror, because it gets trusted anyway. */}
         <div className="text-xs text-slate-400 flex items-center gap-1.5">
@@ -406,7 +414,7 @@ export default function Worklist() {
                   <TableCell><Skeleton className="h-4 w-48" /></TableCell>
                 </TableRow>
               ))
-            ) : visible.length === 0 ? (
+            ) : found.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="h-32 text-center text-slate-500">
                   <div className="flex flex-col items-center justify-center space-y-3">
@@ -420,7 +428,7 @@ export default function Worklist() {
                 </TableCell>
               </TableRow>
             ) : (
-              visible.map((row) => {
+              found.map((row) => {
                 const tone = RECONCILE[row.reconcile]
                 return (
                   <TableRow

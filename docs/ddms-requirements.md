@@ -813,7 +813,7 @@ short-staffed dealership does not employ. So:
 | 6 | ~~**OBJ-18** The dealership's own numbers~~ ✅ | no | *added 4 Aug.* The queue shipped with our opinion of what matters in it |
 | 7 | **OBJ-19** The agent remembers what this dealership did | no | *added 4 Aug.* Precedent from the decision log. Before 17, so the agent that acts acts with it |
 | 8 | ~~**OBJ-17** The agent operates the registry~~ ✅ | yes, gated | the registry, the refusals, the gate and the audit trail all exist by then |
-| 9 | **OBJ-6** A dealership that reads as real | no | last, and better last — by then there is more for the data to exercise |
+| 9 | ~~**OBJ-6** A dealership that reads as real~~ ✅ | no | last, and better last — by then there is more for the data to exercise, and it exposed a missing search on every list plus three bugs |
 
 > ~~**OBJ-20 — a person may write their own sentence**~~ ✅ **done 5 Aug**, and
 > it was unsequenced above because it is small and it is a usability gap rather
@@ -1421,7 +1421,7 @@ memory —
 <https://arxiv.org/html/2607.27080>,
 <https://arxiv.org/pdf/2606.06054>.
 
-### OBJ-6 — A dealership that reads as real
+### OBJ-6 — A dealership that reads as real  ✅ **done 5 Aug**
 *Covers R-6, R-33. Replaces "get real DMS access", which Anirban ruled out on
 3 Aug: the data we generate is the data, and it has to feel real rather than be
 real.*
@@ -1432,6 +1432,81 @@ month is, and no demo labelling anywhere in the chrome.
 
 **Done when:** somebody shown the console without preamble asks a question about
 the business rather than a question about the data.
+
+A deterministic generator in `dms-mock/src/generate.ts`, **appended** to the
+hand-written fixtures rather than replacing them. `push` rather than a spread
+inside the array literal, so *the hand-written rows are untouched* is a property
+of the code: every scenario the last six sessions proved something against keeps
+its id, its dates and its position, and every proof in the session log stays
+reproducible.
+
+| | before | after |
+|---|---|---|
+| enquiries | 9 | **141** |
+| job cards | 8 | **104** |
+| registration files | 10 | **88** |
+| deals | 4 | **78** |
+| vehicle stock | 6 | **58** |
+| parts | 9 | **67** |
+| receivables | 6 | **50** |
+| staff | 11 | **21** |
+
+One seeded PRNG and no `Math.random` anywhere: reseeding twice produces the same
+dealership. `store.ts` already argues this about state surviving restarts, and
+it applies with more force to generated volume — a dealership that is different
+every morning cannot be demonstrated and a bug that appears in one shape of data
+cannot be found.
+
+**The ratios are the claim, not the volume.** Roughly one row in six needs
+somebody. The hand-written fixtures were effectively all stuck, because each was
+written to demonstrate a failure, and that made the queue read as a dealership
+in crisis rather than one having a normal month.
+
+> **R-33 needed no change, and one thing that looked like a violation was not.**
+> `doc-ingest` labels its stub OCR engine *"returns fabricated demo data"* — that
+> is R-41 working, not R-33 broken. R-33 is about the dealership's records not
+> being badged as a fixture; R-41 is about never presenting simulated output as
+> real. The stub genuinely fabricates and the label is the honest one.
+
+#### What the volume exposed, which is what generating it was for
+
+> **Every list screen needed a search and none had one.** Filtering by state
+> existed everywhere — a chip row is the right control for *show me everything
+> stuck the same way* — and it is the wrong control for the question somebody
+> walks up with: *the customer is on the phone, what is happening with Mr
+> Pillai's bike*. At nine enquiries that gap was invisible because you could
+> read the screen. At a hundred and forty-one it is the difference between a
+> working screen and one people give up on. `lib/find.tsx`, wired into all seven
+> lists; `pillai` → 4 of 141.
+
+> **The reconciliation screen showed one state sixty-seven times.** Every row
+> said `BEHIND` — *the DMS holds a policy DDMS did not issue* — and every one was
+> **true**: it was describing a dealership that had signed up this morning and
+> been handed its entire sales history as a to-do list. That is an onboarding
+> problem, not a day's work. The seeded dealership now *has been using* DDMS, and
+> the screen reads `IN_SYNC 53 · BEHIND 12 · NOT_STARTED 7 · CONFLICT 4 ·
+> AHEAD 2` — which is what that screen is for.
+
+> **Reconciliation is string equality, so marking one side manufactures a
+> conflict.** Prefixing DDMS's copy with `SIM-` while the mock's stayed unmarked
+> produced fifty-five `CONFLICT` rows — *two different policies against one
+> vehicle*, the sharpest state that screen has — out of deals where both systems
+> held the same policy. The fix was to mark the mock's numbers too: every number
+> in that fixture is a policy no insurer issued, and R-41 does not become
+> optional on the side of the boundary we happen not to be writing.
+
+> **Two draws for one decision.** Job cards asked `chance(0.66)` separately for
+> the post-service record and for its date — two different draws from the same
+> stream — so a third of them had a record and no date or a date and no record,
+> and thirty-eight landed on the queue as a follow-up call that had already been
+> made. Decided once now.
+
+> **Four of nine model codes did not exist.** The mix carried Passion, Glamour
+> and Xoom, which a real Hero dealer certainly sells and `catalogue.ts` does
+> not, and the mock's own portal died on the first request looking up a warranty
+> period for a model with no entry. Narrowed to the six the catalogue holds
+> rather than inventing four more service schedules the catalogue's own header
+> warns against.
 
 ---
 

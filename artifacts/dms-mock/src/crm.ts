@@ -28,6 +28,7 @@ import type {
   DmsEnquiryStage,
   DmsTestRide,
 } from "./types.ts";
+import { generateEnquiries, VOLUME } from "./generate.ts";
 
 export interface EnquirySeed
   extends Omit<
@@ -188,3 +189,15 @@ export const ENQUIRY_SEEDS: EnquirySeed[] = [
 ];
 
 export type { DmsEnquiryFollowUp, DmsTestRide };
+
+/*
+ * A month of trading, appended.
+ *
+ * `push` rather than a spread inside the array literal, so that "the
+ * hand-written rows are untouched" is a property of the code rather than a
+ * claim in a comment: everything above this line keeps its id, its dates and
+ * its position, and every proof in the session log that names one of them
+ * stays reproducible. See `generate.ts` for what is being added and why the
+ * ratios are what they are.
+ */
+ENQUIRY_SEEDS.push(...generateEnquiries(VOLUME.enquiries));

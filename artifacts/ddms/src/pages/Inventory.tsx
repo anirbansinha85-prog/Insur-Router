@@ -33,6 +33,7 @@ import { formatDate } from "@/lib/utils"
 import { ActionButton } from "@/lib/actions"
 import { ExplainButton } from "@/lib/explain"
 import { Banknote, Bike, PhoneCall, TrendingDown, Warehouse } from "lucide-react"
+import { FindBox, rowText, useFind } from "@/lib/find"
 
 const STATE: Record<
   InventoryState,
@@ -137,6 +138,11 @@ export default function Inventory() {
     })
   }, [rows, filter])
 
+  // Searched *after* the state filter rather than instead of it: the chips
+  // narrow to a kind of problem and the box finds one record, and somebody who
+  // has picked a chip and then typed a name means both.
+  const { query, setQuery, found } = useFind(visible, rowText)
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 ease-out">
       <div>
@@ -214,6 +220,8 @@ export default function Inventory() {
             )
           })}
         </div>
+        <FindBox query={query} setQuery={setQuery} found={found.length} total={visible.length} />
+
         <div className="text-xs text-slate-400">
           {summary?.lastSyncedAt ? `Mirror last updated ${formatDate(summary.lastSyncedAt)}` : "Never synced"}
         </div>
@@ -238,14 +246,14 @@ export default function Inventory() {
                   </TableCell>
                 </TableRow>
               ))
-            ) : visible.length === 0 ? (
+            ) : found.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={4} className="py-12 text-center text-sm text-slate-400">
                   Nothing on the floor here.
                 </TableCell>
               </TableRow>
             ) : (
-              visible.map((row) => (
+              found.map((row) => (
                 <TableRow key={row.chassisNo}>
                   <TableCell className="align-top">
                     <div className="text-sm font-medium text-slate-800">

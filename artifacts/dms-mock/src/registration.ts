@@ -38,6 +38,7 @@
  */
 
 import type { DmsRegnDoc, DmsRegnFile } from "./types.ts";
+import { generateRegistrations, VOLUME } from "./generate.ts";
 
 /** The document checklist a registration file is opened with. */
 const DOCS = {
@@ -506,3 +507,15 @@ export const REGN_FILE_SEEDS: RegnFileSeed[] = [
     docSeeds: standardDocs(71),
   },
 ];
+
+/*
+ * A month of trading, appended.
+ *
+ * `push` rather than a spread inside the array literal, so that "the
+ * hand-written rows are untouched" is a property of the code rather than a
+ * claim in a comment: everything above this line keeps its id, its dates and
+ * its position, and every proof in the session log that names one of them
+ * stays reproducible. See `generate.ts` for what is being added and why the
+ * ratios are what they are.
+ */
+REGN_FILE_SEEDS.push(...generateRegistrations(VOLUME.registrations));

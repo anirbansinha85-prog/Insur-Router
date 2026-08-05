@@ -535,6 +535,28 @@ produces two very different things, and that asymmetry is R-48.
 > happened. When a field appears that records something the system did, a rule
 > may write it.
 
+## The seeded dealership
+
+`dms-mock/src/generate.ts` and `generate-deals.ts` — a month of trading
+**appended** to the hand-written fixtures, never replacing them. `push` rather
+than a spread inside the array literal, so every scenario the session log names
+by id keeps its id, its dates and its position.
+
+One seeded PRNG, no `Math.random`, no clock read in any decision: reseeding
+twice produces the same dealership. 141 enquiries, 104 job cards, 88
+registration files, 78 deals, 58 vehicles, 67 parts, 50 receivables, 21 staff.
+Saraswati carries the volume; Deccan stays parked (R-43).
+
+**The ratios are the claim, not the volume** — about one row in six needs
+somebody. Reseed with `DMS_RESET=1`, then sync both showrooms, then
+`pnpm run db:seed-applications`, which also backfills DDMS's own policies for
+the generated deals so reconciliation reads as a dealership that has been using
+DDMS rather than one that signed up this morning.
+
+> **Reconciliation is string equality.** A `SIM-` prefix on one side and not the
+> other manufactures a `CONFLICT` per matched deal. Both sides carry it, because
+> every number in that fixture is a policy no insurer issued (R-41).
+
 ## The agent operates the registry
 
 `lib/dms/agent.ts`. The agent calls the same `applyAction()` a button calls, with
