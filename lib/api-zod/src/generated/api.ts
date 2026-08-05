@@ -799,7 +799,7 @@ export const DraftDmsMessageResponse = zod.object({
   "subject": zod.string().nullish(),
   "body": zod.string(),
   "template": zod.string(),
-  "draftedBy": zod.enum(['RULE', 'AGENT']).describe('AGENT means a model rephrased the template draft and the rephrasing passed a check that it asserted no figure the facts do not support. A rewrite that failed that check never reaches this row.\n'),
+  "draftedBy": zod.enum(['RULE', 'AGENT', 'PERSON']).describe('AGENT means a model rephrased the template draft and the rephrasing passed a check that it asserted no figure the facts do not support. A rewrite that failed that check never reaches this row.\nPERSON means a named member of staff typed into it, and it is the one value the fact check does not stand behind — deliberately. The check guards against a model inventing figures; somebody signed in writing their own sentence and approving it is a person taking responsibility. What keeps it safe is the gate: a PERSON draft can never take the rule path.\n'),
   "facts": zod.record(zod.string(), zod.unknown()).nullish().describe('The values the body is permitted to assert.'),
   "status": zod.enum(['DRAFT', 'APPROVED', 'SENT', 'HELD_NO_TRANSPORT', 'FAILED', 'CANCELLED']),
   "authorisedBasis": zod.string().nullish(),
@@ -808,6 +808,11 @@ export const DraftDmsMessageResponse = zod.object({
   "approvedAt": zod.string().nullish(),
   "sentAt": zod.string().nullish().describe('Written only by the send endpoint, and only after the gate returned a basis.'),
   "failureReason": zod.string().nullish(),
+  "composedSubject": zod.string().nullish(),
+  "composedBody": zod.string().nullish().describe('What the rule composed, kept when somebody edits. Null until the first edit, and written once — so it is always the composed text rather than the previous edit.\n'),
+  "editedByUserId": zod.number().int().nullish(),
+  "editedByName": zod.string().nullish().describe('The name they had at the time. Denormalised because it is an audit fact, and because the credential every request runs on has no grant on the users table.\n'),
+  "editedAt": zod.string().nullish(),
   "createdByUserId": zod.number().int().nullish(),
   "createdAt": zod.string()
 }),
@@ -848,7 +853,7 @@ export const ListDmsMessagesResponse = zod.object({
   "subject": zod.string().nullish(),
   "body": zod.string(),
   "template": zod.string(),
-  "draftedBy": zod.enum(['RULE', 'AGENT']).describe('AGENT means a model rephrased the template draft and the rephrasing passed a check that it asserted no figure the facts do not support. A rewrite that failed that check never reaches this row.\n'),
+  "draftedBy": zod.enum(['RULE', 'AGENT', 'PERSON']).describe('AGENT means a model rephrased the template draft and the rephrasing passed a check that it asserted no figure the facts do not support. A rewrite that failed that check never reaches this row.\nPERSON means a named member of staff typed into it, and it is the one value the fact check does not stand behind — deliberately. The check guards against a model inventing figures; somebody signed in writing their own sentence and approving it is a person taking responsibility. What keeps it safe is the gate: a PERSON draft can never take the rule path.\n'),
   "facts": zod.record(zod.string(), zod.unknown()).nullish().describe('The values the body is permitted to assert.'),
   "status": zod.enum(['DRAFT', 'APPROVED', 'SENT', 'HELD_NO_TRANSPORT', 'FAILED', 'CANCELLED']),
   "authorisedBasis": zod.string().nullish(),
@@ -857,6 +862,11 @@ export const ListDmsMessagesResponse = zod.object({
   "approvedAt": zod.string().nullish(),
   "sentAt": zod.string().nullish().describe('Written only by the send endpoint, and only after the gate returned a basis.'),
   "failureReason": zod.string().nullish(),
+  "composedSubject": zod.string().nullish(),
+  "composedBody": zod.string().nullish().describe('What the rule composed, kept when somebody edits. Null until the first edit, and written once — so it is always the composed text rather than the previous edit.\n'),
+  "editedByUserId": zod.number().int().nullish(),
+  "editedByName": zod.string().nullish().describe('The name they had at the time. Denormalised because it is an audit fact, and because the credential every request runs on has no grant on the users table.\n'),
+  "editedAt": zod.string().nullish(),
   "createdByUserId": zod.number().int().nullish(),
   "createdAt": zod.string()
 }),
@@ -906,7 +916,7 @@ export const ApproveDmsMessageResponse = zod.object({
   "subject": zod.string().nullish(),
   "body": zod.string(),
   "template": zod.string(),
-  "draftedBy": zod.enum(['RULE', 'AGENT']).describe('AGENT means a model rephrased the template draft and the rephrasing passed a check that it asserted no figure the facts do not support. A rewrite that failed that check never reaches this row.\n'),
+  "draftedBy": zod.enum(['RULE', 'AGENT', 'PERSON']).describe('AGENT means a model rephrased the template draft and the rephrasing passed a check that it asserted no figure the facts do not support. A rewrite that failed that check never reaches this row.\nPERSON means a named member of staff typed into it, and it is the one value the fact check does not stand behind — deliberately. The check guards against a model inventing figures; somebody signed in writing their own sentence and approving it is a person taking responsibility. What keeps it safe is the gate: a PERSON draft can never take the rule path.\n'),
   "facts": zod.record(zod.string(), zod.unknown()).nullish().describe('The values the body is permitted to assert.'),
   "status": zod.enum(['DRAFT', 'APPROVED', 'SENT', 'HELD_NO_TRANSPORT', 'FAILED', 'CANCELLED']),
   "authorisedBasis": zod.string().nullish(),
@@ -915,6 +925,72 @@ export const ApproveDmsMessageResponse = zod.object({
   "approvedAt": zod.string().nullish(),
   "sentAt": zod.string().nullish().describe('Written only by the send endpoint, and only after the gate returned a basis.'),
   "failureReason": zod.string().nullish(),
+  "composedSubject": zod.string().nullish(),
+  "composedBody": zod.string().nullish().describe('What the rule composed, kept when somebody edits. Null until the first edit, and written once — so it is always the composed text rather than the previous edit.\n'),
+  "editedByUserId": zod.number().int().nullish(),
+  "editedByName": zod.string().nullish().describe('The name they had at the time. Denormalised because it is an audit fact, and because the credential every request runs on has no grant on the users table.\n'),
+  "editedAt": zod.string().nullish(),
+  "createdByUserId": zod.number().int().nullish(),
+  "createdAt": zod.string()
+}),
+  "gate": zod.object({
+  "ok": zod.boolean(),
+  "basis": zod.enum(['RULE', 'PERSON']).optional(),
+  "rule": zod.string().optional(),
+  "userId": zod.number().int().optional(),
+  "reason": zod.string().optional().describe('Present when ok is false. Why it may not go.')
+}).describe('What would happen if somebody pressed send right now.')
+})
+
+
+/**
+ * The Outbox shipped with no editing, because a rewrite check exists to stop a model inventing a figure the facts do not support. That check is still right and it is not this case: a named manager adding "Mr Verma is coming in on Saturday, please have the file ready" is asserting something only they know, and there is nothing in the mirror to check it against.
+ * What editing does to the gate matters more than what it does to the text. An edited message can never take the rule path again, so an internal notification a rule would have sent unattended now waits for the person who edited it to approve it. The composed text is kept alongside, written once, so what the product proposed and what the dealership said are both answerable later.
+ * DRAFT only. Approval means somebody read it as it stood.
+ * @summary A person writes their own sentence into a draft
+ */
+export const EditDmsMessageParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const editDmsMessageBodyBodyMax = 4000;
+
+
+
+export const EditDmsMessageBody = zod.object({
+  "body": zod.string().max(editDmsMessageBodyBodyMax),
+  "subject": zod.string().nullish().describe('Omit to leave it as it is. Null clears it, as on WhatsApp and SMS.')
+}).describe('The text as it should go. Send the whole message rather than a patch — the person editing has read the whole message, and that is the unit approval is given over.\n')
+
+export const EditDmsMessageResponse = zod.object({
+  "message": zod.object({
+  "id": zod.number().int(),
+  "ownerId": zod.number().int(),
+  "showroomId": zod.number().int(),
+  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART', 'RECEIVABLE', 'VEHICLE']),
+  "recordKey": zod.string(),
+  "audience": zod.enum(['INTERNAL', 'CUSTOMER']).describe('The axis the whole gate turns on. A rule may permit an internal message. Nothing permits a customer one except a person.\n'),
+  "channel": zod.enum(['EMAIL', 'WHATSAPP', 'SMS']),
+  "toName": zod.string().nullish(),
+  "toAddress": zod.string().nullish(),
+  "toEmpCode": zod.string().nullish(),
+  "subject": zod.string().nullish(),
+  "body": zod.string(),
+  "template": zod.string(),
+  "draftedBy": zod.enum(['RULE', 'AGENT', 'PERSON']).describe('AGENT means a model rephrased the template draft and the rephrasing passed a check that it asserted no figure the facts do not support. A rewrite that failed that check never reaches this row.\nPERSON means a named member of staff typed into it, and it is the one value the fact check does not stand behind — deliberately. The check guards against a model inventing figures; somebody signed in writing their own sentence and approving it is a person taking responsibility. What keeps it safe is the gate: a PERSON draft can never take the rule path.\n'),
+  "facts": zod.record(zod.string(), zod.unknown()).nullish().describe('The values the body is permitted to assert.'),
+  "status": zod.enum(['DRAFT', 'APPROVED', 'SENT', 'HELD_NO_TRANSPORT', 'FAILED', 'CANCELLED']),
+  "authorisedBasis": zod.string().nullish(),
+  "authorisedRule": zod.string().nullish(),
+  "approvedByUserId": zod.number().int().nullish(),
+  "approvedAt": zod.string().nullish(),
+  "sentAt": zod.string().nullish().describe('Written only by the send endpoint, and only after the gate returned a basis.'),
+  "failureReason": zod.string().nullish(),
+  "composedSubject": zod.string().nullish(),
+  "composedBody": zod.string().nullish().describe('What the rule composed, kept when somebody edits. Null until the first edit, and written once — so it is always the composed text rather than the previous edit.\n'),
+  "editedByUserId": zod.number().int().nullish(),
+  "editedByName": zod.string().nullish().describe('The name they had at the time. Denormalised because it is an audit fact, and because the credential every request runs on has no grant on the users table.\n'),
+  "editedAt": zod.string().nullish(),
   "createdByUserId": zod.number().int().nullish(),
   "createdAt": zod.string()
 }),
@@ -955,7 +1031,7 @@ export const CancelDmsMessageResponse = zod.object({
   "subject": zod.string().nullish(),
   "body": zod.string(),
   "template": zod.string(),
-  "draftedBy": zod.enum(['RULE', 'AGENT']).describe('AGENT means a model rephrased the template draft and the rephrasing passed a check that it asserted no figure the facts do not support. A rewrite that failed that check never reaches this row.\n'),
+  "draftedBy": zod.enum(['RULE', 'AGENT', 'PERSON']).describe('AGENT means a model rephrased the template draft and the rephrasing passed a check that it asserted no figure the facts do not support. A rewrite that failed that check never reaches this row.\nPERSON means a named member of staff typed into it, and it is the one value the fact check does not stand behind — deliberately. The check guards against a model inventing figures; somebody signed in writing their own sentence and approving it is a person taking responsibility. What keeps it safe is the gate: a PERSON draft can never take the rule path.\n'),
   "facts": zod.record(zod.string(), zod.unknown()).nullish().describe('The values the body is permitted to assert.'),
   "status": zod.enum(['DRAFT', 'APPROVED', 'SENT', 'HELD_NO_TRANSPORT', 'FAILED', 'CANCELLED']),
   "authorisedBasis": zod.string().nullish(),
@@ -964,6 +1040,11 @@ export const CancelDmsMessageResponse = zod.object({
   "approvedAt": zod.string().nullish(),
   "sentAt": zod.string().nullish().describe('Written only by the send endpoint, and only after the gate returned a basis.'),
   "failureReason": zod.string().nullish(),
+  "composedSubject": zod.string().nullish(),
+  "composedBody": zod.string().nullish().describe('What the rule composed, kept when somebody edits. Null until the first edit, and written once — so it is always the composed text rather than the previous edit.\n'),
+  "editedByUserId": zod.number().int().nullish(),
+  "editedByName": zod.string().nullish().describe('The name they had at the time. Denormalised because it is an audit fact, and because the credential every request runs on has no grant on the users table.\n'),
+  "editedAt": zod.string().nullish(),
   "createdByUserId": zod.number().int().nullish(),
   "createdAt": zod.string()
 })
@@ -995,7 +1076,7 @@ export const SendDmsMessageResponse = zod.object({
   "subject": zod.string().nullish(),
   "body": zod.string(),
   "template": zod.string(),
-  "draftedBy": zod.enum(['RULE', 'AGENT']).describe('AGENT means a model rephrased the template draft and the rephrasing passed a check that it asserted no figure the facts do not support. A rewrite that failed that check never reaches this row.\n'),
+  "draftedBy": zod.enum(['RULE', 'AGENT', 'PERSON']).describe('AGENT means a model rephrased the template draft and the rephrasing passed a check that it asserted no figure the facts do not support. A rewrite that failed that check never reaches this row.\nPERSON means a named member of staff typed into it, and it is the one value the fact check does not stand behind — deliberately. The check guards against a model inventing figures; somebody signed in writing their own sentence and approving it is a person taking responsibility. What keeps it safe is the gate: a PERSON draft can never take the rule path.\n'),
   "facts": zod.record(zod.string(), zod.unknown()).nullish().describe('The values the body is permitted to assert.'),
   "status": zod.enum(['DRAFT', 'APPROVED', 'SENT', 'HELD_NO_TRANSPORT', 'FAILED', 'CANCELLED']),
   "authorisedBasis": zod.string().nullish(),
@@ -1004,6 +1085,11 @@ export const SendDmsMessageResponse = zod.object({
   "approvedAt": zod.string().nullish(),
   "sentAt": zod.string().nullish().describe('Written only by the send endpoint, and only after the gate returned a basis.'),
   "failureReason": zod.string().nullish(),
+  "composedSubject": zod.string().nullish(),
+  "composedBody": zod.string().nullish().describe('What the rule composed, kept when somebody edits. Null until the first edit, and written once — so it is always the composed text rather than the previous edit.\n'),
+  "editedByUserId": zod.number().int().nullish(),
+  "editedByName": zod.string().nullish().describe('The name they had at the time. Denormalised because it is an audit fact, and because the credential every request runs on has no grant on the users table.\n'),
+  "editedAt": zod.string().nullish(),
   "createdByUserId": zod.number().int().nullish(),
   "createdAt": zod.string()
 })

@@ -815,10 +815,12 @@ short-staffed dealership does not employ. So:
 | 8 | **OBJ-17** The agent operates the registry | yes, gated | the registry, the refusals, the gate and the audit trail all exist by then |
 | 9 | **OBJ-6** A dealership that reads as real | no | last, and better last — by then there is more for the data to exercise |
 
-> **OBJ-20 — a person may write their own sentence** is unsequenced above
-> because it is small and it is a usability gap rather than a capability one.
-> It belongs before anybody demonstrates the Outbox to a dealership: the answer
-> to *"can I just add a line?"* is currently no, and that is the wrong answer.
+> ~~**OBJ-20 — a person may write their own sentence**~~ ✅ **done 5 Aug**, and
+> it was unsequenced above because it is small and it is a usability gap rather
+> than a capability one. It was taken first anyway, out of order, because it
+> belongs before anybody demonstrates the Outbox to a dealership and the local
+> hosting on 5 August was that demonstration: the answer to *"can I just add a
+> line?"* was no, and that is the wrong answer.
 
 > Two objectives already on the list keep their place in it rather than being
 > pushed behind new work. OBJ-8 moves *up*, because roles and credentials are
@@ -1251,7 +1253,7 @@ carries what was done last time with a count and a date; a state it has never
 handled carries nothing rather than a hedge; and a pattern stopped 60 days ago
 is gone from the screen without anybody retiring it.
 
-### OBJ-20 — A person may write their own sentence
+### OBJ-20 — A person may write their own sentence  ✅ **done 5 Aug**
 *Raised by Anirban, 5 August. Covers R-72 to R-75.*
 
 The Outbox shipped with **no editing**, deliberately, and the reasoning is
@@ -1287,12 +1289,42 @@ edited and by whom, the gate refuses it a rule basis so it needs approval even
 though the unedited version would not have, and the original text is still
 recoverable.
 
+**Proved on the one draft the test needed** — message 31, an internal lead
+handover to Neha Grover, `DRAFT`, gate `OK RULE`. Adding a sentence to it turned
+that verdict into *"Anirban Sinha added their own words to this. The rule only
+sends text it composed itself"*, `send` came back 409, and after approval it
+went out on a `PERSON` basis with `authorisedRule` null. `composedBody` still
+holds the rule's wording, unchanged by a **second** edit — written once, so it
+stays the composed text rather than the previous edit's.
+
+Three refusals worth naming: editing an `APPROVED` message is 409 (R-75), an
+empty body and a 4,001-character one are both 400, and an edit that changes
+nothing returns the row untouched and writes no log line — recording it would
+close the rule path on a message a rule could still send.
+
+> **The name is denormalised on the row and that is a deliberate reversal of
+> the usual instinct.** `editedByName` could be joined from `users`, except
+> `ddms_app` — the credential every request runs on — has no grant on that table
+> at all, and it holds password hashes. Widening it so a screen can print a name
+> would be a poor trade. It is also the better answer regardless: *this sentence
+> was written by Sunil Rane on 5 August* stays true after he is renamed or
+> leaves, and re-resolving the id later would quietly answer a different
+> question.
+
+> **One consequence surfaced only by writing the withdrawal note.** A rule
+> withdraws its own stale drafts (OBJ-16), and a rule-raised draft somebody has
+> since typed into is still rule-raised. Withdrawing it is right — the message
+> asserts something that has stopped being true, which is the exact failure that
+> function was added to fix — but the note now names the person who added to it
+> and says their text is kept on the row. The system may withdraw a person's
+> words; it should never do it silently.
+
 | # | Requirement | Status |
 |---|---|---|
-| R-72 | **A person may edit a draft; a rule may not send what a person edited.** The rewrite checks guard against a model inventing figures. A named person writing their own sentence and approving it is the opposite case — it is somebody taking responsibility, which is what R-48 wants — but it must always take the person path, never the rule one | ○ |
-| R-73 | **What was drafted survives what was sent.** The composed text is kept alongside the edited text, because *what the product proposed* and *what the dealership said* are different facts and both are worth having later | ○ |
-| R-74 | **An edit is a decision and is logged like one.** Who, when, and both versions | ○ |
-| R-75 | **Editing is for `DRAFT` only.** Approval means somebody read it; text that changes after that has not been read by the person whose name is on the approval | ○ |
+| R-72 | **A person may edit a draft; a rule may not send what a person edited.** The rewrite checks guard against a model inventing figures. A named person writing their own sentence and approving it is the opposite case — it is somebody taking responsibility, which is what R-48 wants — but it must always take the person path, never the rule one | ✅ |
+| R-73 | **What was drafted survives what was sent.** The composed text is kept alongside the edited text, because *what the product proposed* and *what the dealership said* are different facts and both are worth having later | ✅ |
+| R-74 | **An edit is a decision and is logged like one.** Who, when, and both versions | ✅ |
+| R-75 | **Editing is for `DRAFT` only.** Approval means somebody read it; text that changes after that has not been read by the person whose name is on the approval | ✅ |
 
 ### Sources
 

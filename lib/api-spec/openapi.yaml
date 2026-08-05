@@ -987,6 +987,66 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /dms/messages/{id}/edit:
+    post:
+      operationId: editDmsMessage
+      tags: [dms]
+      summary: A person writes their own sentence into a draft
+      description: >
+        The Outbox shipped with no editing, because a rewrite check exists to stop
+        a model inventing a figure the facts do not support. That check is still
+        right and it is not this case: a named manager adding "Mr Verma is coming
+        in on Saturday, please have the file ready" is asserting something only
+        they know, and there is nothing in the mirror to check it against.
+
+        What editing does to the gate matters more than what it does to the text.
+        An edited message can never take the rule path again, so an internal
+        notification a rule would have sent unattended now waits for the person
+        who edited it to approve it. The composed text is kept alongside, written
+        once, so what the product proposed and what the dealership said are both
+        answerable later.
+
+        DRAFT only. Approval means somebody read it as it stood.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageEditInput"
+      responses:
+        "200":
+          description: >
+            Edited, with the gate re-evaluated. Expect ok false on a message a
+            rule would have sent before the edit.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageWithGate"
+        "400":
+          description: Empty, or longer than a message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No such message for this owner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Not a draft — approved, sent, cancelled or held
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /dms/messages/{id}/cancel:
     post:
       operationId: cancelDmsMessage
@@ -3218,11 +3278,18 @@ components:
         template: { type: string }
         draftedBy:
           type: string
-          enum: [RULE, AGENT]
+          enum: [RULE, AGENT, PERSON]
           description: >
             AGENT means a model rephrased the template draft and the rephrasing
             passed a check that it asserted no figure the facts do not support. A
             rewrite that failed that check never reaches this row.
+
+            PERSON means a named member of staff typed into it, and it is the one
+            value the fact check does not stand behind — deliberately. The check
+            guards against a model inventing figures; somebody signed in writing
+            their own sentence and approving it is a person taking responsibility.
+            What keeps it safe is the gate: a PERSON draft can never take the rule
+            path.
         facts:
           type: ["object", "null"]
           additionalProperties: true
@@ -3239,6 +3306,22 @@ components:
           type: ["string", "null"]
           description: Written only by the send endpoint, and only after the gate returned a basis.
         failureReason: { type: ["string", "null"] }
+        composedSubject:
+          type: ["string", "null"]
+        composedBody:
+          type: ["string", "null"]
+          description: >
+            What the rule composed, kept when somebody edits. Null until the first
+            edit, and written once — so it is always the composed text rather than
+            the previous edit.
+        editedByUserId: { type: ["integer", "null"] }
+        editedByName:
+          type: ["string", "null"]
+          description: >
+            The name they had at the time. Denormalised because it is an audit
+            fact, and because the credential every request runs on has no grant on
+            the users table.
+        editedAt: { type: ["string", "null"] }
         createdByUserId: { type: ["integer", "null"] }
         createdAt: { type: string }
       required: [id, ownerId, showroomId, module, recordKey, audience, channel, body, template, draftedBy, status, createdAt]
@@ -3248,6 +3331,21 @@ components:
       description: An optional note recorded against the approval or the cancellation.
       properties:
         note: { type: string }
+
+    MessageEditInput:
+      type: object
+      description: >
+        The text as it should go. Send the whole message rather than a patch — the
+        person editing has read the whole message, and that is the unit approval is
+        given over.
+      properties:
+        body:
+          type: string
+          maxLength: 4000
+        subject:
+          type: ["string", "null"]
+          description: Omit to leave it as it is. Null clears it, as on WhatsApp and SMS.
+      required: [body]
 
     MessageGate:
       type: object

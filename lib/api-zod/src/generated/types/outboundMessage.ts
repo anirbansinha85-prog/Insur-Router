@@ -31,7 +31,10 @@ export interface OutboundMessage {
   subject?: string | null;
   body: string;
   template: string;
-  /** AGENT means a model rephrased the template draft and the rephrasing passed a check that it asserted no figure the facts do not support. A rewrite that failed that check never reaches this row. */
+  /**
+     * AGENT means a model rephrased the template draft and the rephrasing passed a check that it asserted no figure the facts do not support. A rewrite that failed that check never reaches this row.
+     * PERSON means a named member of staff typed into it, and it is the one value the fact check does not stand behind — deliberately. The check guards against a model inventing figures; somebody signed in writing their own sentence and approving it is a person taking responsibility. What keeps it safe is the gate: a PERSON draft can never take the rule path.
+     */
   draftedBy: OutboundMessageDraftedBy;
   /**
      * The values the body is permitted to assert.
@@ -54,6 +57,22 @@ export interface OutboundMessage {
   sentAt?: string | null;
   /** @nullable */
   failureReason?: string | null;
+  /** @nullable */
+  composedSubject?: string | null;
+  /**
+     * What the rule composed, kept when somebody edits. Null until the first edit, and written once — so it is always the composed text rather than the previous edit.
+     * @nullable
+     */
+  composedBody?: string | null;
+  /** @nullable */
+  editedByUserId?: number | null;
+  /**
+     * The name they had at the time. Denormalised because it is an audit fact, and because the credential every request runs on has no grant on the users table.
+     * @nullable
+     */
+  editedByName?: string | null;
+  /** @nullable */
+  editedAt?: string | null;
   /** @nullable */
   createdByUserId?: number | null;
   createdAt: string;

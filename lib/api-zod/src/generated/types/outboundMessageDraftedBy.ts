@@ -8,6 +8,7 @@
 
 /**
  * AGENT means a model rephrased the template draft and the rephrasing passed a check that it asserted no figure the facts do not support. A rewrite that failed that check never reaches this row.
+ * PERSON means a named member of staff typed into it, and it is the one value the fact check does not stand behind — deliberately. The check guards against a model inventing figures; somebody signed in writing their own sentence and approving it is a person taking responsibility. What keeps it safe is the gate: a PERSON draft can never take the rule path.
  */
 export type OutboundMessageDraftedBy = typeof OutboundMessageDraftedBy[keyof typeof OutboundMessageDraftedBy];
 
@@ -15,4 +16,5 @@ export type OutboundMessageDraftedBy = typeof OutboundMessageDraftedBy[keyof typ
 export const OutboundMessageDraftedBy = {
   RULE: 'RULE',
   AGENT: 'AGENT',
+  PERSON: 'PERSON',
 } as const;

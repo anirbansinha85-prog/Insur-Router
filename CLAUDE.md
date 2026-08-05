@@ -535,6 +535,23 @@ produces two very different things, and that asymmetry is R-48.
 > happened. When a field appears that records something the system did, a rule
 > may write it.
 
+**A person may write their own sentence into a draft, and doing so closes the
+rule path.** `POST /api/dms/messages/{id}/edit`, `DRAFT` only (R-75). The rule
+permits text a *rule* composed — checked against the facts, identical every
+time; a sentence somebody typed is none of those things, so `authoriseSend()`
+refuses it a `RULE` basis and the person who wrote it approves it instead
+(R-72). The composed text is kept in `composedBody`, **written once** so it
+stays the rule's wording rather than the previous edit's (R-73), `draftedBy`
+becomes `PERSON`, and the edit is a `MESSAGE_EDITED` row with both versions
+(R-74).
+
+The point is not the textarea. `checkRewrite()` exists because a *model* asked
+to rephrase can invent a figure the facts do not support; a named manager adding
+*"Mr Verma is coming in on Saturday, please have the file ready"* is asserting
+something only they know, and there is nothing in the mirror to check it
+against. The old answer — cancel it and fix the record — meant somebody
+cancelled the draft and picked up the phone, and the Outbox stopped being used.
+
 Rules run in the scheduler after detection, on `ddms_worker` — which is why that
 role now holds the outbox and the decision log.
 

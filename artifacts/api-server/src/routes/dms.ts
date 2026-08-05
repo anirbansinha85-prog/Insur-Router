@@ -42,6 +42,7 @@ import {
   authoriseSend,
   cancelMessage,
   createDraft,
+  editMessage,
   explainRecord,
   listMessages,
   listStaff,
@@ -641,6 +642,52 @@ router.post("/dms/messages/:id/approve", async (req, res): Promise<void> => {
     : undefined;
 
   const result = await approveMessage(req.sessionUser!.ownerId, req.sessionUser!.userId, id, note);
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+  res.json({ message: result.message, gate: await authoriseSend(result.message) });
+});
+
+/**
+ * A person writes their own sentence into a draft.
+ *
+ * The interesting part is what it does to the gate rather than what it does to
+ * the text: an edited message can never take the rule path again (R-72), so an
+ * internal notification a rule would have sent unattended now waits for the
+ * person who edited it to approve it. That is not a restriction bolted on — it
+ * is the gate routing the message down the path that matches who wrote it.
+ *
+ * 409 on anything that is not a `DRAFT`. Approval means somebody read it as it
+ * stood, and text that changes afterwards has not been read by the person whose
+ * name is on the approval.
+ */
+router.post("/dms/messages/:id/edit", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: "id must be a positive integer" });
+    return;
+  }
+
+  const body = req.body as Record<string, unknown>;
+  if (typeof body?.body !== "string") {
+    res.status(400).json({ error: "body is required" });
+    return;
+  }
+  const subject =
+    body.subject === undefined
+      ? undefined
+      : body.subject === null
+        ? null
+        : String(body.subject);
+
+  const result = await editMessage(
+    req.sessionUser!.ownerId,
+    req.sessionUser!.userId,
+    req.sessionUser!.name,
+    id,
+    { subject, body: body.body },
+  );
   if (!result.ok) {
     res.status(result.status).json({ error: result.error });
     return;

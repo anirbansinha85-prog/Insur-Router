@@ -396,6 +396,7 @@ async function withdrawStaleDrafts(
       module: outboundMessagesTable.module,
       recordKey: outboundMessagesTable.recordKey,
       template: outboundMessagesTable.template,
+      editedByName: outboundMessagesTable.editedByName,
     })
     .from(outboundMessagesTable)
     .where(
@@ -419,7 +420,14 @@ async function withdrawStaleDrafts(
       null,
       msg.id,
       `Withdrawn: ${msg.module.toLowerCase()} ${msg.recordKey} is no longer ` +
-        `${rule.on.replace(/_/g, " ").toLowerCase()}, so ${rule.goal.toLowerCase()}`,
+        `${rule.on.replace(/_/g, " ").toLowerCase()}, so ${rule.goal.toLowerCase()}` +
+        // Said out loud, because withdrawing a draft somebody wrote into is a
+        // different act from withdrawing one only a rule composed. It is still
+        // the right act — the message asserts something that has stopped being
+        // true, which is the exact failure this function was added to fix — but
+        // whoever typed those words should find them named rather than gone.
+        // The row keeps the body, so nothing they wrote is lost.
+        (msg.editedByName ? ` (${msg.editedByName} had added to this draft — their text is kept on the row)` : ""),
     );
     if (res.ok) {
       withdrawn++;

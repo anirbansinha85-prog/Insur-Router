@@ -69,6 +69,7 @@ import type {
   ListShowroomStaff200,
   ListShowroomStaffParams,
   LoginInput,
+  MessageEditInput,
   MessageNoteInput,
   MessageWithGate,
   OcrEngineStatus,
@@ -2324,6 +2325,81 @@ export const useApproveDmsMessage = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getApproveDmsMessageMutationOptions(options));
+    }
+
+export const getEditDmsMessageUrl = (id: number,) => {
+
+
+
+
+  return `/api/dms/messages/${id}/edit`
+}
+
+/**
+ * The Outbox shipped with no editing, because a rewrite check exists to stop a model inventing a figure the facts do not support. That check is still right and it is not this case: a named manager adding "Mr Verma is coming in on Saturday, please have the file ready" is asserting something only they know, and there is nothing in the mirror to check it against.
+ * What editing does to the gate matters more than what it does to the text. An edited message can never take the rule path again, so an internal notification a rule would have sent unattended now waits for the person who edited it to approve it. The composed text is kept alongside, written once, so what the product proposed and what the dealership said are both answerable later.
+ * DRAFT only. Approval means somebody read it as it stood.
+ * @summary A person writes their own sentence into a draft
+ */
+export const editDmsMessage = async (id: number,
+    messageEditInput: MessageEditInput, options?: Parameters<typeof customFetch>[1]): Promise<MessageWithGate> => {
+
+  return customFetch<MessageWithGate>(getEditDmsMessageUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(messageEditInput)
+  }
+);}
+
+
+
+
+
+export const getEditDmsMessageMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof editDmsMessage>>, TError,{id: number;data: BodyType<MessageEditInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof editDmsMessage>>, TError,{id: number;data: BodyType<MessageEditInput>}, TContext> => {
+
+const mutationKey = ['editDmsMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof editDmsMessage>>, {id: number;data: BodyType<MessageEditInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  editDmsMessage(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type EditDmsMessageMutationResult = NonNullable<Awaited<ReturnType<typeof editDmsMessage>>>
+    export type EditDmsMessageMutationBody = BodyType<MessageEditInput>
+    export type EditDmsMessageMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary A person writes their own sentence into a draft
+ */
+export const useEditDmsMessage = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof editDmsMessage>>, TError,{id: number;data: BodyType<MessageEditInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof editDmsMessage>>,
+        TError,
+        {id: number;data: BodyType<MessageEditInput>},
+        TContext
+      > => {
+      return useMutation(getEditDmsMessageMutationOptions(options));
     }
 
 export const getCancelDmsMessageUrl = (id: number,) => {

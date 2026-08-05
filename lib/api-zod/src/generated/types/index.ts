@@ -108,6 +108,7 @@ export * from './listShowroomStaff200';
 export * from './listShowroomStaffParams';
 export * from './loginInput';
 export * from './matchingEnquiry';
+export * from './messageEditInput';
 export * from './messageGate';
 export * from './messageGateBasis';
 export * from './messageNoteInput';

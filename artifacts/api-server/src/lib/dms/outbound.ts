@@ -28,6 +28,13 @@
  * how much this product is trusted, and it belongs in this file where it can be
  * read.
  *
+ * That rule also stops applying the moment somebody types into a draft (R-72).
+ * It permits text a rule composed — checked, identical every time, reviewable
+ * in `composer.ts`. A sentence a person wrote is none of those things, so an
+ * unattended pass has nothing to stand on and the person who wrote it approves
+ * it instead. Editing is therefore not a hole in the gate; it is the gate
+ * routing a message down the path that suits who wrote it.
+ *
  * ## No model is consulted here
  *
  * `composer.ts` may ask a model for better wording. This file never does
@@ -132,6 +139,21 @@ export type Authorisation =
 async function ruleAllowsInternalNotification(
   msg: OutboundMessageRow,
 ): Promise<{ ok: true; rule: string } | { ok: false; reason: string }> {
+  // R-72, and it is the clause that makes editing safe rather than the clause
+  // that limits it. This rule permits text a *rule* composed — checked against
+  // the facts, identical every time, reviewable in `composer.ts`. The moment
+  // somebody types into it, none of that is true of the sentence any more, and
+  // an unattended pass has nothing left to stand on. So it does not send it;
+  // the person who wrote it approves it, which is the same person taking the
+  // same responsibility they took when they typed.
+  if (msg.editedAt) {
+    return {
+      ok: false,
+      reason:
+        `${msg.editedByName ?? "Somebody"} added their own words to this. The rule only sends ` +
+        `text it composed itself, so this needs approving before it can go.`,
+    };
+  }
   if (msg.audience !== "INTERNAL" || msg.channel !== "EMAIL") {
     return { ok: false, reason: "No rule permits this — only internal email is sent without a person." };
   }
@@ -535,6 +557,110 @@ export async function approveMessage(
     previousValue: { status: msg.status },
     newValue: { status: "APPROVED", template: msg.template, audience: msg.audience },
     note: note ?? null,
+  });
+
+  return { ok: true, message: row! };
+}
+
+/**
+ * A person writes their own sentence into a draft.
+ *
+ * The Outbox shipped with no editing at all, and the reasoning written at the
+ * top of `Outbox.tsx` was half right. `checkRewrite()` exists because a *model*
+ * asked to rephrase a message can invent a figure — a date, an amount, a
+ * registration number — that the facts do not support. That is a real risk and
+ * the check still stands. It is not this one. A named manager adding *"Mr Verma
+ * is coming in on Saturday, please have the file ready"* is asserting something
+ * only they know, and there is nothing in the mirror to check it against
+ * because it is not the mirror's kind of fact.
+ *
+ * What the old answer produced in practice was worse than the risk it avoided:
+ * *cancel it and fix the record instead* means somebody cancels the draft and
+ * picks up the phone, and the Outbox stops being used.
+ *
+ * Four things keep R-48 intact while allowing it:
+ *
+ * - **`DRAFT` only** (R-75). Approval means somebody read it. Text that changes
+ *   after that has not been read by the person whose name is on the approval,
+ *   and 409 is the right answer rather than silently reverting them to draft.
+ * - **The rule path closes** (R-72). `authoriseSend()` refuses an edited
+ *   message a `RULE` basis, so an internal notification that would have gone
+ *   unattended now waits for the person who edited it to approve it.
+ * - **The composed text survives** (R-73), written once so it stays the rule's
+ *   words rather than the previous edit's.
+ * - **It is a decision and is logged like one** (R-74), with both versions.
+ */
+export async function editMessage(
+  ownerId: number,
+  userId: number,
+  userName: string,
+  messageId: number,
+  edit: { subject?: string | null; body: string },
+): Promise<MessageResult> {
+  const msg = await loadOwned(ownerId, messageId);
+  if (!msg) return { ok: false, status: 404, error: `No message ${messageId}` };
+
+  if (msg.status !== "DRAFT") {
+    return {
+      ok: false,
+      status: 409,
+      error:
+        msg.status === "APPROVED"
+          ? "This has been approved — somebody has read it as it stands. Cancel it and draft again."
+          : `This is ${msg.status.replace(/_/g, " ").toLowerCase()} and can no longer be edited.`,
+    };
+  }
+
+  const body = edit.body.trim();
+  if (!body) {
+    return { ok: false, status: 400, error: "A message cannot be empty." };
+  }
+  // Long enough for the case this exists for, short enough that the Outbox
+  // stays something people read rather than a document store.
+  if (body.length > 4_000) {
+    return { ok: false, status: 400, error: "That is longer than a message — keep it under 4,000 characters." };
+  }
+
+  const subject = edit.subject === undefined ? msg.subject : (edit.subject?.trim() || null);
+
+  // Somebody opened the editor and closed it. Recording an edit that changed
+  // nothing would close the rule path on a message a rule could still send.
+  if (body === msg.body && subject === msg.subject) {
+    return { ok: true, message: msg };
+  }
+
+  const now = new Date();
+  const [row] = await db
+    .update(outboundMessagesTable)
+    .set({
+      subject,
+      body,
+      draftedBy: "PERSON",
+      // Written once. On the second edit these already hold the rule's words
+      // and must not be moved on to the first edit's.
+      composedSubject: msg.composedBody === null ? msg.subject : msg.composedSubject,
+      composedBody: msg.composedBody ?? msg.body,
+      editedByUserId: userId,
+      editedByName: userName,
+      editedAt: now,
+      // The old refusal was about the old text and the gate is about to be
+      // asked again. Leaving it would print a stale sentence under a message
+      // that no longer says what it was refused for.
+      failureReason: null,
+    })
+    .where(eq(outboundMessagesTable.id, messageId))
+    .returning();
+
+  await db.insert(decisionLogTable).values({
+    ownerId,
+    showroomId: msg.showroomId,
+    userId,
+    module: msg.module,
+    recordKey: msg.recordKey,
+    action: "MESSAGE_EDITED",
+    previousValue: { subject: msg.subject, body: msg.body, draftedBy: msg.draftedBy },
+    newValue: { subject, body, draftedBy: "PERSON" },
+    note: null,
   });
 
   return { ok: true, message: row! };

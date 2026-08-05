@@ -45,6 +45,13 @@ import { usersTable } from "./users";
  * later disputes can be checked against what was actually known when it was
  * written, rather than against what the mirror says today.
  *
+ * ## What a person typed is kept apart from what a rule composed
+ *
+ * A draft may be edited (R-72 to R-75), and when it is, `body` becomes what
+ * will go while `composedBody` keeps what the rule wrote. The pair matters
+ * because *what the product proposed* and *what the dealership said* are
+ * different facts about the same message, and only one of them is ours.
+ *
  * ## The partial unique index is load-bearing
  *
  * One *open* message per (record, audience, channel). Two approved drafts for
@@ -97,12 +104,50 @@ export const outboundMessagesTable = pgTable(
      * it *and* the rephrasing passed the fact check. A model whose output failed
      * that check never reaches this table — the rule draft is used instead and
      * this stays `RULE`.
+     *
+     * `PERSON` means a named member of staff typed into it, and it is the one
+     * value the fact check does not stand behind — deliberately. The check
+     * exists to stop a *model* inventing a figure. Somebody signed in writing
+     * their own sentence and then approving it is the opposite case: it is a
+     * person taking responsibility, which is what R-48 asks for. What keeps
+     * that safe is the gate, not the checker — see `authoriseSend()`, where a
+     * `PERSON` draft can never take the rule path (R-72).
      */
-    draftedBy: text("drafted_by", { enum: ["RULE", "AGENT"] })
+    draftedBy: text("drafted_by", { enum: ["RULE", "AGENT", "PERSON"] })
       .notNull()
       .default("RULE"),
     /** The values the body is permitted to assert. See the note above. */
     facts: jsonb("facts").$type<Record<string, unknown>>(),
+
+    /**
+     * What the product proposed, kept alongside what the dealership actually
+     * said (R-73).
+     *
+     * Null until somebody edits, and written **once** — on the first edit only,
+     * so this is always the composed text rather than the previous draft. *What
+     * did we draft* and *what did they send* are different questions and a
+     * dealership defending a message months later needs both. Overwriting on
+     * every edit would answer neither after the second one.
+     */
+    composedSubject: text("composed_subject"),
+    composedBody: text("composed_body"),
+
+    /**
+     * Who edited it, by id and by the name they had at the time.
+     *
+     * The name is denormalised on purpose, and for two reasons. It is an audit
+     * fact — *this sentence was written by Sunil Rane on 5 August* stays true
+     * after he is renamed or leaves, and re-resolving the id later would answer
+     * a different question. And `ddms_app`, the credential every request runs
+     * on, has no grant on `users` at all: that table holds password hashes, and
+     * widening the request credential to reach it so a screen can print a name
+     * would be a poor trade.
+     */
+    editedByUserId: integer("edited_by_user_id").references(() => usersTable.id, {
+      onDelete: "set null",
+    }),
+    editedByName: text("edited_by_name"),
+    editedAt: timestamp("edited_at", { withTimezone: true }),
 
     status: text("status", {
       enum: ["DRAFT", "APPROVED", "SENT", "HELD_NO_TRANSPORT", "FAILED", "CANCELLED"],
