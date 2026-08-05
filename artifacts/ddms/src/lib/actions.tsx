@@ -25,10 +25,11 @@ import { useQueryClient } from "@tanstack/react-query"
 import {
   useApplyDmsAction,
   useListShowroomStaff,
+  type AgentSuggestion,
   type DmsActionInputAction,
   type StaffMember,
 } from "@workspace/api-client-react"
-import { Check, Loader2, Phone, RotateCcw, MessageCircle } from "lucide-react"
+import { Bot, Check, Loader2, Phone, RotateCcw, MessageCircle } from "lucide-react"
 
 /** Every worklist query key starts `/api/dms/`, so one predicate covers them all. */
 function invalidateWorklists(qc: ReturnType<typeof useQueryClient>) {
@@ -315,6 +316,90 @@ export function AssignPicker({
         )}
       </select>
       {error && <div className="text-[11px] text-red-600 mt-1 max-w-xs">{error}</div>}
+    </div>
+  )
+}
+
+/**
+ * What the agent would do with a piece of orphaned work, and a way to say yes.
+ *
+ * Shown when the dealership has **not** switched the agent on. With it on the
+ * scheduler will already have assigned the record and this item will have left
+ * the Nobody's band, so the two states never both appear for one row.
+ *
+ * The accept button calls the ordinary action endpoint as the signed-in person,
+ * which means the decision log carries *their* id and not a null. That is the
+ * honest record: the agent proposed and a named person decided, and collapsing
+ * those into one actor would lose the only fact somebody would want three
+ * months later. The agent's sentence rides along as the note.
+ *
+ * The reason is on screen in full rather than behind a tooltip. A suggestion
+ * whose basis you cannot see is a suggestion you either rubber-stamp or ignore,
+ * and both of those are worse than not making it.
+ */
+export function AgentSuggestionCard({
+  suggestion,
+  target,
+}: {
+  suggestion: AgentSuggestion
+  target: ActionTarget
+}) {
+  const qc = useQueryClient()
+  const mutation = useApplyDmsAction()
+  const [error, setError] = useState<string | null>(null)
+
+  const accept = () => {
+    setError(null)
+    mutation.mutate(
+      {
+        data: {
+          action: suggestion.action as DmsActionInputAction,
+          showroomId: target.showroomId,
+          recordKey: target.recordKey,
+          empCode: suggestion.empCode,
+          note: suggestion.reason,
+        },
+      },
+      {
+        onSuccess: () => invalidateWorklists(qc),
+        onError: (e: unknown) => {
+          const body = (e as { response?: { data?: { error?: string } } })?.response?.data
+          setError(body?.error ?? "That did not work.")
+        },
+      },
+    )
+  }
+
+  return (
+    <div className="border border-slate-200 bg-white rounded-md px-4 py-3">
+      <div className="flex items-start gap-2">
+        <Bot className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+        <div className="min-w-0 flex-1">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+            The agent suggests
+          </div>
+          <p className="text-sm font-medium text-slate-900 mt-0.5">
+            Hand it to {suggestion.empName}
+            <span className="font-normal text-slate-500"> · {suggestion.empCode}</span>
+          </p>
+          <p className="text-xs text-slate-500 mt-1">{suggestion.reason}</p>
+          {error && <p className="text-[11px] text-red-600 mt-1">{error}</p>}
+        </div>
+        <button
+          onClick={accept}
+          disabled={mutation.isPending}
+          className="shrink-0 inline-flex items-center gap-1.5 text-xs font-semibold h-8 px-3 rounded-md
+                     border border-emerald-200 text-emerald-700 bg-white hover:bg-emerald-50
+                     transition-colors disabled:opacity-50"
+        >
+          {mutation.isPending ? (
+            <Loader2 className="w-3 h-3 animate-spin" />
+          ) : (
+            <Check className="w-3 h-3" />
+          )}
+          Do it
+        </button>
+      </div>
     </div>
   )
 }

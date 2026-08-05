@@ -77,7 +77,18 @@ export type ActionId =
 
 export interface ApplyActionInput {
   ownerId: number;
-  userId: number;
+  /**
+   * Who is acting. **Null means the agent did** — R-60's convention, and the
+   * same one the outbox and the rules already use: the system acting has to be
+   * distinguishable from having lost track of who acted, which is why
+   * `decision_log.userId` was made nullable a fortnight before anything could
+   * write null to it.
+   *
+   * Nothing else about this function changes when it is null. That is the whole
+   * of OBJ-17: the agent is refused for the reasons a person is refused because
+   * it is asking the same function, not a relaxed copy of it.
+   */
+  userId: number | null;
   action: ActionId;
   /** The mirror row's own key — enqId, jcNo, regnFileNo, partNo. */
   recordKey: string;
@@ -153,7 +164,8 @@ async function assertActiveEmployee(
 }
 
 /**
- * Apply one decision, scoped to the owner, and record who did it.
+ * Apply one decision, scoped to the owner, and record who did it — or that
+ * nobody did, when the agent is the caller.
  *
  * Returns a result rather than throwing, because every caller is an HTTP route
  * that needs to distinguish "not yours" from "not allowed" from "worked".

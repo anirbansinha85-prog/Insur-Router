@@ -812,6 +812,20 @@ grant select, insert, update on
   public.entity_links
 to ddms_worker;
 
+-- Those mirror tables carry two *decision* columns the worker now writes as
+-- well, since OBJ-17: `dms_enquiries.reassigned_to_emp_code` and
+-- `dms_registrations.assigned_agent_emp_code`, when the agent hands out
+-- orphaned work.
+--
+-- **No new grant was needed, and that is worth saying rather than leaving as a
+-- silence.** The same `update` that lets sync refresh a mirrored column already
+-- lets the agent write a decision one, so the database is not where that
+-- boundary is held. It is held in `lib/dms/agent.ts`, which may call exactly
+-- two of the registry's twelve actions and lists why it may not call the other
+-- ten, and by every write going through `applyAction` with a null user id. A
+-- reviewer looking here for the limit will not find it — this is the pointer to
+-- where it is.
+
 grant select, insert on public.record_events to ddms_worker;
 
 -- Read-only, and only because a deal's derived state is a statement about the

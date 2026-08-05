@@ -27,6 +27,9 @@ import { syncShowroomReceivables } from "./receivables-worklist";
 import { syncShowroomInventory } from "./inventory-worklist";
 import { detectStateChanges, showroomIdsForOwner } from "./events";
 import { runRules } from "./rules";
+import { runAgentForShowroom } from "./agent";
+import { buildQueue } from "./queue";
+import { loadPolicy } from "./policy";
 
 const DEFAULT_INTERVAL_MS = 15 * 60 * 1000;
 const DEFAULT_INITIAL_DELAY_MS = 30 * 1000;
@@ -184,6 +187,27 @@ async function runPass(): Promise<void> {
           "Rule pass failed",
         );
       }
+
+      // And last, the agent — if this dealership has switched it on.
+      //
+      // Last because it reads the queue, the queue is built from derived state,
+      // and building it before detection would hand out work on the picture
+      // from fifteen minutes ago. Its own try for the same reason the rules
+      // have one: the agent failing must not lose the detection and the drafts
+      // that preceded it.
+      //
+      // Default off. A dealership that has not set `AGENT.ASSIGN_ORPHANS`
+      // reaches `runAgentForShowroom`, is told no, and nothing is written —
+      // which is a cheaper way to be sure the switch works than a branch here
+      // that skips the call.
+      try {
+        await runAgentPass(ownerId, owned, showroomIds);
+      } catch (err) {
+        logger.error(
+          { err: err instanceof Error ? err.message : String(err), ownerId },
+          "Agent pass failed",
+        );
+      }
     } catch (err) {
       logger.error(
         { err: err instanceof Error ? err.message : String(err), ownerId },
@@ -196,6 +220,56 @@ async function runPass(): Promise<void> {
     { showrooms: showroomIds.length, succeeded, durationMs: Date.now() - startedAt },
     "Scheduled DMS sync pass complete",
   );
+}
+
+/**
+ * The agent's pass over one owner's outlets.
+ *
+ * The queue is built **once, across every outlet the owner holds**, because
+ * three of the seven projections read across outlets and building it per
+ * showroom would classify half a group differently mid-loop — the same reason
+ * detection runs per owner.
+ *
+ * It is built as the owner would see it: `role: "OWNER"`, no `empCode`. That is
+ * not a privilege escalation, it is the absence of a person — there is nobody
+ * signed in, so there is no *mine* band, and every orphaned record at every
+ * outlet has to be reachable or the agent would only tidy up after whichever
+ * member of staff happened to be logged in.
+ */
+async function runAgentPass(
+  ownerId: number,
+  owned: number[],
+  showroomIds: number[],
+): Promise<void> {
+  const visible = owned.filter((id) => showroomIds.includes(id));
+  if (visible.length === 0) return;
+
+  const policy = await loadPolicy(ownerId);
+  if (!policy.on("AGENT.ASSIGN_ORPHANS")) return;
+
+  const queue = await buildQueue({
+    ownerId,
+    ownerShowroomIds: owned,
+    visibleShowroomIds: visible,
+    empCode: null,
+    role: "OWNER",
+    policy,
+  });
+
+  let assigned = 0;
+  const refused: Array<{ recordKey: string; reason: string }> = [];
+  for (const showroomId of visible) {
+    const r = await runAgentForShowroom(ownerId, showroomId, queue.items, policy);
+    assigned += r.assigned;
+    refused.push(...r.refused);
+  }
+
+  if (assigned > 0 || refused.length > 0) {
+    logger.info(
+      { ownerId, assigned, refused: refused.length, orphaned: queue.unassigned },
+      "The agent worked the orphaned band with nobody signed in",
+    );
+  }
 }
 
 export interface SchedulerHandle {

@@ -742,6 +742,36 @@ export const QueueItemAssignAction = {
   REGISTRATION_ASSIGN_AGENT: 'REGISTRATION_ASSIGN_AGENT',
 } as const;
 
+/**
+ * The whole of what the agent may call. The other ten registry actions assert that a person did something — rang the customer, chased the RTO, showed the bike — and a model cannot make a phone call. See CLOSED_TO_THE_AGENT in lib/dms/agent.ts, which names each one.
+ */
+export type AgentSuggestionAction = typeof AgentSuggestionAction[keyof typeof AgentSuggestionAction];
+
+
+export const AgentSuggestionAction = {
+  ENQUIRY_REASSIGN: 'ENQUIRY_REASSIGN',
+  REGISTRATION_ASSIGN_AGENT: 'REGISTRATION_ASSIGN_AGENT',
+} as const;
+
+/**
+ * What the agent would do to one queue item, and why. The same object whether it is about to be applied or is only being shown, so what the agent proposed and what the agent did cannot describe the work differently.
+ * The choice is made by a rule — the lightest-loaded person in the role the queue asks for, from staff who still work here — because a rule that is right every time beats a model that is right most of the time (R-49). A model may only phrase the reason, and only if every figure in it appears in the evidence.
+ */
+export interface AgentSuggestion {
+  /** The whole of what the agent may call. The other ten registry actions assert that a person did something — rang the customer, chased the RTO, showed the bike — and a model cannot make a phone call. See CLOSED_TO_THE_AGENT in lib/dms/agent.ts, which names each one. */
+  action: AgentSuggestionAction;
+  empCode: string;
+  empName: string;
+  /** What they are already carrying. On the row, because it is the reason. */
+  carrying: number;
+  /** How many were in the running. One candidate is worth saying so. */
+  consideredCount: number;
+  /** One sentence, deterministic unless a model improved it and the check held. */
+  reason: string;
+  /** @nullable */
+  narrationRejected?: string | null;
+}
+
 export interface QueueItem {
   module: QueueModule;
   recordKey: string;
@@ -780,6 +810,8 @@ export interface QueueItem {
      * @nullable
      */
   assignRole?: string | null;
+  /** Who the agent would hand this to, and why. Only ever on an item in the Nobody's band that supports an assignment. Present whether or not the dealership has switched the agent on: off it is a suggestion with a person's click behind it, on the scheduler will already have applied it and the item will have changed band. Null when there is nobody left to hand it to. */
+  agentSuggestion?: AgentSuggestion | null;
   /** The module screen, for anyone who wants the full picture. */
   href: string;
 }
@@ -820,14 +852,19 @@ export type PolicySettingGroup = typeof PolicySettingGroup[keyof typeof PolicySe
 export const PolicySettingGroup = {
   SEVERITY: 'SEVERITY',
   THRESHOLD: 'THRESHOLD',
+  SWITCH: 'SWITCH',
 } as const;
 
+/**
+ * switch is stored as 0 or 1 so dealer_policy stays a table of numbers and a reset is still a delete. It is the one setting here that is not a number, and it earns the exception because the decision it carries is the dealership's.
+ */
 export type PolicySettingUnit = typeof PolicySettingUnit[keyof typeof PolicySettingUnit];
 
 
 export const PolicySettingUnit = {
   rank: 'rank',
   days: 'days',
+  switch: 'switch',
 } as const;
 
 export interface PolicySetting {
@@ -845,6 +882,7 @@ export interface PolicySetting {
   isDefault: boolean;
   min: number;
   max: number;
+  /** switch is stored as 0 or 1 so dealer_policy stays a table of numbers and a reset is still a delete. It is the one setting here that is not a number, and it earns the exception because the decision it carries is the dealership's. */
   unit: PolicySettingUnit;
 }
 

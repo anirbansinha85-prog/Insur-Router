@@ -2716,6 +2716,17 @@ components:
         assignRole:
           type: ["string", "null"]
           description: Which role the picker offers. Null means everybody at the outlet.
+        agentSuggestion:
+          oneOf:
+            - $ref: "#/components/schemas/AgentSuggestion"
+            - type: "null"
+          description: >
+            Who the agent would hand this to, and why. Only ever on an item in
+            the Nobody's band that supports an assignment. Present whether or
+            not the dealership has switched the agent on: off it is a suggestion
+            with a person's click behind it, on the scheduler will already have
+            applied it and the item will have changed band. Null when there is
+            nobody left to hand it to.
         href:
           type: string
           description: The module screen, for anyone who wants the full picture.
@@ -2785,7 +2796,7 @@ components:
             `THRESHOLD.NAME` for when something has gone wrong.
         group:
           type: string
-          enum: [SEVERITY, THRESHOLD]
+          enum: [SEVERITY, THRESHOLD, SWITCH]
         section:
           type: string
           description: The screen this belongs to, for grouping.
@@ -2802,8 +2813,50 @@ components:
         max: { type: integer }
         unit:
           type: string
-          enum: [rank, days]
+          enum: [rank, days, switch]
+          description: >
+            switch is stored as 0 or 1 so dealer_policy stays a table of numbers
+            and a reset is still a delete. It is the one setting here that is not
+            a number, and it earns the exception because the decision it carries
+            is the dealership's.
       required: [key, group, section, label, help, value, default, isDefault, min, max, unit]
+
+    AgentSuggestion:
+      type: object
+      description: >
+        What the agent would do to one queue item, and why. The same object
+        whether it is about to be applied or is only being shown, so what the
+        agent proposed and what the agent did cannot describe the work
+        differently.
+
+        The choice is made by a rule — the lightest-loaded person in the role
+        the queue asks for, from staff who still work here — because a rule that
+        is right every time beats a model that is right most of the time (R-49).
+        A model may only phrase the reason, and only if every figure in it
+        appears in the evidence.
+      properties:
+        action:
+          type: string
+          enum: [ENQUIRY_REASSIGN, REGISTRATION_ASSIGN_AGENT]
+          description: >
+            The whole of what the agent may call. The other ten registry actions
+            assert that a person did something — rang the customer, chased the
+            RTO, showed the bike — and a model cannot make a phone call. See
+            CLOSED_TO_THE_AGENT in lib/dms/agent.ts, which names each one.
+        empCode: { type: string }
+        empName: { type: string }
+        carrying:
+          type: integer
+          description: What they are already carrying. On the row, because it is the reason.
+        consideredCount:
+          type: integer
+          description: How many were in the running. One candidate is worth saying so.
+        reason:
+          type: string
+          description: One sentence, deterministic unless a model improved it and the check held.
+        narrationRejected:
+          type: ["string", "null"]
+      required: [action, empCode, empName, carrying, consideredCount, reason]
 
     AutomationRule:
       type: object

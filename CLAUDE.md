@@ -535,6 +535,37 @@ produces two very different things, and that asymmetry is R-48.
 > happened. When a field appears that records something the system did, a rule
 > may write it.
 
+## The agent operates the registry
+
+`lib/dms/agent.ts`. The agent calls the same `applyAction()` a button calls, with
+`userId` null, so every refusal is inherited rather than repeated — 409 for a
+departed employee, 404 across tenants, row-level security underneath.
+
+**Two of the twelve actions, and the other ten are named with reasons in
+`CLOSED_TO_THE_AGENT`.** Eight assert a *person* did something (rang the
+customer, chased the RTO, showed the bike), which is OBJ-16's objection to a
+rule writing a decision field and it does not weaken when the writer is a model.
+One is a judgement about whether an account is in breach, which R-49 reserves.
+One asserts a purchase order in the dealer's own system, which DDMS never writes
+to. What survives — `ENQUIRY_REASSIGN`, `REGISTRATION_ASSIGN_AGENT` — records a
+routing decision DDMS itself is making, over the queue's **Nobody's** band and
+nowhere else.
+
+**The rule chooses; the model may only phrase.** Lightest-loaded person in the
+role the queue asks for, from `listStaff`, which already excludes anybody who
+left. A model may write the sentence, checked by `citationsHold()`. No key, no
+model, no change in behaviour.
+
+**Off until a dealership turns it on** — `AGENT.ASSIGN_ORPHANS`, default 0, the
+first `unit: "switch"` in the policy registry. Off, the suggestion rides on the
+queue row and a person's click applies it, logged as theirs. On, the scheduler
+assigns after the rules and the log carries null. `ddms_worker` may **read**
+`dealer_policy` and not write it, so the unattended process cannot switch itself
+on.
+
+`pnpm run verify:agent` — eleven steps on the worker credential, including both
+refusals and a person's undo.
+
 **A person may write their own sentence into a draft, and doing so closes the
 rule path.** `POST /api/dms/messages/{id}/edit`, `DRAFT` only (R-75). The rule
 permits text a *rule* composed — checked against the facts, identical every

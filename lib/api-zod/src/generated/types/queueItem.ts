@@ -5,6 +5,7 @@
  * InsurRouter API - Two-wheeler insurance application routing engine
  * OpenAPI spec version: 0.1.0
  */
+import type { AgentSuggestion } from './agentSuggestion';
 import type { QueueAction } from './queueAction';
 import type { QueueBand } from './queueBand';
 import type { QueueItemAssignAction } from './queueItemAssignAction';
@@ -48,6 +49,8 @@ export interface QueueItem {
      * @nullable
      */
   assignRole?: string | null;
+  /** Who the agent would hand this to, and why. Only ever on an item in the Nobody's band that supports an assignment. Present whether or not the dealership has switched the agent on: off it is a suggestion with a person's click behind it, on the scheduler will already have applied it and the item will have changed band. Null when there is nobody left to hand it to. */
+  agentSuggestion?: AgentSuggestion | null;
   /** The module screen, for anyone who wants the full picture. */
   href: string;
 }

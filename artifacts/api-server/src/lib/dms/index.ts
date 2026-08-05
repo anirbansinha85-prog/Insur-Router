@@ -111,6 +111,14 @@ export type {
 } from "./inventory-worklist";
 export { applyAction, listStaff } from "./actions";
 export {
+  AGENT_ACTIONS,
+  CLOSED_TO_THE_AGENT,
+  isAgentAction,
+  runAgentForShowroom,
+  suggestForItems,
+} from "./agent";
+export type { AgentAction, AgentSuggestion, AgentRunResult } from "./agent";
+export {
   authoriseSend,
   approveMessage,
   cancelMessage,

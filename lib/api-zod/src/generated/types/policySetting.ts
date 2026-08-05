@@ -23,5 +23,6 @@ export interface PolicySetting {
   isDefault: boolean;
   min: number;
   max: number;
+  /** switch is stored as 0 or 1 so dealer_policy stays a table of numbers and a reset is still a delete. It is the one setting here that is not a number, and it earns the exception because the decision it carries is the dealership's. */
   unit: PolicySettingUnit;
 }

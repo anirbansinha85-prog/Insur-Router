@@ -16,7 +16,7 @@ import {
   SkipForward,
   UserX,
 } from "lucide-react"
-import { ActionButton, AssignPicker, ContactButtons } from "@/lib/actions"
+import { ActionButton, AgentSuggestionCard, AssignPicker, ContactButtons } from "@/lib/actions"
 import { ExplainButton } from "@/lib/explain"
 
 /**
@@ -267,6 +267,18 @@ export default function Queue() {
                 </p>
               )}
             </div>
+
+            {/* Above the controls rather than among them, because it is not one
+                more thing you may do — it is the one thing on this screen
+                somebody other than you has already worked out. Only present
+                while the dealership has the agent switched off; with it on the
+                record was assigned before this list was built. */}
+            {current.agentSuggestion && current.band === "UNASSIGNED" && (
+              <AgentSuggestionCard
+                suggestion={current.agentSuggestion}
+                target={{ showroomId: current.showroomId, recordKey: current.recordKey }}
+              />
+            )}
 
             {/* The controls. Which ones apply was decided by the rules that own
                 the module, not by this screen — it renders whatever came back. */}

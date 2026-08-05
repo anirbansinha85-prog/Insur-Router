@@ -6,10 +6,14 @@
  * OpenAPI spec version: 0.1.0
  */
 
+/**
+ * switch is stored as 0 or 1 so dealer_policy stays a table of numbers and a reset is still a delete. It is the one setting here that is not a number, and it earns the exception because the decision it carries is the dealership's.
+ */
 export type PolicySettingUnit = typeof PolicySettingUnit[keyof typeof PolicySettingUnit];
 
 
 export const PolicySettingUnit = {
   rank: 'rank',
   days: 'days',
+  switch: 'switch',
 } as const;

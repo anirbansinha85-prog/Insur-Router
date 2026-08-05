@@ -12,4 +12,5 @@ export type PolicySettingGroup = typeof PolicySettingGroup[keyof typeof PolicySe
 export const PolicySettingGroup = {
   SEVERITY: 'SEVERITY',
   THRESHOLD: 'THRESHOLD',
+  SWITCH: 'SWITCH',
 } as const;

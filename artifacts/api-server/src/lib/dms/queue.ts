@@ -61,6 +61,7 @@ import { buildSparesWorklist } from "./spares-worklist";
 import { buildReceivablesWorklist } from "./receivables-worklist";
 import { buildInventoryWorklist } from "./inventory-worklist";
 import type { ActionId } from "./actions";
+import { suggestForItems, type AgentSuggestion } from "./agent";
 
 export type QueueModule =
   | "DEAL"
@@ -124,6 +125,17 @@ export interface QueueItem {
   assignAction: "ENQUIRY_REASSIGN" | "REGISTRATION_ASSIGN_AGENT" | null;
   /** Which role the picker should offer. Null means everybody at the outlet. */
   assignRole: string | null;
+  /**
+   * Who the agent would hand this to, and why.
+   *
+   * Only ever on an item in the **Nobody's** band that supports an assignment —
+   * everything else already has somebody on it, and moving their work is not a
+   * gap this fills. Present whether or not the dealership has switched the
+   * agent on: switched off it is a suggestion with a person's click behind it,
+   * switched on the scheduler will have applied it before this list was built
+   * and the item will have moved bands. Null when nobody is left to hand it to.
+   */
+  agentSuggestion: AgentSuggestion | null;
   /** The screen this row lives on, for anyone who wants the full picture. */
   href: string;
 }
@@ -287,6 +299,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         actions: [],
         assignAction: null,
         assignRole: null,
+        agentSuggestion: null,
         href: "/worklist",
       });
     }
@@ -326,6 +339,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         ],
         assignAction: null,
         assignRole: null,
+        agentSuggestion: null,
         href: "/service",
       });
     }
@@ -376,6 +390,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         ],
         assignAction: "ENQUIRY_REASSIGN",
         assignRole: "SALES_EXEC",
+        agentSuggestion: null,
         href: "/enquiries",
       });
     }
@@ -423,6 +438,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         ],
         assignAction: "REGISTRATION_ASSIGN_AGENT",
         assignRole: "RTO_AGENT",
+        agentSuggestion: null,
         href: "/registrations",
       });
     }
@@ -475,6 +491,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         ],
         assignAction: null,
         assignRole: null,
+        agentSuggestion: null,
         href: "/spares",
       });
     }
@@ -520,6 +537,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         ],
         assignAction: null,
         assignRole: null,
+        agentSuggestion: null,
         href: "/receivables",
       });
     }
@@ -558,6 +576,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         ],
         assignAction: null,
         assignRole: null,
+        agentSuggestion: null,
         href: "/inventory",
       });
     }
@@ -580,6 +599,22 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
       a.showroomId - b.showroomId ||
       a.recordKey.localeCompare(b.recordKey),
   );
+
+  /*
+   * What the agent would do with the orphaned band.
+   *
+   * After the sort rather than inside the loop, so it is one staff lookup per
+   * outlet instead of one per row — and it deliberately does not change the
+   * order. The agent's opinion about *who* should hold a piece of work is not
+   * an opinion about how urgent it is, and letting a suggestion move a row up
+   * the list would be the model deciding what comes first, which is exactly
+   * what R-49 keeps it out of.
+   */
+  const suggestions = await suggestForItems(items);
+  for (const item of items) {
+    const s = suggestions.get(`${item.module}:${item.showroomId}:${item.recordKey}`);
+    if (s) item.agentSuggestion = s;
+  }
 
   const counts = new Map<QueueModule, number>();
   for (const i of items) counts.set(i.module, (counts.get(i.module) ?? 0) + 1);

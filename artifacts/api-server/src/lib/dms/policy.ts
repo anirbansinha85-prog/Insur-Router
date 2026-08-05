@@ -33,7 +33,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { db, dealerPolicyTable, decisionLogTable, showroomsTable } from "@workspace/db";
 
-export type PolicyGroup = "SEVERITY" | "THRESHOLD";
+export type PolicyGroup = "SEVERITY" | "THRESHOLD" | "SWITCH";
 
 export interface PolicyKey {
   key: string;
@@ -46,8 +46,39 @@ export interface PolicyKey {
   default: number;
   min: number;
   max: number;
-  unit: "rank" | "days";
+  unit: "rank" | "days" | "switch";
 }
+
+/**
+ * The one thing on this screen that is not a number.
+ *
+ * A switch sits oddly in a registry built for thresholds, and it earns the
+ * exception for the same reason the registry exists: this is the dealership's
+ * decision, not ours, and there is nowhere else that is theirs. Storing it as
+ * 0 or 1 keeps `dealer_policy` a table of numbers, so reset is still a delete
+ * and the sparse rule still holds.
+ *
+ * **Default 0, and the default is the argument.** An agent that starts writing
+ * to a dealership's records the day it deploys is one the dealership never
+ * chose. Off, the agent proposes on the queue row and a person clicks; on, it
+ * assigns unattended and a person can undo.
+ */
+const SWITCH_KEYS: PolicyKey[] = [
+  {
+    key: "AGENT.ASSIGN_ORPHANS",
+    group: "SWITCH",
+    section: "The agent",
+    label: "Let the agent hand out orphaned work",
+    help:
+      "Work assigned to somebody who has left, or to nobody at all, is given to the person " +
+      "with the lightest load who is still here. Off, it only suggests and you click. " +
+      "Either way you can undo it, and the log says the agent did it.",
+    default: 0,
+    min: 0,
+    max: 1,
+    unit: "switch",
+  },
+];
 
 /**
  * What comes first.
@@ -240,6 +271,7 @@ export const POLICY_KEYS: PolicyKey[] = [
     unit: "rank" as const,
   })),
   ...THRESHOLD_KEYS,
+  ...SWITCH_KEYS,
 ];
 
 const BY_KEY = new Map(POLICY_KEYS.map((k) => [k.key, k]));
@@ -250,6 +282,13 @@ export interface ResolvedPolicy {
   severity(module: string, state: string): number | undefined;
   /** A named threshold, always a number because every key has a default. */
   days(key: string): number;
+  /**
+   * A switch, as a boolean.
+   *
+   * Stored as 0 or 1 so `dealer_policy` stays a table of numbers, and read as
+   * a boolean so no caller has to remember which way round it was.
+   */
+  on(key: string): boolean;
   /** Only what this owner actually set, for the screen. */
   overrides: Map<string, number>;
 }
@@ -275,6 +314,16 @@ function resolve(overrides: Map<string, number>): ResolvedPolicy {
         throw new Error(`Unknown policy key ${key}. The registry is in lib/dms/policy.ts.`);
       }
       return overrides.get(key) ?? meta.default;
+    },
+    on(key) {
+      const meta = BY_KEY.get(key);
+      // Same reasoning as `days`: an unknown key is a bug. Returning false
+      // would be worse than throwing here, because a switch that silently
+      // reads off is indistinguishable from a dealership that turned it off.
+      if (!meta) {
+        throw new Error(`Unknown policy key ${key}. The registry is in lib/dms/policy.ts.`);
+      }
+      return (overrides.get(key) ?? meta.default) === 1;
     },
     overrides,
   };

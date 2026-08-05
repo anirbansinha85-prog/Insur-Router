@@ -93,7 +93,7 @@ refused, are in section 3b.*
 | R-56 | ✅ *(the gate half; no rule writes a decision field yet, and OBJ-16 says why)* **Automation may write a decision field. Only the gate lets anything leave.** An automated mark is internal, reversible and logged. Anything outbound still passes `authoriseSend()`, unchanged — the line drawn in R-48 does not move because the caller stopped being a person | ○ |
 | R-57 | ✅ *(and it withdraws the draft it already raised)* **A chase stops when its goal state is reached.** The exit condition is a `classify()` state, not a reply or a click. A cadence that cannot stop itself is the mechanism by which automation becomes something a dealership apologises for | ○ |
 | R-58 | ✅ *nine of them, moved out of five classifiers* **Thresholds are dealer policy, not product logic.** Credit periods, ageing buckets, chase cadence, what counts as the RTO having gone quiet — per owner, stored, and changes to them audited. The rules stay in code; the numbers belong to the dealership | ○ |
-| R-59 | **The agent invokes the same action registry a person does.** One endpoint, one set of refusals, one decision log. A parallel agent-only path would have to re-earn every refusal and would eventually fail to | ○ |
+| R-59 | **The agent invokes the same action registry a person does.** One endpoint, one set of refusals, one decision log. A parallel agent-only path would have to re-earn every refusal and would eventually fail to | ✅ |
 | R-60 | ✅ **Every automated act is attributable and reversible.** `decision_log.userId` null reads as *the system did this*, never as *we lost track*. Anything a rule set, a person can unset | ○ |
 | R-61 | **A dealership's staff get their own logins, and a login is the dealership's own employee record.** *Locked 4 August.* A user carries an `empCode`, and that code is what already sits on the enquiries, registration files and job cards they are responsible for. Without that join, *my work* has no referent and the queue is only a differently sorted list | ✅ |
 | R-62 | **The mirror may revoke access. It may never grant it.** An owner creates a login and links it to an employee; the DMS saying that person has left closes it. Never the reverse — a name appearing in the staff master must not become a login. And the honest limit travels with it: revocation is only as fresh as the last sync | ✅ at sign-in, on every request, and in `app.session_user_id()` so it holds at the database |
@@ -812,7 +812,7 @@ short-staffed dealership does not employ. So:
 | 5 | ~~**OBJ-16** Rules that run themselves~~ ✅ | no | needs 13 for the trigger and 15 for somewhere to put the work |
 | 6 | ~~**OBJ-18** The dealership's own numbers~~ ✅ | no | *added 4 Aug.* The queue shipped with our opinion of what matters in it |
 | 7 | **OBJ-19** The agent remembers what this dealership did | no | *added 4 Aug.* Precedent from the decision log. Before 17, so the agent that acts acts with it |
-| 8 | **OBJ-17** The agent operates the registry | yes, gated | the registry, the refusals, the gate and the audit trail all exist by then |
+| 8 | ~~**OBJ-17** The agent operates the registry~~ ✅ | yes, gated | the registry, the refusals, the gate and the audit trail all exist by then |
 | 9 | **OBJ-6** A dealership that reads as real | no | last, and better last — by then there is more for the data to exercise |
 
 > ~~**OBJ-20 — a person may write their own sentence**~~ ✅ **done 5 Aug**, and
@@ -1120,7 +1120,7 @@ throws at import above the ceiling, because a cap nobody enforces is a comment.
 > longer only mirrors, it proposes. What has not changed is what may leave:
 > `authoriseSend()` is still the only thing that writes `sent_at`.
 
-### OBJ-17 — The agent operates the registry
+### OBJ-17 — The agent operates the registry  ✅ **done 5 Aug**
 *Covers R-59, and finishes R-22.*
 
 The agent stops describing work and starts doing it — by calling the same
@@ -1140,6 +1140,60 @@ did'."*
 **Done when:** the agent completes a queue item by calling `/api/dms/actions`,
 is refused for exactly the reasons a person would be, and the decision log
 shows the system did it — with a person able to undo it.
+
+> **The set is two of twelve, and that is the objective's main finding.** The
+> question for each registry action was not *can the agent do this* but *what
+> would be true of the dealership if it did*. Eight assert that a **person** did
+> something — rang the customer, chased the RTO, showed the bike — which is
+> OBJ-16's objection to a rule writing a decision field, and it gets stronger
+> rather than weaker when the writer is a model. `RECEIVABLE_MARK_DISPUTED` is a
+> judgement about whether an account is in breach, which R-49 reserves outright.
+> `PART_RAISE_REORDER` asserts a purchase order in the dealer's own system,
+> which DDMS never writes to. The two that survive record a routing decision
+> DDMS itself is making, and DDMS is entitled to make it.
+>
+> `CLOSED_TO_THE_AGENT` in `lib/dms/agent.ts` names all ten with the reason
+> beside each, so widening the set is an argument with a sentence rather than a
+> branch somebody widens.
+
+**The rule chooses; the model may only phrase.** The assignee is the
+lightest-loaded person in the role the queue asks for, from staff who still work
+here — `listStaff` already excludes anybody who left and already counts what
+each carries, so the choice is a sort. A model may write the sentence that goes
+on the row and into the log, checked by the same `citationsHold()` the
+explanation panel uses. With no key the deterministic sentence stands.
+
+**Off until a dealership turns it on** — `AGENT.ASSIGN_ORPHANS`, default 0, on
+*Your numbers*. Off, the agent's suggestion rides on the queue row and a
+person's click applies it, logged as **theirs**. On, the scheduler assigns and
+the log carries null. Anirban's call, 5 August: *"for acting we will do option 1
+first, when it works good we will do option 2 in next version."*
+
+**Proved on `ddms_worker`, not through a request** — `pnpm run verify:agent`,
+eleven steps, and the credential is the point: a request would have proved it on
+`ddms_app`, which is what a person holds.
+
+| | |
+|---|---|
+| switched off | `enabled=false considered=0 assigned=0` |
+| switched on | `assigned=2`, `decision_log.userId` **null** on both |
+| the records | `ENQ-0417-9103 → SA-0417-19`, `REG-0417-3307 → RT-0417-02` |
+| the queue | Nobody's band 14 → 12, and a second pass finds nothing |
+| refused | 409 *"Imtiaz Khan has left the dealership (2026-02-28)"*; 404 *"No showroom 3"* |
+| undone | by a person, and the log says `userId=1`, not null |
+
+> **The switch cannot be set by the thing it switches on.** The first version of
+> the verifier wrote the row on `workerDb` and got `permission denied for table
+> dealer_policy` — `ddms_worker` may read the dealership's numbers and may not
+> set them. That refusal was not designed for this; it fell out of OBJ-18's
+> grants and turned out to be exactly right.
+
+> **The citation check refused a true sentence, and the fix was to give it the
+> figure rather than weaken it.** A model naming the file it was talking about —
+> `REG-0417-3307` — was rejected because `04173307` was a figure no tool had
+> returned. The record key is now in the evidence rows. The check catching an
+> identifier it had never been shown is the check working; loosening it so
+> identifiers pass generally would have been the wrong repair.
 
 ### OBJ-18 — The dealership's own numbers  ✅ **done 4 Aug**
 *Covers R-65 **and R-58**, which moved here from OBJ-16 on 4 August: the

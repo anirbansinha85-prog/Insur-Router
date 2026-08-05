@@ -1333,6 +1333,15 @@ export const GetDmsQueueResponse = zod.object({
 }).describe('A control the row may offer. Decided by the rules that own the module rather than by the screen, so the queue can render any module\'s controls without knowing what any of them mean.\n')),
   "assignAction": zod.union([zod.literal('ENQUIRY_REASSIGN'),zod.literal('REGISTRATION_ASSIGN_AGENT'),zod.literal(null)]).nullish().describe('The reassignment this row supports, when it has one. Not a button — a picker over staff who still work here, each carrying what they already hold. R-54 asks that work never becomes unroutable, and the screen that shows orphaned work has to be where it can be handed on, or \"reassign to someone still here\" is advice with a trip to another screen attached.\n'),
   "assignRole": zod.string().nullish().describe('Which role the picker offers. Null means everybody at the outlet.'),
+  "agentSuggestion": zod.union([zod.object({
+  "action": zod.enum(['ENQUIRY_REASSIGN', 'REGISTRATION_ASSIGN_AGENT']).describe('The whole of what the agent may call. The other ten registry actions assert that a person did something — rang the customer, chased the RTO, showed the bike — and a model cannot make a phone call. See CLOSED_TO_THE_AGENT in lib\/dms\/agent.ts, which names each one.\n'),
+  "empCode": zod.string(),
+  "empName": zod.string(),
+  "carrying": zod.number().int().describe('What they are already carrying. On the row, because it is the reason.'),
+  "consideredCount": zod.number().int().describe('How many were in the running. One candidate is worth saying so.'),
+  "reason": zod.string().describe('One sentence, deterministic unless a model improved it and the check held.'),
+  "narrationRejected": zod.string().nullish()
+}).describe('What the agent would do to one queue item, and why. The same object whether it is about to be applied or is only being shown, so what the agent proposed and what the agent did cannot describe the work differently.\nThe choice is made by a rule — the lightest-loaded person in the role the queue asks for, from staff who still work here — because a rule that is right every time beats a model that is right most of the time (R-49). A model may only phrase the reason, and only if every figure in it appears in the evidence.\n'),zod.null()]).optional().describe('Who the agent would hand this to, and why. Only ever on an item in the Nobody\'s band that supports an assignment. Present whether or not the dealership has switched the agent on: off it is a suggestion with a person\'s click behind it, on the scheduler will already have applied it and the item will have changed band. Null when there is nobody left to hand it to.\n'),
   "href": zod.string().describe('The module screen, for anyone who wants the full picture.')
 })),
   "total": zod.number().int().describe('The leading number — everything waiting on a person, across every module this role may read.\n'),
@@ -1355,7 +1364,7 @@ export const GetDmsQueueResponse = zod.object({
 export const GetDmsPolicyResponse = zod.object({
   "settings": zod.array(zod.object({
   "key": zod.string().describe('`SEVERITY.MODULE.STATE` for what comes first, or `THRESHOLD.NAME` for when something has gone wrong.\n'),
-  "group": zod.enum(['SEVERITY', 'THRESHOLD']),
+  "group": zod.enum(['SEVERITY', 'THRESHOLD', 'SWITCH']),
   "section": zod.string().describe('The screen this belongs to, for grouping.'),
   "label": zod.string(),
   "help": zod.string().describe('One sentence. What changing it actually does.'),
@@ -1364,7 +1373,7 @@ export const GetDmsPolicyResponse = zod.object({
   "isDefault": zod.boolean().describe('False once somebody in this dealership has moved it.'),
   "min": zod.number().int(),
   "max": zod.number().int(),
-  "unit": zod.enum(['rank', 'days'])
+  "unit": zod.enum(['rank', 'days', 'switch']).describe('switch is stored as 0 or 1 so dealer_policy stays a table of numbers and a reset is still a delete. It is the one setting here that is not a number, and it earns the exception because the decision it carries is the dealership\'s.\n')
 }))
 })
 
