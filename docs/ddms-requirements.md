@@ -1821,8 +1821,8 @@ and the one we lack.
 | # | Requirement | Status |
 |---|---|---|
 | R-76 | ✅ **DDMS creates nothing the DMS is the source of truth for.** The re-cut of the old non-goal. Deals, job cards, stock, enquiries and registration files stay mirror-only forever; notes, activities, tasks, quotations, price lists and internal costs are DDMS's outright — and owning them is what gives an agent anything legitimate to write | ○ |
-| R-77 | **A journey is the unit of work, and a wait is a queue row.** Steps, forks, and four kinds of waiting — on a person, on the outside world, on another journey, on time. A stalled step *is* the queue entry rather than a sentence somebody wrote for that module | ○ |
-| R-78 | **Forks are rules. A model may write a sentence inside a step; it may never choose an edge.** Almost every fork in every journey is knowable from data — is tax paid, is the part on the shelf, did the date pass. R-49 restated for the runtime, and the specific temptation a workflow library introduces | ○ |
+| R-77 | ✅ **A journey is the unit of work, and a wait is a queue row.** Steps, forks, and four kinds of waiting — on a person, on the outside world, on another journey, on time. A stalled step *is* the queue entry rather than a sentence somebody wrote for that module | ✅ |
+| R-78 | ✅ **Forks are rules. A model may write a sentence inside a step; it may never choose an edge.** Almost every fork in every journey is knowable from data — is tax paid, is the part on the shelf, did the date pass. R-49 restated for the runtime, and the specific temptation a workflow library introduces | ✅ |
 | R-79 | **Autonomy is earned by evidence and can be lost the same way.** Precedent → repeated acceptance → consent, per pattern, with the threshold set by the dealership and demotion when acceptance falls. A dial somebody sets is a guess; a count is a fact | ○ |
 | R-80 | **Graduation can never cross the floor.** Hard denials apply at every level of autonomy, and no amount of precedent promotes an action past them. Attested independently in three products | ○ |
 | R-81 | **One door.** Nothing writes to the record except through the same call a person's button makes — not agents, not the process runtime, not any second service. It is what lets every question about roles and visibility be answered later in one place | ○ |
@@ -1847,7 +1847,7 @@ and the one we lack.
 |---|---|---|---|---|
 | 21 | ~~**One permission model**~~ ✅ | no | — | two half-systems exist — module read-gating and the agent's action set. Everything below adds actions and principals to both |
 | 22 | ~~**DDMS owns its own records**~~ ✅ | no | 21 | the unlock. Notes, activities, tasks, quotations, price lists. Nothing an agent can honestly write until this exists |
-| 23 | **The journey model** | no | 22 | the runtime, proved end to end on one journey |
+| 23 | ~~**The journey model**~~ ✅ | no | 22 | the runtime, proved end to end on one journey |
 | 24 | **Ingestion beyond the API** | at the mapping step only | — | independent of everything, and the thing that decides how many dealers can be sold to at all |
 | 25 | **The invoice DDMS produces** | no | 22, 23, 24 | the first document the product issues, and the first record it holds *before* the DMS knows anything |
 | 26 | **Autonomy: the ladder and graduation** | recall only | 21, 23 | needs journeys running long enough to have history to cite. Absorbs OBJ-19 |
@@ -2027,7 +2027,7 @@ claim is about what happens with nobody signed in:
 > they were allowed to — so the row is corrected rather than rejected, which is
 > the friendlier half of the same rule.
 
-### OBJ-23 — The journey model
+### OBJ-23 — The journey model  ✅ **done 10 Aug**
 *Covers R-77, R-78. Needs 22.*
 
 Steps, forks, and four kinds of waiting. Proved end to end on one journey —
@@ -2042,6 +2042,139 @@ classifiers currently hand-write their own *what to do* sentence.
 restart mid-flight, an RTO objection sends a file backwards with its reason
 attached, and every queue row for that journey is produced by the runtime rather
 than written by a classifier.
+
+**Six layers were designed and three were built.** Layer 2 is
+`lib/dms/journeys/vehicle-delivery.ts` — nine steps, hardcoded and versioned.
+Layer 3 is `runtime.ts`. Layer 1 gained `journeys` and `journey_steps`. Layers 4
+to 6 — the intelligence store, more agents, the graph — are OBJ-26 and OBJ-29
+and nothing here presumes their shape.
+
+**The walk, and the reason the loop needed no special case:**
+
+> **The position is the first step that is not done.**
+
+Not *the step after the last one we saw complete*, which was the obvious design
+and is wrong twice over: it advances one step per pass and drifts behind a file
+that moved three steps in a week, and it can never go backwards at all. Because
+the walk is total, any fact-set maps to exactly one position — so when the RTO
+rejects a file, `DOCUMENTS` stops being done and the position simply **is**
+earlier. There is no backwards edge to maintain. The `journey_steps` row records
+the direction and carries the objection, so a file on its third loop reads as a
+file on its third loop rather than as a file nobody has started.
+
+**The ending is the last step, not the absence of gaps.** A journey finishes
+when `HANDED_OVER` is done, whatever happened behind it. A vehicle whose plate
+date the DMS never recorded is still a delivered vehicle, and a journey that
+refused to finish over a missing date would describe a sale that closed in March
+on somebody's queue for ever.
+
+**Four kinds of waiting, and only two of them are work.**
+
+| | | |
+|---|---|---|
+| `PERSON` | somebody here | always a queue row |
+| `OUTSIDE` | the RTO, the customer, India Post | a row only once it has gone on longer than the dealership said was normal |
+| `JOURNEY` | insurance, before registration can move | always — it blocks everything behind it |
+| `TIME` | nothing to do until Tuesday | **never** |
+
+That last line is the one DDMS could not previously express at all. `RTO_SILENT`
+is a *state*, and nothing in the product could tell *the RTO has it and that is
+normal* from *the RTO has it and has gone quiet*. Four of the 42 live journeys
+are on a `TIME` wait and raise nothing.
+
+**Nothing lives in memory, which is why the restart test is dull.** The position
+is two rows in Postgres and the facts come from the mirror, so a cold read after
+a restart is indistinguishable from the next scheduler pass. The verifier proves
+it by reading the trace back cold and advancing again: same journey, same place,
+nothing written.
+
+**The classifier stands aside.** A registration file with a live journey gets
+exactly one row and the runtime writes it. Both would put the same file on one
+screen twice saying two different things — the failure the single queue was
+built to end, arriving from a new direction.
+
+| | rows for the two outlets |
+|---|---|
+| the classifier alone | 30 — `BLOCKED_NO_INSURANCE` 12 · `RC_IN_DRAWER` 8 · `RTO_SILENT` 6 · `HSRP_PENDING` 2 · `OBJECTION` 1 · `TAX_HELD` 1 |
+| the runtime | **38** — `INSURED` 11 · `HANDED_OVER` 9 · `ALLOTTED` 6 · `LODGED` 3 · `RC_ISSUED` 3 · `HSRP` 2 · `INVOICED` 2 · `DOCUMENTS` 1 · `ROAD_TAX` 1 |
+
+**Five of the eight extra rows are work the product has never shown anybody.**
+Three files are ready to lodge and nobody has lodged them; two have a registration
+file open against a deal carrying no invoice. The classifier has `AWAITING_DOCS`
+for the step before and `RTO_SILENT` for the step after, and no state for the gap
+between them. The other three come from splitting one `RTO_SILENT` into two
+different waits on two different parties — *lodged and nothing back* and
+*registered and the certificate has not turned up*.
+
+**Severity is still the dealership's.** Each step borrows a
+`SEVERITY.REGISTRATION.*` key rather than inventing a `SEVERITY.JOURNEY.*` group,
+so a dealership that decided a stuck RC outranks a quiet RTO decided it once, for
+the whole product.
+
+**Proved by `pnpm run verify:journey`**, in two halves that need two different
+kinds of proof:
+
+```
+day  0  start  INSURED      JOURNEY the insurance desk
+day  2  ▶      DOCUMENTS    OUTSIDE the customer
+day  4  ▶      ROAD_TAX     PERSON  accounts
+day  5  ▶      LODGED       PERSON  the RTO agent
+day  6  ▶      ALLOTTED     TIME    the RTO
+day  9  ◀ BACK DOCUMENTS    PERSON  the RTO agent
+            reason: Address proof does not match the KYC document
+day 11  ▶      ALLOTTED     TIME    the RTO
+day 23  ▶      HSRP         PERSON  the workshop
+day 24  ▶      RC_ISSUED    TIME    the RTO and India Post
+day 27  ▶      HANDED_OVER  PERSON  whoever rings customers
+day 29  ▶      FINISHED
+```
+
+A month with **no database anywhere near it** — the position is a pure function
+of facts, which is what makes a simulated month possible and the durable half
+almost trivial. The second half runs on `ddms_worker`, walks the real
+`REG-0417-3304` through the two successive states of the world the RTO put it in,
+and ends where OBJ-22 ended: the worker may advance a journey and may neither
+delete nor rewrite an arrival, because the newest arrival **is** the position.
+
+> **Absence of evidence is not evidence of absence, and it cost nine false rows.**
+> The first version read `INVOICED.done` as `Boolean(invoiceNo)`. Nine
+> registration files in the seeded dealership name a deal the deal mirror does
+> not hold, so the join returned nothing and the runtime concluded the invoice
+> had never been raised — telling somebody to invoice a vehicle that was already
+> registered. **A registration file only exists because the sale was invoiced**,
+> so an absent deal means the step happened somewhere we cannot see. A deal we
+> *can* see with no invoice number on it is real work and stays.
+
+> **Silence is not a departure**, and this is the same rule the login check keeps
+> about an absent employee row. A subject missing from the fact-set means the
+> walk has nothing to say about it on this pass — not that the file is gone. A
+> file the DMS stopped returning is still in the mirror with `disappearedAt` set,
+> and that is the only thing that abandons a journey. Getting this wrong
+> abandoned 41 live journeys in one pass.
+
+> **One step can be two degrees of urgent.** `severityState` was a constant and
+> quietly demoted every objected file from the dealership's 3 to its 2:
+> `DOCUMENTS` is *waiting on the customer* most of the time and *the RTO rejected
+> this* after a loop. It is a function of the facts now.
+
+**`GET /dms/records/{module}/{recordKey}/journey`, and no write route.** A
+journey moves because the world changed, not because somebody pressed a button
+on it; an endpoint that let a caller set a position would be a second way for the
+record to become untrue. The position and the wait are derived on read like
+reconciliation — only the arrivals come out of the database, because history does
+not go stale. 404 on a record with no journey is an answer rather than a failure.
+
+**R-81 is respected and not yet tested.** The runtime writes `journeys` and
+`journey_steps` and nothing else — no decision field, nothing on the mirror. The
+one door is not exercised until something in a journey needs a record changed,
+which is **OBJ-25**.
+
+> **The address seam is still open.** Anirban's correction moved the dealer's
+> controllable duty to *the communication address being right at the point of
+> lodging*, and the journey names `RC_ISSUED` as an `OUTSIDE` wait on India Post
+> accordingly. But the comparison itself is not built: three addresses exist —
+> the deal, the KYC document, the registration file — and the mirror carries none
+> of them on the registration row. A step for it needs data OBJ-24 brings.
 
 ### OBJ-24 — Ingestion beyond the API
 *Covers R-84, R-85, R-86. No dependencies.*

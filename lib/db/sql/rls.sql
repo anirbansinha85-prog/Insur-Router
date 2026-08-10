@@ -520,6 +520,53 @@ drop policy if exists tasks_worker on public.tasks;
 create policy tasks_worker on public.tasks
   for all to ddms_worker using (true) with check (true);
 
+/*
+ * Where each thing in the building has got to (OBJ-23).
+ *
+ * A journey is DDMS's own record in the same sense the two tables above are:
+ * the DMS has no field for *where this sale has reached*, nothing upstream
+ * overwrites one, and no sync pass touches them. What is different is who
+ * writes them — almost always nobody, because a journey advances on a
+ * scheduler pass with no session open. That is why the worker policy here is
+ * not an afterthought: it is the normal case, and the signed-in one is the
+ * exception.
+ *
+ * Gated on `app.can_read(subject_module)` like an activity, so a journey about
+ * a registration file is invisible to a technician for the same reason the file
+ * is. The steps carry no module of their own and inherit the journey's, which
+ * is the only join in this file and is preferable to denormalising a module
+ * onto every arrival where the two could then disagree.
+ */
+drop policy if exists journeys_own on public.journeys;
+create policy journeys_own on public.journeys
+  for all to ddms_app
+  using (
+    showroom_id in (select app.owned_showroom_ids())
+    and app.can_read(subject_module)
+  )
+  with check (
+    showroom_id in (select app.visible_showroom_ids())
+    and app.can_read(subject_module)
+  );
+
+drop policy if exists journeys_worker on public.journeys;
+create policy journeys_worker on public.journeys
+  for all to ddms_worker using (true) with check (true);
+
+drop policy if exists journey_steps_own on public.journey_steps;
+create policy journey_steps_own on public.journey_steps
+  for all to ddms_app
+  using (
+    journey_id in (select id from public.journeys)
+  )
+  with check (
+    journey_id in (select id from public.journeys)
+  );
+
+drop policy if exists journey_steps_worker on public.journey_steps;
+create policy journey_steps_worker on public.journey_steps
+  for all to ddms_worker using (true) with check (true);
+
 drop policy if exists insurer_panel_own on public.insurer_panel_entries;
 create policy insurer_panel_own on public.insurer_panel_entries
   for select to ddms_app
@@ -805,6 +852,8 @@ grant select, insert, update, delete on public.dealer_policy to ddms_app;
 -- take update for the same reason: DONE and CANCELLED are states, not absences.
 grant select, insert, update on public.record_activities to ddms_app;
 grant select, insert, update on public.tasks to ddms_app;
+grant select, insert, update on public.journeys to ddms_app;
+grant select, insert on public.journey_steps to ddms_app;
 
 -- `serial` columns draw from a sequence, and a role that may insert but may not
 -- touch the sequence gets "permission denied for sequence" on every insert.
@@ -904,6 +953,12 @@ grant select on public.dealer_policy to ddms_worker;
 -- state as fact — safe only because the fact is about itself.
 grant select, insert, update on public.record_activities to ddms_worker;
 grant select, insert, update on public.tasks to ddms_worker;
+-- The scheduler is the ordinary writer here, not the exception: a journey
+-- advances with nobody signed in. No delete, and `journey_steps` has no update
+-- either, because the newest arrival *is* the position and rewriting one would
+-- not lose history, it would change what the runtime believes is true now.
+grant select, insert, update on public.journeys to ddms_worker;
+grant select, insert on public.journey_steps to ddms_worker;
 
 -- Same reason as `ddms_app`: the entity graph is rebuilt wholesale rather than
 -- reconciled, so these two are the only tables the worker may delete from.

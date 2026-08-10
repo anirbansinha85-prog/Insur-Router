@@ -27,6 +27,7 @@ import { syncShowroomReceivables } from "./receivables-worklist";
 import { syncShowroomInventory } from "./inventory-worklist";
 import { detectStateChanges, showroomIdsForOwner } from "./events";
 import { runRules } from "./rules";
+import { advanceJourneys } from "./journeys";
 import { runAgentForShowroom } from "./agent";
 import { buildQueue } from "./queue";
 import { loadPolicy } from "./policy";
@@ -149,6 +150,42 @@ async function runPass(): Promise<void> {
       for (const showroomId of owned) {
         if (!showroomIds.includes(showroomId)) continue;
         await detectStateChanges(ownerId, showroomId, owned);
+      }
+
+      /*
+       * And then the journeys, before the rules and before the queue is built
+       * from anything.
+       *
+       * Here rather than beside detection because the two answer different
+       * questions and the order between them does not matter — a journey's
+       * position comes from the mirror, not from `record_events`. Here rather
+       * than *after* the rules because a stalled step is a queue row, the agent
+       * pass at the bottom of this function reads the queue, and a runtime that
+       * ran last would hand out work on the picture from fifteen minutes ago.
+       *
+       * This is where a six-week process actually moves. Nothing about a live
+       * journey survives between two of these passes — the position is two rows
+       * in Postgres — so a restart is indistinguishable from the next pass, and
+       * an RTO that answers on a Sunday is noticed on Monday morning without
+       * anybody opening a screen.
+       *
+       * Its own try, for the same reason the rules have one: journeys failing
+       * must not lose the detection that preceded them.
+       */
+      try {
+        const moved = await advanceJourneys({
+          ownerId,
+          showroomIds: owned.filter((id) => showroomIds.includes(id)),
+          policy: await loadPolicy(ownerId),
+        });
+        if (moved.started || moved.advanced || moved.looped || moved.finished) {
+          logger.info({ ownerId, ...moved }, "Journeys moved with nobody signed in");
+        }
+      } catch (err) {
+        logger.error(
+          { err: err instanceof Error ? err.message : String(err), ownerId },
+          "Journey pass failed",
+        );
       }
 
       // And then the rules, over the states that pass just worked out.

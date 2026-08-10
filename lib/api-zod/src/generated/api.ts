@@ -946,6 +946,52 @@ export const ApproveDmsMessageResponse = zod.object({
 
 
 /**
+ * DDMS understands a record. This is the first thing that understands a journey — one sale walking through the building, from the invoice to the certificate in the customer's hands, across four screens that do not know they describe the same vehicle.
+ * Read-only, deliberately. A journey moves because the world changed, not because somebody pressed a button on it, and an endpoint that let a caller set a position would be a second way for the record to become untrue. Acting happens on the record through POST /dms/actions and the runtime notices on its next pass.
+ * The position and the wait are derived on read, like reconciliation — a stored "waiting on the RTO" goes stale the moment the RTO answers. Only the arrivals come out of the database, because history does not go stale.
+ * @summary Where this record's sale has got to
+ */
+export const GetRecordJourneyParams = zod.object({
+  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART', 'RECEIVABLE', 'VEHICLE']),
+  "recordKey": zod.coerce.string()
+})
+
+export const GetRecordJourneyResponse = zod.object({
+  "id": zod.number().int(),
+  "definitionId": zod.string(),
+  "definitionVersion": zod.number().int().describe('Which version of the map this journey started under. A trace read next year against a map that has since gained two steps would be a quietly false account of what somebody was asked to do.\n'),
+  "title": zod.string(),
+  "subjectModule": zod.string(),
+  "subjectKey": zod.string(),
+  "status": zod.enum(['LIVE', 'DONE', 'ABANDONED']).describe('ABANDONED is not DONE. The thing the journey was about stopped existing, which must never be counted as having finished.\n'),
+  "startedAt": zod.string(),
+  "completedAt": zod.string().nullish(),
+  "steps": zod.array(zod.object({
+  "stepId": zod.string(),
+  "title": zod.string(),
+  "actor": zod.enum(['RULE', 'PERSON', 'AGENT', 'OUTSIDE', 'DMS']).describe('Who physically moves it. OUTSIDE is the RTO, the customer, India Post — nobody the dealership employs, and the distinction decides whether a row is work or news.\n'),
+  "state": zod.enum(['DONE', 'HERE', 'AHEAD'])
+})),
+  "standingOn": zod.string().nullish().describe('Null on a finished journey.'),
+  "wait": zod.union([zod.object({
+  "kind": zod.enum(['PERSON', 'OUTSIDE', 'JOURNEY', 'TIME']).describe('The four kinds of waiting, and DDMS could express none of them before. PERSON is always work. OUTSIDE is work only once it has gone on too long. JOURNEY means another process must finish first — insurance, before registration can move. TIME is never work, and saying so is the point: a file lodged on Tuesday is not late on Wednesday.\n'),
+  "who": zod.string(),
+  "why": zod.string(),
+  "todo": zod.string(),
+  "notBefore": zod.string().nullish().describe('The day an OUTSIDE wait stops being normal and starts being late.')
+}),zod.null()]).optional(),
+  "loops": zod.number().int().describe('How many times the outside world sent it backwards.'),
+  "arrivals": zod.array(zod.object({
+  "stepId": zod.string(),
+  "direction": zod.enum(['START', 'FORWARD', 'BACKWARD', 'FINISH']),
+  "reason": zod.string().nullish().describe('Why, in the world\'s words — the RTO\'s objection text. A BACKWARD arrival without one is the failure the ledger exists to prevent.\n'),
+  "fromStepId": zod.string().nullish(),
+  "occurredAt": zod.string()
+}))
+})
+
+
+/**
  * The first thing DDMS holds that no DMS has a field for. Everything else on a record is either the dealer's data or a decision field hung off it; this is the dealership's own account of what happened.
  * Gated twice. The permission table says whether this principal may read activities at all; the row policy says which records, using the same app.can_read(module) that gates the mirror row itself.
  * @summary A record's own timeline
@@ -1520,7 +1566,16 @@ export const GetDmsQueueResponse = zod.object({
 }).describe('A control the row may offer. Decided by the rules that own the module rather than by the screen, so the queue can render any module\'s controls without knowing what any of them mean.\n')),
   "assignAction": zod.union([zod.literal('ENQUIRY_REASSIGN'),zod.literal('REGISTRATION_ASSIGN_AGENT'),zod.literal(null)]).nullish().describe('The reassignment this row supports, when it has one. Not a button — a picker over staff who still work here, each carrying what they already hold. R-54 asks that work never becomes unroutable, and the screen that shows orphaned work has to be where it can be handed on, or \"reassign to someone still here\" is advice with a trip to another screen attached.\n'),
   "assignRole": zod.string().nullish().describe('Which role the picker offers. Null means everybody at the outlet.'),
-  "source": zod.enum(['DERIVED', 'TASK']).optional().describe('DERIVED is everything the queue has ever held — computed from the mirror on every request, never stored, gone the moment the record moves. TASK is a row somebody wrote down. They sit in one list and are sorted together, because a separate Tasks screen recreates exactly the problem the queue was built to solve.\n'),
+  "source": zod.enum(['DERIVED', 'TASK', 'JOURNEY']).optional().describe('DERIVED is everything the queue has ever held — computed from the mirror on every request, never stored, gone the moment the record moves. TASK is a row somebody wrote down. JOURNEY is a process that stopped: the runtime knows which step, how far along, and how many times the outside world sent it back, none of which a classifier can say because a classifier only ever sees one record.\nThey sit in one list and are sorted together, because a separate screen for any of them recreates exactly the problem the queue was built to solve. Where a record has a live journey the classifier stands aside, so no record appears twice saying two different things.\n'),
+  "journey": zod.union([zod.object({
+  "id": zod.number().int(),
+  "stepId": zod.string(),
+  "stepTitle": zod.string(),
+  "waitKind": zod.enum(['PERSON', 'OUTSIDE', 'JOURNEY', 'TIME']).describe('TIME never reaches the queue. A file lodged on Tuesday is not work on Wednesday, and a queue full of things nobody can act on is one people stop reading.\n'),
+  "completed": zod.number().int(),
+  "total": zod.number().int(),
+  "loops": zod.number().int()
+}),zod.null()]).optional().describe('Set only on a JOURNEY row. Which step the sale stopped on, how far through it is, and how many times it has been sent backwards.\n'),
   "taskId": zod.number().int().optional().describe('Present only on a TASK row — what to close when it is done.'),
   "agentSuggestion": zod.union([zod.object({
   "action": zod.enum(['ENQUIRY_REASSIGN', 'REGISTRATION_ASSIGN_AGENT']).describe('The whole of what the agent may call. The other ten registry actions assert that a person did something — rang the customer, chased the RTO, showed the bike — and a model cannot make a phone call. See CLOSED_TO_THE_AGENT in lib\/dms\/agent.ts, which names each one.\n'),

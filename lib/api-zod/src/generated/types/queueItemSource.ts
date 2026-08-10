@@ -7,7 +7,8 @@
  */
 
 /**
- * DERIVED is everything the queue has ever held — computed from the mirror on every request, never stored, gone the moment the record moves. TASK is a row somebody wrote down. They sit in one list and are sorted together, because a separate Tasks screen recreates exactly the problem the queue was built to solve.
+ * DERIVED is everything the queue has ever held — computed from the mirror on every request, never stored, gone the moment the record moves. TASK is a row somebody wrote down. JOURNEY is a process that stopped: the runtime knows which step, how far along, and how many times the outside world sent it back, none of which a classifier can say because a classifier only ever sees one record.
+ * They sit in one list and are sorted together, because a separate screen for any of them recreates exactly the problem the queue was built to solve. Where a record has a live journey the classifier stands aside, so no record appears twice saying two different things.
  */
 export type QueueItemSource = typeof QueueItemSource[keyof typeof QueueItemSource];
 
@@ -15,4 +16,5 @@ export type QueueItemSource = typeof QueueItemSource[keyof typeof QueueItemSourc
 export const QueueItemSource = {
   DERIVED: 'DERIVED',
   TASK: 'TASK',
+  JOURNEY: 'JOURNEY',
 } as const;

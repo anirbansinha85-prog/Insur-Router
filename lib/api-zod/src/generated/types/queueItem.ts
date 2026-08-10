@@ -10,6 +10,7 @@ import type { QueueAction } from './queueAction';
 import type { QueueBand } from './queueBand';
 import type { QueueItemAssignAction } from './queueItemAssignAction';
 import type { QueueItemSource } from './queueItemSource';
+import type { QueueJourney } from './queueJourney';
 import type { QueueModule } from './queueModule';
 
 export interface QueueItem {
@@ -50,8 +51,13 @@ export interface QueueItem {
      * @nullable
      */
   assignRole?: string | null;
-  /** DERIVED is everything the queue has ever held — computed from the mirror on every request, never stored, gone the moment the record moves. TASK is a row somebody wrote down. They sit in one list and are sorted together, because a separate Tasks screen recreates exactly the problem the queue was built to solve. */
+  /**
+     * DERIVED is everything the queue has ever held — computed from the mirror on every request, never stored, gone the moment the record moves. TASK is a row somebody wrote down. JOURNEY is a process that stopped: the runtime knows which step, how far along, and how many times the outside world sent it back, none of which a classifier can say because a classifier only ever sees one record.
+     * They sit in one list and are sorted together, because a separate screen for any of them recreates exactly the problem the queue was built to solve. Where a record has a live journey the classifier stands aside, so no record appears twice saying two different things.
+     */
   source?: QueueItemSource;
+  /** Set only on a JOURNEY row. Which step the sale stopped on, how far through it is, and how many times it has been sent backwards. */
+  journey?: QueueJourney | null;
   /** Present only on a TASK row — what to close when it is done. */
   taskId?: number;
   /** Who the agent would hand this to, and why. Only ever on an item in the Nobody's band that supports an assignment. Present whether or not the dealership has switched the agent on: off it is a suggestion with a person's click behind it, on the scheduler will already have applied it and the item will have changed band. Null when there is nobody left to hand it to. */

@@ -736,6 +736,30 @@ export interface QueueAction {
 }
 
 /**
+ * TIME never reaches the queue. A file lodged on Tuesday is not work on Wednesday, and a queue full of things nobody can act on is one people stop reading.
+ */
+export type QueueJourneyWaitKind = typeof QueueJourneyWaitKind[keyof typeof QueueJourneyWaitKind];
+
+
+export const QueueJourneyWaitKind = {
+  PERSON: 'PERSON',
+  OUTSIDE: 'OUTSIDE',
+  JOURNEY: 'JOURNEY',
+  TIME: 'TIME',
+} as const;
+
+export interface QueueJourney {
+  id: number;
+  stepId: string;
+  stepTitle: string;
+  /** TIME never reaches the queue. A file lodged on Tuesday is not work on Wednesday, and a queue full of things nobody can act on is one people stop reading. */
+  waitKind: QueueJourneyWaitKind;
+  completed: number;
+  total: number;
+  loops: number;
+}
+
+/**
  * The reassignment this row supports, when it has one. Not a button — a picker over staff who still work here, each carrying what they already hold. R-54 asks that work never becomes unroutable, and the screen that shows orphaned work has to be where it can be handed on, or "reassign to someone still here" is advice with a trip to another screen attached.
  * @nullable
  */
@@ -748,7 +772,8 @@ export const QueueItemAssignAction = {
 } as const;
 
 /**
- * DERIVED is everything the queue has ever held — computed from the mirror on every request, never stored, gone the moment the record moves. TASK is a row somebody wrote down. They sit in one list and are sorted together, because a separate Tasks screen recreates exactly the problem the queue was built to solve.
+ * DERIVED is everything the queue has ever held — computed from the mirror on every request, never stored, gone the moment the record moves. TASK is a row somebody wrote down. JOURNEY is a process that stopped: the runtime knows which step, how far along, and how many times the outside world sent it back, none of which a classifier can say because a classifier only ever sees one record.
+ * They sit in one list and are sorted together, because a separate screen for any of them recreates exactly the problem the queue was built to solve. Where a record has a live journey the classifier stands aside, so no record appears twice saying two different things.
  */
 export type QueueItemSource = typeof QueueItemSource[keyof typeof QueueItemSource];
 
@@ -756,6 +781,7 @@ export type QueueItemSource = typeof QueueItemSource[keyof typeof QueueItemSourc
 export const QueueItemSource = {
   DERIVED: 'DERIVED',
   TASK: 'TASK',
+  JOURNEY: 'JOURNEY',
 } as const;
 
 /**
@@ -826,8 +852,13 @@ export interface QueueItem {
      * @nullable
      */
   assignRole?: string | null;
-  /** DERIVED is everything the queue has ever held — computed from the mirror on every request, never stored, gone the moment the record moves. TASK is a row somebody wrote down. They sit in one list and are sorted together, because a separate Tasks screen recreates exactly the problem the queue was built to solve. */
+  /**
+     * DERIVED is everything the queue has ever held — computed from the mirror on every request, never stored, gone the moment the record moves. TASK is a row somebody wrote down. JOURNEY is a process that stopped: the runtime knows which step, how far along, and how many times the outside world sent it back, none of which a classifier can say because a classifier only ever sees one record.
+     * They sit in one list and are sorted together, because a separate screen for any of them recreates exactly the problem the queue was built to solve. Where a record has a live journey the classifier stands aside, so no record appears twice saying two different things.
+     */
   source?: QueueItemSource;
+  /** Set only on a JOURNEY row. Which step the sale stopped on, how far through it is, and how many times it has been sent backwards. */
+  journey?: QueueJourney | null;
   /** Present only on a TASK row — what to close when it is done. */
   taskId?: number;
   /** Who the agent would hand this to, and why. Only ever on an item in the Nobody's band that supports an assignment. Present whether or not the dealership has switched the agent on: off it is a suggestion with a person's click behind it, on the scheduler will already have applied it and the item will have changed band. Null when there is nobody left to hand it to. */
@@ -1536,6 +1567,123 @@ export interface OutboundMessage {
  */
 export interface MessageNoteInput {
   note?: string;
+}
+
+/**
+ * ABANDONED is not DONE. The thing the journey was about stopped existing, which must never be counted as having finished.
+ */
+export type JourneyTraceStatus = typeof JourneyTraceStatus[keyof typeof JourneyTraceStatus];
+
+
+export const JourneyTraceStatus = {
+  LIVE: 'LIVE',
+  DONE: 'DONE',
+  ABANDONED: 'ABANDONED',
+} as const;
+
+/**
+ * Who physically moves it. OUTSIDE is the RTO, the customer, India Post — nobody the dealership employs, and the distinction decides whether a row is work or news.
+ */
+export type JourneyTraceStepActor = typeof JourneyTraceStepActor[keyof typeof JourneyTraceStepActor];
+
+
+export const JourneyTraceStepActor = {
+  RULE: 'RULE',
+  PERSON: 'PERSON',
+  AGENT: 'AGENT',
+  OUTSIDE: 'OUTSIDE',
+  DMS: 'DMS',
+} as const;
+
+export type JourneyTraceStepState = typeof JourneyTraceStepState[keyof typeof JourneyTraceStepState];
+
+
+export const JourneyTraceStepState = {
+  DONE: 'DONE',
+  HERE: 'HERE',
+  AHEAD: 'AHEAD',
+} as const;
+
+export interface JourneyTraceStep {
+  stepId: string;
+  title: string;
+  /** Who physically moves it. OUTSIDE is the RTO, the customer, India Post — nobody the dealership employs, and the distinction decides whether a row is work or news. */
+  actor: JourneyTraceStepActor;
+  state: JourneyTraceStepState;
+}
+
+/**
+ * The four kinds of waiting, and DDMS could express none of them before. PERSON is always work. OUTSIDE is work only once it has gone on too long. JOURNEY means another process must finish first — insurance, before registration can move. TIME is never work, and saying so is the point: a file lodged on Tuesday is not late on Wednesday.
+ */
+export type JourneyWaitKind = typeof JourneyWaitKind[keyof typeof JourneyWaitKind];
+
+
+export const JourneyWaitKind = {
+  PERSON: 'PERSON',
+  OUTSIDE: 'OUTSIDE',
+  JOURNEY: 'JOURNEY',
+  TIME: 'TIME',
+} as const;
+
+export interface JourneyWait {
+  /** The four kinds of waiting, and DDMS could express none of them before. PERSON is always work. OUTSIDE is work only once it has gone on too long. JOURNEY means another process must finish first — insurance, before registration can move. TIME is never work, and saying so is the point: a file lodged on Tuesday is not late on Wednesday. */
+  kind: JourneyWaitKind;
+  who: string;
+  why: string;
+  todo: string;
+  /**
+     * The day an OUTSIDE wait stops being normal and starts being late.
+     * @nullable
+     */
+  notBefore?: string | null;
+}
+
+export type JourneyArrivalDirection = typeof JourneyArrivalDirection[keyof typeof JourneyArrivalDirection];
+
+
+export const JourneyArrivalDirection = {
+  START: 'START',
+  FORWARD: 'FORWARD',
+  BACKWARD: 'BACKWARD',
+  FINISH: 'FINISH',
+} as const;
+
+export interface JourneyArrival {
+  stepId: string;
+  direction: JourneyArrivalDirection;
+  /**
+     * Why, in the world's words — the RTO's objection text. A BACKWARD arrival without one is the failure the ledger exists to prevent.
+     * @nullable
+     */
+  reason?: string | null;
+  /** @nullable */
+  fromStepId?: string | null;
+  occurredAt: string;
+}
+
+export interface JourneyTrace {
+  id: number;
+  definitionId: string;
+  /** Which version of the map this journey started under. A trace read next year against a map that has since gained two steps would be a quietly false account of what somebody was asked to do. */
+  definitionVersion: number;
+  title: string;
+  subjectModule: string;
+  subjectKey: string;
+  /** ABANDONED is not DONE. The thing the journey was about stopped existing, which must never be counted as having finished. */
+  status: JourneyTraceStatus;
+  startedAt: string;
+  /** @nullable */
+  completedAt?: string | null;
+  steps: JourneyTraceStep[];
+  /**
+     * Null on a finished journey.
+     * @nullable
+     */
+  standingOn?: string | null;
+  wait?: JourneyWait | null;
+  /** How many times the outside world sent it backwards. */
+  loops: number;
+  arrivals: JourneyArrival[];
 }
 
 export type RecordActivityModule = typeof RecordActivityModule[keyof typeof RecordActivityModule];

@@ -201,7 +201,7 @@ pnpm run typecheck:libs                         # before checking leaf packages
 
 ## Data model
 
-Twenty-five tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
+Twenty-nine tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
 which of them `ddms_app` may read, and on what terms, is in `lib/db/sql/rls.sql`.
 
 **The owner tier** — who the data belongs to:
@@ -556,6 +556,64 @@ DDMS rather than one that signed up this morning.
 > **Reconciliation is string equality.** A `SIM-` prefix on one side and not the
 > other manufactures a `CONFLICT` per matched deal. Both sides carry it, because
 > every number in that fixture is a policy no insurer issued (R-41).
+
+## Where each sale has got to
+
+`lib/dms/journeys/` — the first thing in the product that understands a
+**journey** rather than a record (OBJ-23, R-77). One definition,
+`VEHICLE_DELIVERY`: nine steps from the invoice to the certificate in the
+customer's hands, across four screens that do not know they describe one sale.
+
+**The definition is code and versioned**, in `vehicle-delivery.ts`. Every fork is
+a column test — is the policy on the file, is the tax remitted, did a number come
+back — so there is no journey builder and will not be one (R-52 unchanged).
+
+> **A model may write a sentence inside a step. It may never choose an edge.**
+
+`done`, `wait` and `returnsTo` are synchronous pure functions taking no client,
+which is the first line of that rule rather than a comment about it.
+
+**The walk: the position is the first step that is not done.** Not the step after
+the last one seen to complete — that advances once per pass and can never go
+backwards. Because the walk is total, the loop needs no special case: when the
+RTO rejects a file, `DOCUMENTS` stops being done and the position *is* earlier.
+The `journey_steps` row records `BACKWARD` and carries the objection.
+
+**The ending is the last step, not the absence of gaps.** A vehicle whose plate
+date was never recorded is still a delivered vehicle.
+
+**Four kinds of waiting**, and this is what the old model could not express:
+`PERSON` is always a queue row, `OUTSIDE` becomes one once it passes the
+dealership's own threshold, `JOURNEY` blocks everything behind it, and **`TIME`
+never raises one**. A file lodged on Tuesday is not work on Wednesday.
+
+**A stalled step is the queue row, and the classifier stands aside.** A
+registration file with a live journey produces exactly one row and the runtime
+writes it — `QueueItem.source` is `DERIVED | TASK | JOURNEY`. Severity is
+borrowed from the dealership's `SEVERITY.REGISTRATION.*` keys, as a function of
+the facts, because one step can be two degrees of urgent.
+
+**Nothing lives in memory.** The position is two rows in Postgres and the facts
+come from the mirror, so a restart mid-flight is the ordinary pass run twice.
+`advanceJourneys` runs in the scheduler before the rules, because the agent pass
+reads the queue.
+
+**It writes `journeys` and `journey_steps` and nothing else** — no decision
+field, nothing on the mirror. `ddms_worker` may insert and update a journey and
+may neither delete nor update an arrival: the newest arrival *is* the position,
+so rewriting one would not lose history, it would change what the runtime
+believes now.
+
+`pnpm run verify:journey` — a simulated month with no database, then the durable
+half on the worker credential.
+
+> **Absence of evidence is not evidence of absence.** `INVOICED.done` was
+> `Boolean(invoiceNo)` and put nine files on the queue asking somebody to invoice
+> a vehicle that was already registered — their deals are not in the deal mirror,
+> so the join returned nothing. A registration file only exists because the sale
+> was invoiced. Same shape as the employee rule: **silence is not a departure**,
+> and a subject missing from a fact-set means the walk has nothing to say about
+> it, not that the file is gone.
 
 ## The records DDMS owns
 

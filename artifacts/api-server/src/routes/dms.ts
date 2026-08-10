@@ -100,7 +100,8 @@ import {
 } from "../lib/dms/permissions";
 import { buildQueue } from "../lib/dms/queue";
 import { describeRules, MAX_RULES } from "../lib/dms/rules";
-import { describePolicy, resetAllPolicy, setPolicy } from "../lib/dms/policy";
+import { describePolicy, loadPolicy, resetAllPolicy, setPolicy } from "../lib/dms/policy";
+import { traceFor } from "../lib/dms/journeys";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -804,6 +805,45 @@ router.post("/dms/messages/:id/send", async (req, res): Promise<void> => {
  * the same `app.can_read(module)` that gates the mirror row itself. A service
  * advisor is refused a note on a receivable by Postgres, not by this handler.
  */
+/**
+ * Where this record's journey has got to (OBJ-23).
+ *
+ * Read-only, and there is no companion write route on purpose. A journey is
+ * moved by the world changing — the RTO answers, the tax clears — not by
+ * somebody pressing a button on it, and an endpoint that let a person set a
+ * position would be a second way for the record to become untrue. Where a
+ * person acts they act on the *record*, through `POST /dms/actions`, and the
+ * runtime notices on its next pass. That is the one door (R-81) applied to the
+ * thing most likely to want a second one.
+ *
+ * The position and the wait in the response are **derived on read**, exactly as
+ * reconciliation is: a stored *waiting on the RTO* goes stale the moment the
+ * RTO answers. What comes out of the database is the arrivals, because those
+ * are history and history does not go stale.
+ *
+ * 404 when the record has no journey, which is an answer rather than a failure:
+ * only registration files have a definition today.
+ */
+router.get("/dms/records/:module/:recordKey/journey", async (req, res): Promise<void> => {
+  const module = String(req.params.module).toUpperCase() as ActivityModule;
+  if (!ACTIVITY_MODULES.has(module)) {
+    res.status(400).json({ error: `Unknown module ${req.params.module}` });
+    return;
+  }
+  if (!(await assertModuleAccess(req, res, module as never))) return;
+
+  const trace = await traceFor(
+    module,
+    String(req.params.recordKey),
+    await loadPolicy(req.sessionUser!.ownerId),
+  );
+  if (!trace) {
+    res.status(404).json({ error: "This record is not being tracked as a journey." });
+    return;
+  }
+  res.json(trace);
+});
+
 router.get("/dms/records/:module/:recordKey/activities", async (req, res): Promise<void> => {
   const module = String(req.params.module).toUpperCase() as ActivityModule;
   if (!ACTIVITY_MODULES.has(module)) {

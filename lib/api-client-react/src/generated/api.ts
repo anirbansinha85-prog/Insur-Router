@@ -64,6 +64,7 @@ import type {
   IngestPushInput,
   IngestPushResult,
   IngestResult,
+  JourneyTrace,
   ListApplicationsParams,
   ListDmsEvents200,
   ListDmsEventsParams,
@@ -2335,6 +2336,91 @@ export const useApproveDmsMessage = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getApproveDmsMessageMutationOptions(options));
     }
+
+export const getGetRecordJourneyUrl = (module: 'DEAL' | 'JOB_CARD' | 'ENQUIRY' | 'REGISTRATION' | 'PART' | 'RECEIVABLE' | 'VEHICLE',
+    recordKey: string,) => {
+
+
+
+
+  return `/api/dms/records/${module}/${recordKey}/journey`
+}
+
+/**
+ * DDMS understands a record. This is the first thing that understands a journey — one sale walking through the building, from the invoice to the certificate in the customer's hands, across four screens that do not know they describe the same vehicle.
+ * Read-only, deliberately. A journey moves because the world changed, not because somebody pressed a button on it, and an endpoint that let a caller set a position would be a second way for the record to become untrue. Acting happens on the record through POST /dms/actions and the runtime notices on its next pass.
+ * The position and the wait are derived on read, like reconciliation — a stored "waiting on the RTO" goes stale the moment the RTO answers. Only the arrivals come out of the database, because history does not go stale.
+ * @summary Where this record's sale has got to
+ */
+export const getRecordJourney = async (module: 'DEAL' | 'JOB_CARD' | 'ENQUIRY' | 'REGISTRATION' | 'PART' | 'RECEIVABLE' | 'VEHICLE',
+    recordKey: string, options?: Parameters<typeof customFetch>[1]): Promise<JourneyTrace> => {
+
+  return customFetch<JourneyTrace>(getGetRecordJourneyUrl(module,recordKey),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRecordJourneyQueryKey = (module: 'DEAL' | 'JOB_CARD' | 'ENQUIRY' | 'REGISTRATION' | 'PART' | 'RECEIVABLE' | 'VEHICLE',
+    recordKey: string,) => {
+    return [
+    `/api/dms/records/${module}/${recordKey}/journey`
+    ] as const;
+    }
+
+
+export const getGetRecordJourneyQueryOptions = <TData = Awaited<ReturnType<typeof getRecordJourney>>, TError = ErrorType<ErrorResponse>>(module: 'DEAL' | 'JOB_CARD' | 'ENQUIRY' | 'REGISTRATION' | 'PART' | 'RECEIVABLE' | 'VEHICLE',
+    recordKey: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRecordJourney>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRecordJourneyQueryKey(module,recordKey);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRecordJourney>>> = ({ signal }) => getRecordJourney(module,recordKey, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: module !== null && module !== undefined && recordKey !== null && recordKey !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRecordJourney>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRecordJourneyQueryResult = NonNullable<Awaited<ReturnType<typeof getRecordJourney>>>
+export type GetRecordJourneyQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Where this record's sale has got to
+ */
+
+export function useGetRecordJourney<TData = Awaited<ReturnType<typeof getRecordJourney>>, TError = ErrorType<ErrorResponse>>(
+ module: 'DEAL' | 'JOB_CARD' | 'ENQUIRY' | 'REGISTRATION' | 'PART' | 'RECEIVABLE' | 'VEHICLE',
+    recordKey: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRecordJourney>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRecordJourneyQueryOptions(module,recordKey,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getListRecordActivitiesUrl = (module: 'DEAL' | 'JOB_CARD' | 'ENQUIRY' | 'REGISTRATION' | 'PART' | 'RECEIVABLE' | 'VEHICLE',
     recordKey: string,) => {

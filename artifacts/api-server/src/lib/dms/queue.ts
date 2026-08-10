@@ -63,6 +63,7 @@ import { buildInventoryWorklist } from "./inventory-worklist";
 import type { ActionId } from "./actions";
 import { suggestForItems, type AgentSuggestion } from "./agent";
 import { openTasks, daysLate } from "./records";
+import { journeyQueueRows, liveSubjects } from "./journeys";
 
 export type QueueModule =
   | "DEAL"
@@ -99,9 +100,28 @@ export interface QueueItem {
    * recreate exactly the problem OBJ-15 was built to solve: seven places to
    * look and no answer to *what do I do next*.
    */
-  source: "DERIVED" | "TASK";
+  source: "DERIVED" | "TASK" | "JOURNEY";
   /** Set only on a `TASK` row — what to close when it is done. */
   taskId?: number;
+  /**
+   * Set only on a `JOURNEY` row, and it is the row's whole justification.
+   *
+   * A derived row says *this record is in a bad state*. A journey row says
+   * *this sale stopped here, on its way from an invoice to a certificate* —
+   * which step, how far along, and how many times the outside world has sent
+   * it back. Nothing a classifier can say, because a classifier only ever sees
+   * one record.
+   */
+  journey?: {
+    id: number;
+    stepId: string;
+    stepTitle: string;
+    /** Which of the four kinds of waiting. `TIME` never reaches this list. */
+    waitKind: string;
+    completed: number;
+    total: number;
+    loops: number;
+  };
   module: QueueModule;
   recordKey: string;
   showroomId: number;
@@ -282,6 +302,18 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
     return { name: person?.name ?? null, gone: person ? !person.active : false };
   };
 
+  /*
+   * Which records the runtime is answering for, so the classifiers can stand
+   * aside (OBJ-23).
+   *
+   * Loaded once, before anything is built. A record with a live journey gets
+   * exactly one row and the runtime writes it, because the alternative is the
+   * same registration file appearing twice on one screen saying two different
+   * things — which is the failure the single queue was built to end, arriving
+   * from a new direction.
+   */
+  const runtimeOwns = await liveSubjects(input.ownerId, visibleShowroomIds);
+
   const items: QueueItem[] = [];
 
   for (const showroomId of visibleShowroomIds) {
@@ -431,6 +463,9 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
     // ── Registration files ──────────────────────────────────────────────────
     for (const r of registrations) {
       if (!r.actionRequired) continue;
+      // The journey has this file. It knows where the sale stopped; the
+      // classifier only knows what is wrong with the row.
+      if (runtimeOwns.has(`REGISTRATION:${r.regnFileNo}`)) continue;
       const severity = policy.severity("REGISTRATION", r.state);
       if (!severity) continue;
       const assigned = r.ddms.assignedAgentEmpCode ?? r.agentEmpCode;
@@ -617,6 +652,104 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         href: "/inventory",
       });
     }
+  }
+
+  /*
+   * ── Journeys ──────────────────────────────────────────────────────────────
+   *
+   * A stalled step *is* a queue row, and this is where the journey model
+   * finally pays for itself.
+   *
+   * **The registration classifier stands aside for any file that has a live
+   * journey.** Not both — that was the first version, and it put the same file
+   * on the queue twice saying two different things about it. The runtime knows
+   * strictly more: it can tell *lodged on Tuesday* from *lodged five weeks ago*
+   * without a state for each, it has a name for the step the classifier has
+   * none for (everything ready, nobody has lodged it), and it does not raise a
+   * row at all for a wait nobody can act on.
+   *
+   * The severity still comes from the dealership's own table, borrowed through
+   * the step's `severityState`. A journey that invented its own numbers would
+   * let the queue and the registration screen disagree about the same file, and
+   * OBJ-18's whole argument is that those numbers belong to the dealership
+   * rather than to whichever module asked last.
+   */
+  const journeyRows = await journeyQueueRows({
+    ownerId: input.ownerId,
+    showroomIds: visibleShowroomIds,
+    policy,
+  });
+
+  for (const j of journeyRows) {
+    if (!may(j.subjectModule as AccessModule)) continue;
+
+    /*
+     * A step with no matching classifier state falls back to *this week*.
+     *
+     * Two of the nine steps have no equivalent in `SEVERITY.REGISTRATION.*`
+     * because the classifier has no state for them — and one of those, a file
+     * that is ready to lodge and has not been, is real work the queue has never
+     * shown. Inventing a severity key for it would be a settings change nobody
+     * asked for; taking the middle band is honest and visible.
+     */
+    const severity = j.severityState
+      ? (policy.severity("REGISTRATION", j.severityState) ?? 2)
+      : 2;
+
+    const who = carrier(j.assignedEmpCode);
+
+    items.push({
+      source: "JOURNEY",
+      journey: {
+        id: j.journeyId,
+        stepId: j.stepId,
+        stepTitle: j.stepTitle,
+        waitKind: j.waitKind,
+        completed: j.completed,
+        total: j.total,
+        loops: j.loops,
+      },
+      module: j.subjectModule as QueueModule,
+      recordKey: j.subjectKey,
+      showroomId: j.showroomId,
+      showroomCode: null,
+      band: bandFor(j.assignedEmpCode, who.gone, empCode),
+      severity,
+      waitingDays: j.waitingDays,
+      title: j.title,
+      subtitle: j.subtitle,
+      state: j.stepId,
+      note: j.why,
+      actionRequired: j.todo,
+      assignedEmpCode: j.assignedEmpCode,
+      assignedEmpName: who.name,
+      assigneeGone: who.gone,
+      contactName: j.contactName,
+      contactMobile: j.contactMobile,
+      // The same two controls the registration screen offers, because they are
+      // the same file. What changed is why the row is here, not what can be
+      // done about it.
+      actions: [
+        {
+          action: "REGISTRATION_MARK_NOTIFIED",
+          label: "Mark customer told",
+          doneLabel: "Customer told",
+          done: false,
+          tone: "amber",
+        },
+        {
+          action: "REGISTRATION_LOG_CHASE",
+          label: "Log an RTO chase",
+          doneLabel: "RTO chased",
+          done: false,
+          tone: "slate",
+        },
+      ],
+      assignAction: "REGISTRATION_ASSIGN_AGENT",
+      assignRole: j.role ?? "RTO_AGENT",
+      agentSuggestion: null,
+      href: "/registrations",
+    });
   }
 
   /*

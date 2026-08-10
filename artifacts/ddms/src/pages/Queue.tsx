@@ -19,6 +19,7 @@ import {
 import { ActionButton, AgentSuggestionCard, AssignPicker, ContactButtons } from "@/lib/actions"
 import { ExplainButton } from "@/lib/explain"
 import { Timeline } from "@/lib/timeline"
+import { JourneyPanel } from "../lib/journey"
 
 /**
  * One queue, worked one at a time.
@@ -230,6 +231,26 @@ export default function Queue() {
               {current.subtitle && (
                 <p className="text-sm text-slate-500 mt-0.5">{current.subtitle}</p>
               )}
+              {/* Which step of which sale, in the header rather than buried in
+                  the panel below.
+
+                  A row that says only *chase the RTO* is the same row the
+                  product has always shown. *Step 5 of 9, sent back once* is the
+                  thing a classifier could never say, because a classifier only
+                  ever sees one record and this row is about a process. */}
+              {current.journey && (
+                <p className="text-[11px] text-slate-500 mt-1">
+                  {current.journey.stepTitle} · step {current.journey.completed} of{" "}
+                  {current.journey.total}
+                  {current.journey.loops > 0 && (
+                    <span className="text-red-700 font-medium">
+                      {" "}
+                      · sent back{" "}
+                      {current.journey.loops === 1 ? "once" : `${current.journey.loops} times`}
+                    </span>
+                  )}
+                </p>
+              )}
             </div>
 
             {/* Whose it is, said plainly. A departed assignee is the reason this
@@ -359,6 +380,17 @@ export default function Queue() {
                 came here to do, and the history is what you read when the
                 controls are not obviously enough. A task row has no timeline of
                 its own — it *is* the thing somebody wrote down. */}
+            {/* Where the sale has got to, above the timeline.
+
+                The timeline is *what people did about this record*; the journey
+                is *where the thing itself has reached*, and somebody looking at
+                a stuck file wants the second one first. It renders nothing at
+                all where there is no journey, which is most records today —
+                only registration files have a map. */}
+            {current.source !== "TASK" && (
+              <JourneyPanel module={current.module} recordKey={current.recordKey} />
+            )}
+
             {current.source !== "TASK" && (
               <Timeline
                 module={current.module}
