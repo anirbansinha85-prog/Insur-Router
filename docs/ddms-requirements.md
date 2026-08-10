@@ -801,6 +801,12 @@ short-staffed dealership does not employ. So:
   is R-49; the fourth would make DDMS a second system of record, which is the
   precise thing it was built to expose.
 
+  > **The fourth was re-cut on 6 August and the other three stand.** DDMS is an
+  > ERP as well as a control plane, so *creates nothing* is false as written —
+  > but the instinct was right and survives as **R-76: DDMS creates nothing the
+  > DMS is the source of truth for.** Mirror-only stays mirror-only; what the
+  > dealer's system does not hold is DDMS's own. See §3c.
+
 ### The revised order, and why
 
 | Order | Objective | Model? | Why here |
@@ -1510,6 +1516,369 @@ in crisis rather than one having a normal month.
 
 ---
 
+## 3c. Reframed 6–10 August — DDMS as an agentic ERP, and the journey model
+
+Anirban developed the product in parallel sessions and asked for the
+understanding to be revamped rather than the code changed. **Nothing in this
+section is built.** It reconciles everything discussed between 6 and 10 August
+into one path, and it supersedes parts of §3a and §3b where they disagree.
+
+Two research corpora informed it and are cited where they did: a first-hand
+extraction of **wrrk.ai** (155 pages, `C:\Users\Rentorzo\scrapi\reports\wrrk-ai.md`)
+and the **QM** agent harness (`github.com/yc-software/qm`, README only). Both are
+read for *construction*, not for pricing or positioning.
+
+### What changed, in one line
+
+> DDMS was **an owner-level control plane over a read-only mirror**. It is now
+> **an agentic ERP and CRM that uses the DMS's data to produce insight and
+> action** — and the mirror is a source, not the identity.
+
+Three standalone products, not one umbrella. InsurRouter is separate by design
+and shares the database deliberately, because its scope is two-wheeler policy
+issue only — same domain, same records. Modules are written so each can be
+called on its own.
+
+### The non-goal that had to be re-cut, not deleted
+
+*"No record creation / not a second system of record"* was written to stop DDMS
+becoming a duplicate DMS that silently drifts. As an ERP that rule is false as
+written, and the instinct behind it is still right. The new line, agreed:
+
+> **DDMS creates nothing the DMS is the source of truth for.**
+
+Deals, job cards, stock, enquiries, registration files → mirror only, forever.
+Notes, activities, tasks, quotations, price lists, decisions, internal costs →
+DDMS's outright.
+
+**And that re-cut is what unlocks the agent.** OBJ-17 opened 2 of 12 registry
+actions because 8 of the other 10 assert *a person did something* against a
+record DDMS does not own. Adding agents does not move that number. Owning
+records does: a note the agent wrote is the agent's note, and nothing false is
+being claimed. CRM is not a screen — it is the thing that gives an agent
+anything legitimate to do.
+
+### The journey model
+
+DDMS knows what is wrong with a **record**. It has never understood a
+**journey**. A vehicle sold is one thing walking through the building —
+invoice, insurance, registration, road tax, RTO, RC — and today that is ten
+unrelated rows on four screens, with nothing in the system aware they are the
+same sale.
+
+A journey is a **graph**: steps, and forks between them. Every step declares
+five things — what must be true first, what it does, who does it (rule · agent ·
+person · outside world · the dealer's own system), what it produces, and what
+happens when it cannot run.
+
+Four kinds of waiting, and DDMS can express none of them today:
+
+| | |
+|---|---|
+| on a person | approve, key it in, make the call |
+| on the outside world | the RTO, the financier, India Post |
+| **on another journey** | insurance, before registration can move |
+| on time | nothing to do until Tuesday |
+
+**A wait is a queue row, and that is the mechanic that pays for the whole
+thing.** Today seven classifiers each hand-write their own *what to do*
+sentence. With journeys, a stalled step *is* the queue entry — it already knows
+where it stopped, why, and what it was doing before.
+
+Two shapes of backwards edge, and they are not the same:
+
+- **loop** — an RTO objection sends a registration file back to document
+  collection, carrying the objection reason. It may loop more than once.
+- **unwind** — a finance rejection releases the allocated unit back to free
+  stock and hands the customer back to the enquiry journey. This is the only
+  process in the dealership that runs backwards and frees a physical asset, and
+  nothing models it: the `STUCK_ALLOCATION` state is that bike, three weeks
+  after the deal died, with no record of why.
+
+The journeys, with the forks that matter, are listed in the design note. The
+commercial funnel — **lead → pre-sales → sale → booking → finance → invoice** —
+was missing from the first pass and Anirban added it; the booking seam is where
+money first changes hands and the finance seam is the unwind.
+
+### Autonomy is earned, not set — and this is the session's best idea
+
+Everyone builds autonomy as a dial somebody sets. Anirban's proposal is
+autonomy **earned by evidence, where the evidence is the dealership's own past
+decisions**:
+
+| Stage | What the system does | Who decides |
+|---|---|---|
+| **0 · watching** | notices a pattern, says nothing | nobody |
+| **1 · recall** | *"the last 7 times, you gave it to Jaswinder. Same again?"* | the person, every time |
+| **2 · pre-filled** | the answer is already selected; press go | the person, faster |
+| **3 · automatic** | *"10 out of 10. Shall I just do it?"* → consent, once | the person, once, revocably |
+
+**Why it is safer than a dial, and it is not obvious.** At stages 0–2 the model
+does **recall**, never judgement. It answers *what happened before* — a query
+with an answer — and never *what should happen*. R-49 therefore survives intact
+all the way up the ladder. The graduation *is* the safety mechanism.
+
+This does not contradict R-69 (*precedent never authorises and never acts*). It
+adds one step: precedent is the **evidence a person consents on**, and the
+consent authorises. Precedent still authorises nothing.
+
+Three properties it needs to be honest: **demotion**, or it is a ratchet;
+**per pattern**, not per agent or per module; and the threshold is **the
+dealership's number**, belonging on the *Your numbers* screen — a cautious owner
+sets 25, a confident one 5.
+
+wrrk's cruder version of the same instinct: after two weeks, a rejection rate
+above **20%** means the agent is not ready and more autonomy is the wrong
+answer; below **5%**, expand. **[Documented]**
+
+### The architecture — six layers, and one door
+
+| | Layer | What lives here | Who touches it |
+|---|---|---|---|
+| 1 | **Ground truth** | the mirror · records DDMS owns · every decision · where each journey has got to | everything, through one door |
+| 2 | **Journey definitions** | the maps. Steps, forks, conditions. Hardcoded, versioned | nobody at runtime |
+| 3 | **The runtime** | live journeys, one per real-world thing. Durable pause and resume | the scheduler, and people acting |
+| 4 | **Stored intelligence** | every journey ever walked, which way it went, what followed | **the agent only** |
+| 5 | **Agents** | read 4, propose against 3, act through the one door | — |
+| 6 | **Surfaces** | queue, screens, Outbox, WhatsApp | people |
+
+Layer 1 is Postgres and stays Postgres: truth, audit, and the dealer-group
+boundary all live there. Layer 2 is code — most forks are definitive, so they
+are hardcoded and reviewed like any other change, which is R-52 unchanged.
+Layer 3 is the durable runner, and *pause and resume across weeks* is the single
+biggest thing DDMS cannot do today.
+
+> **The one door: nothing writes to layer 1 except through the same call a
+> person's button makes.**
+
+Not agents, not the runtime, not the graph. This is the same argument as OBJ-17
+one level up, and it is what makes the rest deferrable — permissions, roles, who
+sees what can all be settled later, because whenever they are, they are settled
+in one place and everything inherits them.
+
+### The floor, now three times attested
+
+| | |
+|---|---|
+| **DDMS** | no rule can permit a customer message — by construction, not omission |
+| **wrrk.ai** | *"a code-level guarantee, not a configuration toggle. There's no admin setting to auto-approve emails, by design"* **[Documented]** |
+| **QM** | hard denials in the predeclared command policy apply **across all security postures** **[Documented]** |
+
+Three teams, three products, one conclusion: **the floor lives in code and
+configuration cannot reach it.** It stops being a DDMS opinion and becomes an
+attested pattern — and it composes with graduation exactly as it must:
+
+> **Graduation moves a pattern up the ladder. It can never move it past the
+> floor.**
+
+### The intelligence store
+
+Anirban's argument for a graph is better than the one first offered: if a
+journey *is* a graph, a completed journey is a **path through it**, and *what
+did we do last time in this situation* is literally *find paths that reached
+this node with these properties and see which edge they took*. That is a graph
+query by nature.
+
+His second point resolves the isolation objection: **only the agent reads the
+store**, and whatever it surfaces goes out through DDMS's normal
+permission-checked surfaces. So the store needs one partition per dealer group
+and **no permission model of its own**. Scope the reader, not the store — the
+same idea QM builds its whole workspace model on **[Documented]**.
+
+Build it behind **one interface with four questions** — *what happened before ·
+what usually happens next · where does this normally stall · what is unusual
+here*. SQL first, because R-70 already argues for named features over
+embeddings and it is a week's work to find out whether the graduation loop
+works at all. Swap in a graph when a question needs paths. Nothing above the
+interface knows which is behind it.
+
+### The runtime, and why Python is fine
+
+Process logic in Python with LangGraph, the rest TypeScript. One rule decides
+whether that is safe:
+
+> **The Python orchestrator is a client of the existing API, never a second
+> thing with a database connection.**
+
+It calls the endpoints the buttons call, and inherits every refusal, the gate,
+the decision log and row-level security. Give it its own connection and every
+rule has to be written twice, and the first one somebody forgets is the hole.
+
+One caution carried: LangGraph is built for model-driven apps and most of our
+nodes have no model in them. That is supported — but its presence will tempt a
+model onto a decision edge. **Never on the edges. The edges are rules.**
+
+### Ingestion — three ways in, one record
+
+> **Ingestion varies. Completion does not.**
+
+| Path | Who it is for | Onboarding | Freshness |
+|---|---|---|---|
+| Direct fetch | large groups, cooperative DMS | one integration per OEM | live |
+| **Report drop** | **most dealers** | map the columns once | per export |
+| PDF scan | the smallest, and anyone with nothing else | per document type | per document |
+
+Anirban's correction, and it reframes the priority: **the dealers with no API
+are the majority and the most underserved.** A sub-dealer in Tripura doing five
+units a month feels the pain more than a group doing eighty and has nothing.
+Building for the API case and treating the rest as fallback serves the smallest
+part of the market.
+
+Enabled **per data type per dealer**, not per dealer — stock by report,
+invoices by PDF, and the API two years later when the OEM opens it, without
+breaking anything already running.
+
+The report path graduates like everything else: a model maps the column
+headings **once**, a person confirms **once**, and thereafter extraction is
+deterministic. Model cost is one-off per dealer per report type, not per row.
+
+**This is what VeloDocs becomes** — the generic *unstructured source → our
+schema, with a human confidence gate* pipeline. Insurance was its first
+consumer; DMS ingestion is its second.
+
+Every field carries its **source** and a **confidence**. A value read off a
+mapped column is not the same fact as one an API returned, and the row must say
+which — the same instinct as `SIM-` on a simulated policy number.
+
+### The invoice DDMS produces
+
+Anirban chose **(b): DDMS produces the invoice document**, and the reasoning is
+sound and worth recording. The customer does not necessarily get the DMS's
+invoice: the dealer may sell at an older price list, discount against ageing
+stock, or retain the OEM's scheme rather than pass it on. All three are the
+dealer's commercial decision. *"Who am I to stop him — I have to give him the
+product which gives him the invoice."*
+
+**The argument for (b), stated properly:** DDMS's document is the DMS's facts
+**plus the commercial agreement**. Neither system holds both — the DMS does not
+know what was promised, DDMS does not know the chassis and the tax split. Only
+the join produces the document the customer should get.
+
+Three consequences:
+
+- **Price lists become first-class data** — effective dates, whose list, model
+  → ex-showroom. The invoice picks one, defaults to current, and prints the
+  choice: *"priced per list effective 12 July."* The DMS is a current-state
+  system that forgets yesterday's price; DDMS keeps the history.
+- **Discount composition is recorded** — how much is the dealer's and how much
+  the OEM's. The claim to the OEM is owed **whatever the customer was told**,
+  and an unclaimed scheme is money already given away.
+- **Which document is the tax invoice is a per-dealer setting.** Only one system
+  may hold a sequential GST series. Where DDMS holds it, setup takes GSTIN, HSN,
+  place-of-supply rules and IRP credentials above the e-invoicing threshold;
+  where the DMS holds it, DDMS's document carries the DMS invoice number for
+  linkage and its own reference series. Same generator, one flag.
+
+And the readiness gate produces **a new kind of queue row**. Everything in the
+queue today is a problem; this is the first item that is an **opportunity** —
+*everything is in place, the invoice can be generated*, with the figures on it
+and a button. Invoices are not late because typing is hard. They are late
+because nobody noticed the deal became ready.
+
+### Corrections to things already built
+
+> **The RC does not sit in the dealer's drawer.** Once issued it goes by India
+> Post to the customer's address. The dealer's controllable duty is **the
+> communication address being right at the point of lodging** — which is
+> *preventive* and therefore better: three addresses exist (the deal, the KYC
+> document, the registration file) and nothing compares them. A mismatch found
+> before lodging costs a phone call; found after, it is a lost RC and a
+> re-application. **Open:** whether `RC_IN_DRAWER` and its weekly chase rule
+> should be retired outright or kept for corrections and re-issues.
+
+> **WhatsApp will refuse most of what the Outbox composes.** The Business API
+> requires a Meta-approved template for the first message and for anything after
+> 24 hours of silence **[Documented]**. Templates suit the design better than
+> free prose — blanks filled from `facts` are the no-invented-figures rule
+> enforced externally — but a person's own sentence (OBJ-20) can only go inside
+> an open 24-hour window. Parked at Anirban's instruction: the message content
+> is not the current concern.
+
+> **Auto-reassignment stays off.** The queue's job is visibility for two
+> audiences — the manager sees what is stuck, the employee sees what is theirs.
+> The agent's assignment already ships off by default and stays there, *held
+> pending design confirmation with a customer.*
+
+### The three modes an agent can run in, and DDMS has one
+
+QM and wrrk both attribute agent actions to **the person who started the run**
+**[Documented]**. DDMS writes null — *the system did this* — and for a scheduled
+pass that is the only honest answer, because nobody started it.
+
+But it exposes a gap: **DDMS has no way for a person to ask the agent to do
+something.** Our agent only ever runs on a timer. A person-initiated run, under
+their name and their permissions, audited, is the **safest** of the three modes
+and the one we lack.
+
+| Mode | Who is accountable | DDMS today |
+|---|---|---|
+| scheduled | nobody — the system | ✅ |
+| person accepts a suggestion | the person who clicked | ✅ |
+| **person asks the agent** | the person who asked | **missing** |
+
+### New requirements
+
+| # | Requirement | Status |
+|---|---|---|
+| R-76 | **DDMS creates nothing the DMS is the source of truth for.** The re-cut of the old non-goal. Deals, job cards, stock, enquiries and registration files stay mirror-only forever; notes, activities, tasks, quotations, price lists and internal costs are DDMS's outright — and owning them is what gives an agent anything legitimate to write | ○ |
+| R-77 | **A journey is the unit of work, and a wait is a queue row.** Steps, forks, and four kinds of waiting — on a person, on the outside world, on another journey, on time. A stalled step *is* the queue entry rather than a sentence somebody wrote for that module | ○ |
+| R-78 | **Forks are rules. A model may write a sentence inside a step; it may never choose an edge.** Almost every fork in every journey is knowable from data — is tax paid, is the part on the shelf, did the date pass. R-49 restated for the runtime, and the specific temptation a workflow library introduces | ○ |
+| R-79 | **Autonomy is earned by evidence and can be lost the same way.** Precedent → repeated acceptance → consent, per pattern, with the threshold set by the dealership and demotion when acceptance falls. A dial somebody sets is a guess; a count is a fact | ○ |
+| R-80 | **Graduation can never cross the floor.** Hard denials apply at every level of autonomy, and no amount of precedent promotes an action past them. Attested independently in three products | ○ |
+| R-81 | **One door.** Nothing writes to the record except through the same call a person's button makes — not agents, not the process runtime, not any second service. It is what lets every question about roles and visibility be answered later in one place | ○ |
+| R-82 | **Precedent is scoped, and never crosses a dealer group.** One dealership's operating decisions must not inform another's. Within a group the owner sees everything, across groups nothing — which is where the boundary already is | ○ |
+| R-83 | **The intelligence store is read by the agent alone.** Whatever it surfaces leaves through a permission-checked surface, so the store needs partitioning by group and no permission model of its own | ○ |
+| R-84 | **Ingestion varies; completion does not.** Direct fetch, report drop and document scan produce one canonical record, and the readiness check does not know which path a field arrived by | ○ |
+| R-85 | **Every ingested field carries its source and its confidence.** A value read off a mapped column is not the same fact as one an API returned, and nothing downstream may treat them alike | ○ |
+| R-86 | **A mapping is confirmed once by a person, then it is fixed.** The model reads unfamiliar column headings once; a person approves; extraction is deterministic thereafter. Model cost is per report type, not per row — and the same shape as graduation | ○ |
+| R-87 | **Price is the dealer's decision, and DDMS records which list was used.** Selling at an older list, discounting ageing stock or retaining an OEM scheme are commercial calls. DDMS holds price lists with effective dates and prints which one an invoice was priced against | ○ |
+| R-88 | **An OEM scheme is claimable whatever the customer was told.** The claim is owed on the scheme amount regardless of how much was passed on, and DDMS is the only system holding both halves | ○ |
+| R-89 | **A document must say what it is.** If it is not a tax invoice it must not look like one. Same instinct as *held — nothing was delivered* and the `SIM-` prefix | ○ |
+| R-90 | **Only one system may hold the tax-invoice series.** Which one is a per-dealer setting; two systems issuing from one sequential series produces gaps or duplicates, and both are audit findings | ○ |
+| R-91 | **A person may ask the agent to act, under their name and their permissions.** The third mode, and the safest, because accountability is unambiguous from the start | ○ |
+| R-92 | **An agent run has a cost and a cap.** Per-run cost, a daily ceiling, and attribution. wrrk quotes $0.01–$0.05 a run and caps at 50/org/day **[Documented]**; DDMS meters nothing | ○ |
+| R-93 | **A run is a trace, not a row.** The decision log answers *what happened to this record*. A multi-agent run is a narrative across records and agents, and nothing today can show it as one thing | ○ |
+| R-94 | **The agent may stand down.** When its proposals are being rejected it pauses itself rather than continuing to propose. wrrk auto-pauses a campaign on acceptance-rate decay **[Documented]**; DDMS has no version of this | ○ |
+
+### The revised order
+
+| # | Objective | Model? | Depends on | Why here |
+|---|---|---|---|---|
+| 21 | **One permission model** | no | — | two half-systems exist — module read-gating and the agent's action set. Everything below adds actions and principals to both |
+| 22 | **DDMS owns its own records** | no | 21 | the unlock. Notes, activities, tasks, quotations, price lists. Nothing an agent can honestly write until this exists |
+| 23 | **The journey model** | no | 22 | the runtime, proved end to end on one journey |
+| 24 | **Ingestion beyond the API** | at the mapping step only | — | independent of everything, and the thing that decides how many dealers can be sold to at all |
+| 25 | **The invoice DDMS produces** | no | 22, 23, 24 | the first document the product issues, and the first record it holds *before* the DMS knows anything |
+| 26 | **Autonomy: the ladder and graduation** | recall only | 21, 23 | needs journeys running long enough to have history to cite. Absorbs OBJ-19 |
+| 27 | **dm-concierge — messages out, replies in** | no | 22 | the Outbox has no transport at all. Inbound is the larger half: a reply is a fact the DMS will never hold |
+| 28 | **The trace and the stand-down** | no | 23, 26 | you cannot supervise what you cannot watch, and cost belongs here |
+| 29 | **More agents** | yes | all | last, and only once there is a model that admits new principals, a ladder to place them on, records they may write, and a trace to watch them in |
+
+> **24 has no dependencies and the strongest commercial argument.** It can be
+> taken out of order whenever reaching more dealers matters more than deepening
+> the product for one.
+
+> **29 is deliberately last, and most people would do it first.** The §3b
+> research found the failure mode is never bad agents — it is ungoverned
+> accumulation, eighty flows on one object, *"a graveyard of decisions nobody
+> documented"*. N agents that can trigger one another reach that faster.
+
+### Held, and why
+
+- **The QM harness itself.** Right stack, useful patterns, and it models no
+  journeys — it would give agents a safe place to run and would not know what a
+  registration file is. Revisit if agents ever need their own per-employee
+  credentials and files.
+- **Neo4j.** Not refused, sequenced. Behind the four-question interface, adopted
+  when a question needs paths rather than filters.
+- **WhatsApp message content and templates.** Parked at Anirban's instruction.
+- **Auto-reassignment.** Off, pending a customer conversation.
+- **Roles and visibility in detail.** Deliberately deferred — R-81 is what makes
+  deferring safe.
+- **OBJ-19 as a separate objective.** Absorbed into 26.
+
+---
+
 ## 4. Where things actually stand
 
 **Built and verified:** owner tier; the read-only mirror across seven modules
@@ -1540,13 +1909,22 @@ two. Nothing has actually been delivered, because there is no email or WhatsApp
 account connected — and the outbox says so on every row rather than implying a
 delivery it cannot perform.
 
-**What it cannot do yet, and it is one thing.** Nothing happens unless somebody
-is looking. Every mechanism built so far is *pull*: sync writes the mirror,
-screens derive on read, and a file that went wrong overnight waits for a person
-to open a page. There are no events, no queue, no people inside a dealership,
-and no rule that runs on its own. That is what **section 3b** is for, and it is
-the difference between a product that shows a short-staffed dealership its
-problems and one that absorbs some of them.
+**Section 3b closed that gap, and this paragraph used to say it was open.**
+What it said was: nothing happens unless somebody is looking, every mechanism is
+*pull*, there are no events, no queue, no people inside a dealership and no rule
+that runs on its own. All six of those are now built — the mirror emits events,
+staff have their own logins, one queue spans seven modules, five rules run
+unattended, the dealership owns its numbers, and an agent operates two of the
+twelve registry actions. Six of §3b's seven are done; OBJ-19 was deferred by
+decision and is absorbed into §3c's OBJ-26.
+
+**What it cannot do yet, and it is again one thing.** DDMS understands a
+*record* and has never understood a *journey*. A vehicle sold is one thing
+moving through the building and the product shows it as ten unrelated rows on
+four screens. Nothing can wait — not on the RTO for three weeks, not on another
+journey, not on a person until Tuesday. That is what **section 3c** is for, and
+it is the difference between a product that orders a dealership's problems and
+one that runs its processes.
 
 **The blocker before a customer is gone.** Sign-in exists in all three
 products, the database enforces the boundary rather than trusting the code to,
