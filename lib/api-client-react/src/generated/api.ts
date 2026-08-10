@@ -20,6 +20,8 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  ActivityInput,
+  ActivityRetractInput,
   Application,
   ApplicationDetail,
   ApplicationInput,
@@ -27,6 +29,8 @@ import type {
   ApplyDmsAction200,
   BrowserScrapeInput,
   CancelDmsMessage200,
+  CloseDmsTask200,
+  CreateDmsTask201,
   DashboardStats,
   DmsActionInput,
   DmsPullInput,
@@ -66,6 +70,7 @@ import type {
   ListDmsMessages200,
   ListDmsMessagesParams,
   ListDmsRules200,
+  ListRecordActivities200,
   ListShowroomStaff200,
   ListShowroomStaffParams,
   LoginInput,
@@ -83,6 +88,7 @@ import type {
   QueueResult,
   RecentApplication,
   ResetDmsPolicy200,
+  RetractRecordActivity200,
   SearchEntities200,
   SearchEntitiesParams,
   SendDmsMessage200,
@@ -91,8 +97,11 @@ import type {
   ShowroomSummary,
   SubmissionLog,
   SyncShowroomDms200,
+  TaskCloseInput,
+  TaskInput,
   UpdateOcrEnginesInput,
-  ValidationResult
+  ValidationResult,
+  WriteRecordActivity201
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -2325,6 +2334,386 @@ export const useApproveDmsMessage = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getApproveDmsMessageMutationOptions(options));
+    }
+
+export const getListRecordActivitiesUrl = (module: 'DEAL' | 'JOB_CARD' | 'ENQUIRY' | 'REGISTRATION' | 'PART' | 'RECEIVABLE' | 'VEHICLE',
+    recordKey: string,) => {
+
+
+
+
+  return `/api/dms/records/${module}/${recordKey}/activities`
+}
+
+/**
+ * The first thing DDMS holds that no DMS has a field for. Everything else on a record is either the dealer's data or a decision field hung off it; this is the dealership's own account of what happened.
+ * Gated twice. The permission table says whether this principal may read activities at all; the row policy says which records, using the same app.can_read(module) that gates the mirror row itself.
+ * @summary A record's own timeline
+ */
+export const listRecordActivities = async (module: 'DEAL' | 'JOB_CARD' | 'ENQUIRY' | 'REGISTRATION' | 'PART' | 'RECEIVABLE' | 'VEHICLE',
+    recordKey: string, options?: Parameters<typeof customFetch>[1]): Promise<ListRecordActivities200> => {
+
+  return customFetch<ListRecordActivities200>(getListRecordActivitiesUrl(module,recordKey),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListRecordActivitiesQueryKey = (module: 'DEAL' | 'JOB_CARD' | 'ENQUIRY' | 'REGISTRATION' | 'PART' | 'RECEIVABLE' | 'VEHICLE',
+    recordKey: string,) => {
+    return [
+    `/api/dms/records/${module}/${recordKey}/activities`
+    ] as const;
+    }
+
+
+export const getListRecordActivitiesQueryOptions = <TData = Awaited<ReturnType<typeof listRecordActivities>>, TError = ErrorType<ErrorResponse>>(module: 'DEAL' | 'JOB_CARD' | 'ENQUIRY' | 'REGISTRATION' | 'PART' | 'RECEIVABLE' | 'VEHICLE',
+    recordKey: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRecordActivities>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListRecordActivitiesQueryKey(module,recordKey);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listRecordActivities>>> = ({ signal }) => listRecordActivities(module,recordKey, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: module !== null && module !== undefined && recordKey !== null && recordKey !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listRecordActivities>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListRecordActivitiesQueryResult = NonNullable<Awaited<ReturnType<typeof listRecordActivities>>>
+export type ListRecordActivitiesQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary A record's own timeline
+ */
+
+export function useListRecordActivities<TData = Awaited<ReturnType<typeof listRecordActivities>>, TError = ErrorType<ErrorResponse>>(
+ module: 'DEAL' | 'JOB_CARD' | 'ENQUIRY' | 'REGISTRATION' | 'PART' | 'RECEIVABLE' | 'VEHICLE',
+    recordKey: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRecordActivities>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListRecordActivitiesQueryOptions(module,recordKey,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getWriteRecordActivityUrl = (module: 'DEAL' | 'JOB_CARD' | 'ENQUIRY' | 'REGISTRATION' | 'PART' | 'RECEIVABLE' | 'VEHICLE',
+    recordKey: string,) => {
+
+
+
+
+  return `/api/dms/records/${module}/${recordKey}/activities`
+}
+
+/**
+ * An agent may record what the agent did; it may never record what a person did. CALL, VISIT and MESSAGE describe human acts and are refused to a non-human caller — the closed set an agent may write is OBSERVED and SYSTEM, and that is the rule which makes owning records safe.
+ * A person writing SYSTEM is recorded as NOTE rather than refused. People do notice things; the distinction being kept is who noticed, not whether they were allowed to.
+ * @summary Add to a record's timeline
+ */
+export const writeRecordActivity = async (module: 'DEAL' | 'JOB_CARD' | 'ENQUIRY' | 'REGISTRATION' | 'PART' | 'RECEIVABLE' | 'VEHICLE',
+    recordKey: string,
+    activityInput: ActivityInput, options?: Parameters<typeof customFetch>[1]): Promise<WriteRecordActivity201> => {
+
+  return customFetch<WriteRecordActivity201>(getWriteRecordActivityUrl(module,recordKey),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(activityInput)
+  }
+);}
+
+
+
+
+
+export const getWriteRecordActivityMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof writeRecordActivity>>, TError,{module: 'DEAL' | 'JOB_CARD' | 'ENQUIRY' | 'REGISTRATION' | 'PART' | 'RECEIVABLE' | 'VEHICLE';recordKey: string;data: BodyType<ActivityInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof writeRecordActivity>>, TError,{module: 'DEAL' | 'JOB_CARD' | 'ENQUIRY' | 'REGISTRATION' | 'PART' | 'RECEIVABLE' | 'VEHICLE';recordKey: string;data: BodyType<ActivityInput>}, TContext> => {
+
+const mutationKey = ['writeRecordActivity'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof writeRecordActivity>>, {module: 'DEAL' | 'JOB_CARD' | 'ENQUIRY' | 'REGISTRATION' | 'PART' | 'RECEIVABLE' | 'VEHICLE';recordKey: string;data: BodyType<ActivityInput>}> = (props) => {
+          const {module,recordKey,data} = props ?? {};
+
+          return  writeRecordActivity(module,recordKey,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type WriteRecordActivityMutationResult = NonNullable<Awaited<ReturnType<typeof writeRecordActivity>>>
+    export type WriteRecordActivityMutationBody = BodyType<ActivityInput>
+    export type WriteRecordActivityMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Add to a record's timeline
+ */
+export const useWriteRecordActivity = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof writeRecordActivity>>, TError,{module: 'DEAL' | 'JOB_CARD' | 'ENQUIRY' | 'REGISTRATION' | 'PART' | 'RECEIVABLE' | 'VEHICLE';recordKey: string;data: BodyType<ActivityInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof writeRecordActivity>>,
+        TError,
+        {module: 'DEAL' | 'JOB_CARD' | 'ENQUIRY' | 'REGISTRATION' | 'PART' | 'RECEIVABLE' | 'VEHICLE';recordKey: string;data: BodyType<ActivityInput>},
+        TContext
+      > => {
+      return useMutation(getWriteRecordActivityMutationOptions(options));
+    }
+
+export const getRetractRecordActivityUrl = (id: number,) => {
+
+
+
+
+  return `/api/dms/activities/${id}/retract`
+}
+
+/**
+ * The row stays, struck through, with who withdrew it and why. "We decided this was wrong" and "it never happened" are different facts about a dealership and only one of them is defensible — the same argument as cancelling a message rather than deleting it.
+ * @summary Withdraw a claim without erasing that it was made
+ */
+export const retractRecordActivity = async (id: number,
+    activityRetractInput?: ActivityRetractInput, options?: Parameters<typeof customFetch>[1]): Promise<RetractRecordActivity200> => {
+
+  return customFetch<RetractRecordActivity200>(getRetractRecordActivityUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(activityRetractInput)
+  }
+);}
+
+
+
+
+
+export const getRetractRecordActivityMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retractRecordActivity>>, TError,{id: number;data?: BodyType<ActivityRetractInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof retractRecordActivity>>, TError,{id: number;data?: BodyType<ActivityRetractInput>}, TContext> => {
+
+const mutationKey = ['retractRecordActivity'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof retractRecordActivity>>, {id: number;data?: BodyType<ActivityRetractInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  retractRecordActivity(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RetractRecordActivityMutationResult = NonNullable<Awaited<ReturnType<typeof retractRecordActivity>>>
+    export type RetractRecordActivityMutationBody = BodyType<ActivityRetractInput> | undefined
+    export type RetractRecordActivityMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Withdraw a claim without erasing that it was made
+ */
+export const useRetractRecordActivity = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retractRecordActivity>>, TError,{id: number;data?: BodyType<ActivityRetractInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof retractRecordActivity>>,
+        TError,
+        {id: number;data?: BodyType<ActivityRetractInput>},
+        TContext
+      > => {
+      return useMutation(getRetractRecordActivityMutationOptions(options));
+    }
+
+export const getCreateDmsTaskUrl = () => {
+
+
+
+
+  return `/api/dms/tasks`
+}
+
+/**
+ * As opposed to work the product noticed. Every row on the queue until now was derived — computed from the mirror on every request, never stored. A task is true because a person or a journey said so.
+ * There is deliberately no list endpoint. Open tasks arrive on GET /dms/queue alongside everything else, because a second list recreates the problem the queue was built to remove.
+ * The assignee must still work here — the same check the reassignment actions make. A task on a departed employee's list is a task nobody will do, which is the failure the queue's middle band exists to surface.
+ * @summary Work somebody decided needs doing
+ */
+export const createDmsTask = async (taskInput: TaskInput, options?: Parameters<typeof customFetch>[1]): Promise<CreateDmsTask201> => {
+
+  return customFetch<CreateDmsTask201>(getCreateDmsTaskUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(taskInput)
+  }
+);}
+
+
+
+
+
+export const getCreateDmsTaskMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDmsTask>>, TError,{data: BodyType<TaskInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createDmsTask>>, TError,{data: BodyType<TaskInput>}, TContext> => {
+
+const mutationKey = ['createDmsTask'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createDmsTask>>, {data: BodyType<TaskInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createDmsTask(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateDmsTaskMutationResult = NonNullable<Awaited<ReturnType<typeof createDmsTask>>>
+    export type CreateDmsTaskMutationBody = BodyType<TaskInput>
+    export type CreateDmsTaskMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Work somebody decided needs doing
+ */
+export const useCreateDmsTask = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDmsTask>>, TError,{data: BodyType<TaskInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createDmsTask>>,
+        TError,
+        {data: BodyType<TaskInput>},
+        TContext
+      > => {
+      return useMutation(getCreateDmsTaskMutationOptions(options));
+    }
+
+export const getCloseDmsTaskUrl = (id: number,) => {
+
+
+
+
+  return `/api/dms/tasks/${id}/close`
+}
+
+/**
+ * The agent does not hold this permission. Closing a task asserts the work was done, and whether it was is a fact only the person who did it holds — the same reasoning that keeps eight registry actions closed to it.
+ * @summary Done, or decided against
+ */
+export const closeDmsTask = async (id: number,
+    taskCloseInput?: TaskCloseInput, options?: Parameters<typeof customFetch>[1]): Promise<CloseDmsTask200> => {
+
+  return customFetch<CloseDmsTask200>(getCloseDmsTaskUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(taskCloseInput)
+  }
+);}
+
+
+
+
+
+export const getCloseDmsTaskMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof closeDmsTask>>, TError,{id: number;data?: BodyType<TaskCloseInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof closeDmsTask>>, TError,{id: number;data?: BodyType<TaskCloseInput>}, TContext> => {
+
+const mutationKey = ['closeDmsTask'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof closeDmsTask>>, {id: number;data?: BodyType<TaskCloseInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  closeDmsTask(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CloseDmsTaskMutationResult = NonNullable<Awaited<ReturnType<typeof closeDmsTask>>>
+    export type CloseDmsTaskMutationBody = BodyType<TaskCloseInput> | undefined
+    export type CloseDmsTaskMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Done, or decided against
+ */
+export const useCloseDmsTask = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof closeDmsTask>>, TError,{id: number;data?: BodyType<TaskCloseInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof closeDmsTask>>,
+        TError,
+        {id: number;data?: BodyType<TaskCloseInput>},
+        TContext
+      > => {
+      return useMutation(getCloseDmsTaskMutationOptions(options));
     }
 
 export const getEditDmsMessageUrl = (id: number,) => {

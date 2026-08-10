@@ -987,6 +987,239 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /dms/records/{module}/{recordKey}/activities:
+    get:
+      operationId: listRecordActivities
+      tags: [dms]
+      summary: A record's own timeline
+      description: >
+        The first thing DDMS holds that no DMS has a field for. Everything else on
+        a record is either the dealer's data or a decision field hung off it; this
+        is the dealership's own account of what happened.
+
+        Gated twice. The permission table says whether this principal may read
+        activities at all; the row policy says which records, using the same
+        app.can_read(module) that gates the mirror row itself.
+      parameters:
+        - name: module
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [DEAL, JOB_CARD, ENQUIRY, REGISTRATION, PART, RECEIVABLE, VEHICLE]
+        - name: recordKey
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Newest first, capped at 200
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  activities:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RecordActivity"
+                required: [activities]
+        "403":
+          description: Not a module this role reads
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: writeRecordActivity
+      tags: [dms]
+      summary: Add to a record's timeline
+      description: >
+        An agent may record what the agent did; it may never record what a person
+        did. CALL, VISIT and MESSAGE describe human acts and are refused to a
+        non-human caller — the closed set an agent may write is OBSERVED and
+        SYSTEM, and that is the rule which makes owning records safe.
+
+        A person writing SYSTEM is recorded as NOTE rather than refused. People do
+        notice things; the distinction being kept is who noticed, not whether they
+        were allowed to.
+      parameters:
+        - name: module
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [DEAL, JOB_CARD, ENQUIRY, REGISTRATION, PART, RECEIVABLE, VEHICLE]
+        - name: recordKey
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivityInput"
+      responses:
+        "201":
+          description: Recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  activity:
+                    $ref: "#/components/schemas/RecordActivity"
+                required: [activity]
+        "400":
+          description: Empty, or longer than a timeline entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not a module this role writes about, or a kind this principal may not claim
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /dms/activities/{id}/retract:
+    post:
+      operationId: retractRecordActivity
+      tags: [dms]
+      summary: Withdraw a claim without erasing that it was made
+      description: >
+        The row stays, struck through, with who withdrew it and why. "We decided
+        this was wrong" and "it never happened" are different facts about a
+        dealership and only one of them is defensible — the same argument as
+        cancelling a message rather than deleting it.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivityRetractInput"
+      responses:
+        "200":
+          description: Withdrawn
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  activity:
+                    $ref: "#/components/schemas/RecordActivity"
+                required: [activity]
+        "400":
+          description: Already withdrawn
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No such activity for this owner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /dms/tasks:
+    post:
+      operationId: createDmsTask
+      tags: [dms]
+      summary: Work somebody decided needs doing
+      description: >
+        As opposed to work the product noticed. Every row on the queue until now
+        was derived — computed from the mirror on every request, never stored. A
+        task is true because a person or a journey said so.
+
+        There is deliberately no list endpoint. Open tasks arrive on
+        GET /dms/queue alongside everything else, because a second list recreates
+        the problem the queue was built to remove.
+
+        The assignee must still work here — the same check the reassignment
+        actions make. A task on a departed employee's list is a task nobody will
+        do, which is the failure the queue's middle band exists to surface.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskInput"
+      responses:
+        "201":
+          description: Raised
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task:
+                    $ref: "#/components/schemas/Task"
+                required: [task]
+        "400":
+          description: No title, a bad due date, or an assignee who has left
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No such showroom or employee
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /dms/tasks/{id}/close:
+    post:
+      operationId: closeDmsTask
+      tags: [dms]
+      summary: Done, or decided against
+      description: >
+        The agent does not hold this permission. Closing a task asserts the work
+        was done, and whether it was is a fact only the person who did it holds —
+        the same reasoning that keeps eight registry actions closed to it.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskCloseInput"
+      responses:
+        "200":
+          description: Closed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task:
+                    $ref: "#/components/schemas/Task"
+                required: [task]
+        "400":
+          description: Already closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No such task for this owner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /dms/messages/{id}/edit:
     post:
       operationId: editDmsMessage
@@ -2729,6 +2962,18 @@ components:
         assignRole:
           type: ["string", "null"]
           description: Which role the picker offers. Null means everybody at the outlet.
+        source:
+          type: string
+          enum: [DERIVED, TASK]
+          description: >
+            DERIVED is everything the queue has ever held — computed from the
+            mirror on every request, never stored, gone the moment the record
+            moves. TASK is a row somebody wrote down. They sit in one list and are
+            sorted together, because a separate Tasks screen recreates exactly the
+            problem the queue was built to solve.
+        taskId:
+          type: integer
+          description: Present only on a TASK row — what to close when it is done.
         agentSuggestion:
           oneOf:
             - $ref: "#/components/schemas/AgentSuggestion"
@@ -3397,6 +3642,127 @@ components:
       description: An optional note recorded against the approval or the cancellation.
       properties:
         note: { type: string }
+
+    RecordActivity:
+      type: object
+      properties:
+        id: { type: integer }
+        ownerId: { type: integer }
+        showroomId: { type: integer }
+        module:
+          type: string
+          enum: [DEAL, JOB_CARD, ENQUIRY, REGISTRATION, PART, RECEIVABLE, VEHICLE]
+        recordKey: { type: string }
+        kind:
+          type: string
+          enum: [NOTE, CALL, VISIT, MESSAGE, OBSERVED, INBOUND, SYSTEM]
+          description: >
+            NOTE is somebody's thought. CALL, VISIT and MESSAGE assert a person did
+            something outside the system and only a person may write them. OBSERVED
+            is the system recording what it checked — an agent may write this
+            because it is what the agent did. INBOUND is the customer speaking,
+            written when a reply arrives. SYSTEM is housekeeping.
+        body: { type: string }
+        userId:
+          type: ["integer", "null"]
+          description: Null means the agent wrote it — the system did this, not we lost track of who.
+        authorName: { type: ["string", "null"] }
+        authoredBy:
+          type: string
+          enum: [PERSON, AGENT]
+        retractedAt: { type: ["string", "null"] }
+        retractedByUserId: { type: ["integer", "null"] }
+        retractedReason: { type: ["string", "null"] }
+        createdAt: { type: string }
+      required: [id, ownerId, showroomId, module, recordKey, kind, body, authoredBy, createdAt]
+
+    ActivityInput:
+      type: object
+      properties:
+        showroomId: { type: integer }
+        kind:
+          type: string
+          enum: [NOTE, CALL, VISIT, MESSAGE, OBSERVED]
+          description: >
+            INBOUND and SYSTEM are absent on purpose. INBOUND is written by the
+            transport that received the reply, never composed by a caller; SYSTEM
+            from a person is recorded as NOTE, because the distinction being kept
+            is who noticed.
+        body:
+          type: string
+          maxLength: 2000
+      required: [showroomId, body]
+
+    Task:
+      type: object
+      properties:
+        id: { type: integer }
+        ownerId: { type: integer }
+        showroomId: { type: integer }
+        title: { type: string }
+        detail: { type: ["string", "null"] }
+        module:
+          type: ["string", "null"]
+          description: Null for a standing job that belongs to no single record.
+        recordKey: { type: ["string", "null"] }
+        assignedEmpCode: { type: ["string", "null"] }
+        assignedEmpName: { type: ["string", "null"] }
+        dueOn:
+          type: ["string", "null"]
+          description: A date, not a timestamp. Dealerships work in days.
+        status:
+          type: string
+          enum: [OPEN, DONE, CANCELLED]
+        source:
+          type: string
+          enum: [PERSON, AGENT, JOURNEY]
+          description: >
+            Changes what closing it means. A JOURNEY task closes when the journey
+            moves on; PERSON and AGENT tasks close only when a person says so.
+        createdByUserId: { type: ["integer", "null"] }
+        createdByName: { type: ["string", "null"] }
+        completedAt: { type: ["string", "null"] }
+        completedByUserId: { type: ["integer", "null"] }
+        outcome: { type: ["string", "null"] }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+      required: [id, ownerId, showroomId, title, status, source, createdAt, updatedAt]
+
+    ActivityRetractInput:
+      type: object
+      description: Why it was withdrawn. Kept on the row and shown beside it.
+      properties:
+        reason: { type: string }
+
+    TaskCloseInput:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [DONE, CANCELLED]
+        outcome:
+          type: string
+          description: What was actually done, or why it was dropped. Both worth keeping.
+
+    TaskInput:
+      type: object
+      properties:
+        showroomId: { type: integer }
+        title:
+          type: string
+          maxLength: 200
+        detail: { type: string }
+        module:
+          type: string
+          enum: [DEAL, JOB_CARD, ENQUIRY, REGISTRATION, PART, RECEIVABLE, VEHICLE]
+        recordKey: { type: string }
+        assignedEmpCode:
+          type: string
+          description: Must still work here. A task on a departed employee is a task nobody will do.
+        dueOn:
+          type: string
+          description: YYYY-MM-DD.
+      required: [showroomId, title]
 
     MessageEditInput:
       type: object

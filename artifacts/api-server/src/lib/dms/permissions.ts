@@ -149,6 +149,24 @@ export type Permission =
   /** Who may be offered in a reassignment picker — reads the staff master. */
   | "staff.view"
   /**
+   * The records DDMS owns outright (OBJ-22).
+   *
+   * `activity.write` is the first grant in this table that lets its holder
+   * state something as fact rather than mark a field. The agent holds it, and
+   * what it may say is narrowed again inside `records.ts` — the table decides
+   * *whether* it may write, the closed set of kinds decides *what about*.
+   *
+   * `activity.retract` is separate from `write` deliberately. Withdrawing
+   * somebody else's note is a different act from adding your own, and the day a
+   * dealership wants only a manager to do it, the line already exists.
+   */
+  | "activity.view"
+  | "activity.write"
+  | "activity.retract"
+  | "task.view"
+  | "task.create"
+  | "task.complete"
+  /**
    * Sees every outlet the owner holds, rather than the one they work at.
    *
    * One permission rather than a `view_all` per module, because the question is
@@ -249,10 +267,36 @@ const MODULES_BY_ROLE: Record<DealershipRole, AccessModule[]> = {
   PLATFORM_ADMIN: [],
 };
 
+/**
+ * What every role that reads anything also holds.
+ *
+ * Activities and tasks are not gated per module in this table — the *row*
+ * policy does that, using the same `app.can_read(module)` as the record the
+ * activity points at. So a service advisor may write an activity, and the only
+ * ones they can write are about job cards and parts, because the database will
+ * refuse the rest. Two layers, each doing the job it is good at.
+ *
+ * `PLATFORM_ADMIN` is excluded along with everything else: it reads no
+ * dealership module, so there is nothing for it to write a note about.
+ */
+const RECORD_VERBS: Permission[] = [
+  "activity.view",
+  "activity.write",
+  "activity.retract",
+  "task.view",
+  "task.create",
+  "task.complete",
+];
+
 /** Permissions a role holds that are not implied by a module. */
 const EXTRA_BY_ROLE: Partial<Record<DealershipRole, Permission[]>> = {
-  OWNER: ["policy.set", "outlet.view_all"],
-  MANAGER: ["policy.set", "outlet.view_all"],
+  OWNER: ["policy.set", "outlet.view_all", ...RECORD_VERBS],
+  MANAGER: ["policy.set", "outlet.view_all", ...RECORD_VERBS],
+  SALES_EXEC: RECORD_VERBS,
+  SERVICE_ADVISOR: RECORD_VERBS,
+  RTO_AGENT: RECORD_VERBS,
+  ACCOUNTS: RECORD_VERBS,
+  TECHNICIAN: RECORD_VERBS,
 };
 
 /**
@@ -272,6 +316,29 @@ const AGENT_GRANTS: Permission[] = [
   "enquiry.reassign",
   "registration.assign_agent",
   "staff.view",
+  /**
+   * OBJ-22, and the whole reason that objective sits where it does.
+   *
+   * This is the first grant that lets the agent **say** something rather than
+   * mark a field. It is safe for exactly one reason: an activity the agent
+   * wrote asserts that the agent wrote it, and that is true. The eight registry
+   * actions still closed to it are closed because they assert a *person* rang
+   * somebody, and no amount of this changes that.
+   *
+   * `records.ts` narrows it further — an agent may write `OBSERVED` and
+   * `SYSTEM` and nothing else, so it cannot log a call it did not make.
+   */
+  "activity.view",
+  "activity.write",
+  /**
+   * A task is the only thing an agent may put on a person's list.
+   *
+   * It asks; it does not assert. And it may not close one — `task.complete` is
+   * absent, because whether the work was actually done is a fact only the
+   * person who did it holds.
+   */
+  "task.view",
+  "task.create",
 ];
 
 /**
@@ -310,6 +377,10 @@ const WITHHELD: Partial<Record<Principal, Partial<Record<Permission, string>>>> 
       "Same. Honest as a proposal, and held back until the two assignments have run for a while in a real dealership.",
     "policy.set":
       "The dealership's own numbers are the dealership's. An agent that could widen its own thresholds is an agent with no ceiling.",
+    "activity.retract":
+      "Withdrawing a note is a judgement about whether something was true, and the note is usually somebody else's. The agent may add to a timeline and may not edit one.",
+    "task.complete":
+      "Closing a task asserts the work was done, which is the one thing only the person who did it knows. The agent may raise a task and may not tick it off.",
   },
 };
 

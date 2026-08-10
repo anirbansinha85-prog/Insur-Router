@@ -467,6 +467,59 @@ drop policy if exists dealer_policy_worker on public.dealer_policy;
 create policy dealer_policy_worker on public.dealer_policy
   for select to ddms_worker using (true);
 
+/*
+ * The first two tables DDMS owns outright (OBJ-22).
+ *
+ * Everything above is either a copy of the OEM's data or a decision field hung
+ * off one. These are neither, and the difference shows in the policy: there is
+ * no `disappeared_at`, nothing reconciles them against an upstream, and no sync
+ * pass will ever overwrite a row. R-76 draws the line — DDMS creates nothing
+ * the DMS is the source of truth for — and what is left over is ours entirely.
+ *
+ * Gated on the same `app.can_read(module)` as the mirror table each row points
+ * at. An activity about a receivable is as sensitive as the receivable, and a
+ * service advisor who cannot read the ledger must not read notes about it
+ * either. The one place that needed thought is a task with **no** module: a
+ * standing job like *chase the RTO about March* belongs to no screen, so it
+ * falls back to the owner scope alone and is visible to the group.
+ */
+drop policy if exists record_activities_own on public.record_activities;
+create policy record_activities_own on public.record_activities
+  for all to ddms_app
+  using (
+    showroom_id in (select app.owned_showroom_ids())
+    and app.can_read(module)
+  )
+  with check (
+    showroom_id in (select app.visible_showroom_ids())
+    and app.can_read(module)
+  );
+
+-- The agent writes activities, and it writes them with nobody signed in. This
+-- is the grant that makes OBJ-22 the objective that unlocks OBJ-17's other ten
+-- actions: an activity the agent wrote asserts only that the agent wrote it.
+-- What it may write is narrowed in `lib/dms/records.ts` to OBSERVED and SYSTEM,
+-- because a CALL or a VISIT describes a human act.
+drop policy if exists record_activities_worker on public.record_activities;
+create policy record_activities_worker on public.record_activities
+  for all to ddms_worker using (true) with check (true);
+
+drop policy if exists tasks_own on public.tasks;
+create policy tasks_own on public.tasks
+  for all to ddms_app
+  using (
+    showroom_id in (select app.owned_showroom_ids())
+    and (module is null or app.can_read(module))
+  )
+  with check (
+    showroom_id in (select app.visible_showroom_ids())
+    and (module is null or app.can_read(module))
+  );
+
+drop policy if exists tasks_worker on public.tasks;
+create policy tasks_worker on public.tasks
+  for all to ddms_worker using (true) with check (true);
+
 drop policy if exists insurer_panel_own on public.insurer_panel_entries;
 create policy insurer_panel_own on public.insurer_panel_entries
   for select to ddms_app
@@ -746,6 +799,13 @@ to ddms_app;
 -- to our default actually reaches a dealership that never had an opinion.
 grant select, insert, update, delete on public.dealer_policy to ddms_app;
 
+-- The records DDMS owns (OBJ-22). Update but not delete on activities, because
+-- retraction is an update and a deleted note is a note nobody can prove existed
+-- — the same argument as cancelling a message rather than removing it. Tasks
+-- take update for the same reason: DONE and CANCELLED are states, not absences.
+grant select, insert, update on public.record_activities to ddms_app;
+grant select, insert, update on public.tasks to ddms_app;
+
 -- `serial` columns draw from a sequence, and a role that may insert but may not
 -- touch the sequence gets "permission denied for sequence" on every insert.
 /*
@@ -837,6 +897,13 @@ grant select on public.applications, public.policies to ddms_worker;
 grant select, insert, update on public.outbound_messages to ddms_worker;
 grant select, insert on public.decision_log to ddms_worker;
 grant select on public.dealer_policy to ddms_worker;
+
+-- And the widening OBJ-22 brings, which is the largest yet in what this role
+-- *means*. Since OBJ-16 the worker proposes; it can now **record**. An activity
+-- it writes is the first thing in this product that an unattended pass may
+-- state as fact — safe only because the fact is about itself.
+grant select, insert, update on public.record_activities to ddms_worker;
+grant select, insert, update on public.tasks to ddms_worker;
 
 -- Same reason as `ddms_app`: the entity graph is rebuilt wholesale rather than
 -- reconciled, so these two are the only tables the worker may delete from.

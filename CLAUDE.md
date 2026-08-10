@@ -557,6 +557,37 @@ DDMS rather than one that signed up this morning.
 > other manufactures a `CONFLICT` per matched deal. Both sides carry it, because
 > every number in that fixture is a policy no insurer issued (R-41).
 
+## The records DDMS owns
+
+`record_activities` and `tasks` — the first tables that are neither a copy of
+the dealer's data nor a decision field hung off one (OBJ-22, R-76). No
+`disappeared_at`, nothing reconciles them upstream, no sync pass overwrites them.
+
+**The rule that makes them safe to let an agent near**, in `lib/dms/records.ts`:
+
+> An agent may record what the agent did. It may never record what a person did.
+
+`AGENT_KINDS` is `OBSERVED` and `SYSTEM`, and that is the whole set. `CALL`,
+`VISIT` and `MESSAGE` assert a human act; each carries a written refusal. **This
+is the objective that unlocks the agent** — eight registry actions are closed to
+it because they assert a person rang somebody, and an activity it wrote asserts
+only that it wrote it.
+
+Gated twice: the permission table says whether a principal may write, the row
+policy says which records, using the same `app.can_read(module)` as the mirror
+row. A service advisor writing about a registration file is refused by Postgres.
+
+**Tasks live in the queue, not beside it.** `QueueItem.source` is `DERIVED` or
+`TASK`; severity comes from the due date, not from whoever raised it. There is
+no task list endpoint on purpose.
+
+`ddms_worker` may select, insert and update these and **not delete**. Nothing
+unattended erases a record, not even its own — an activity is retracted, struck
+through with its reason, never removed.
+
+`pnpm run verify:records` — on the worker credential, because the claim is about
+what happens with nobody signed in.
+
 ## One permission table
 
 `lib/dms/permissions.ts` — verb-scoped `namespace.verb`, and it is the only

@@ -1820,7 +1820,7 @@ and the one we lack.
 
 | # | Requirement | Status |
 |---|---|---|
-| R-76 | **DDMS creates nothing the DMS is the source of truth for.** The re-cut of the old non-goal. Deals, job cards, stock, enquiries and registration files stay mirror-only forever; notes, activities, tasks, quotations, price lists and internal costs are DDMS's outright — and owning them is what gives an agent anything legitimate to write | ○ |
+| R-76 | ✅ **DDMS creates nothing the DMS is the source of truth for.** The re-cut of the old non-goal. Deals, job cards, stock, enquiries and registration files stay mirror-only forever; notes, activities, tasks, quotations, price lists and internal costs are DDMS's outright — and owning them is what gives an agent anything legitimate to write | ○ |
 | R-77 | **A journey is the unit of work, and a wait is a queue row.** Steps, forks, and four kinds of waiting — on a person, on the outside world, on another journey, on time. A stalled step *is* the queue entry rather than a sentence somebody wrote for that module | ○ |
 | R-78 | **Forks are rules. A model may write a sentence inside a step; it may never choose an edge.** Almost every fork in every journey is knowable from data — is tax paid, is the part on the shelf, did the date pass. R-49 restated for the runtime, and the specific temptation a workflow library introduces | ○ |
 | R-79 | **Autonomy is earned by evidence and can be lost the same way.** Precedent → repeated acceptance → consent, per pattern, with the threshold set by the dealership and demotion when acceptance falls. A dial somebody sets is a guess; a count is a fact | ○ |
@@ -1846,7 +1846,7 @@ and the one we lack.
 | # | Objective | Model? | Depends on | Why here |
 |---|---|---|---|---|
 | 21 | ~~**One permission model**~~ ✅ | no | — | two half-systems exist — module read-gating and the agent's action set. Everything below adds actions and principals to both |
-| 22 | **DDMS owns its own records** | no | 21 | the unlock. Notes, activities, tasks, quotations, price lists. Nothing an agent can honestly write until this exists |
+| 22 | ~~**DDMS owns its own records**~~ ✅ | no | 21 | the unlock. Notes, activities, tasks, quotations, price lists. Nothing an agent can honestly write until this exists |
 | 23 | **The journey model** | no | 22 | the runtime, proved end to end on one journey |
 | 24 | **Ingestion beyond the API** | at the mapping step only | — | independent of everything, and the thing that decides how many dealers can be sold to at all |
 | 25 | **The invoice DDMS produces** | no | 22, 23, 24 | the first document the product issues, and the first record it holds *before* the DMS knows anything |
@@ -1945,7 +1945,7 @@ of twelve and the other ten still carry their written sentence.
 > hold and did: an owner still sees all eight modules, and a service advisor's
 > queue contains `JOB_CARD` and `PART` and nothing else.
 
-### OBJ-22 — DDMS owns its own records
+### OBJ-22 — DDMS owns its own records  ✅ **done 10 Aug**
 *Covers R-76. The unlock for 25, 26 and 27.*
 
 The first records DDMS creates rather than copies: notes, activities, tasks,
@@ -1963,6 +1963,69 @@ one (R-87).
 
 **Done when:** DDMS holds a record the DMS has no field for, an agent writes one
 without asserting human work, and nothing mirror-only has become writable.
+
+**Scoped down on the way in, and worth saying so.** The paragraph above listed
+five record types. Quotations and price lists moved to **OBJ-25**, where R-87
+already lived and where they are actually used — building them here would have
+been building the invoice's data model a fortnight before the invoice. What
+shipped is the spine: `record_activities` and `tasks`.
+
+**The rule, and it is enforced rather than intended:**
+
+> **An agent may record what the agent did. It may never record what a person
+> did.**
+
+`AGENT_KINDS` is that rule as a closed set — `OBSERVED` and `SYSTEM`, and
+nothing else. *The address on the deal does not match the KYC document* is
+something the agent genuinely did. `CALL`, `VISIT` and `MESSAGE` describe human
+acts and stay human, each with a written refusal:
+
+```
+CALL     Asserts a person picked up a telephone. The agent cannot, and a call
+         logged that never happened takes the customer off somebody's list.
+NOTE     A note is somebody's opinion, and the agent does not have one to
+         record. What it observed is an OBSERVED.
+INBOUND  The customer said this. It is written when a reply actually arrives,
+         by the transport that received it — never composed.
+```
+
+**Two layers, each doing what it is good at.** The permission table answers
+*may this principal write at all*; the row policy answers *about which records*,
+gating on the same `app.can_read(module)` as the mirror row the activity points
+at. A service advisor is refused a note on a registration file **by Postgres** —
+and gets the sentence from OBJ-21's table rather than a silent empty result.
+
+**Tasks are not a second list.** Open tasks appear *in the queue*, sorted with
+everything else on the same three keys. A Tasks screen would recreate exactly
+what OBJ-15 was built to remove. `QueueItem` gained one field — `source:
+DERIVED | TASK` — and severity comes from the due date rather than from whoever
+raised it, because letting people mark their own work urgent makes everything
+urgent inside a fortnight.
+
+**Proved by `pnpm run verify:records`**, on the worker credential, because the
+claim is about what happens with nobody signed in:
+
+| | |
+|---|---|
+| the agent writes `OBSERVED` | allowed, `authoredBy=AGENT`, `userId=null` |
+| `CALL` · `VISIT` · `MESSAGE` · `NOTE` · `INBOUND` | all five refused, each with its sentence |
+| raises a task | allowed, attributed to the agent |
+| closes one | **refused** — `task.complete` is not in its grants |
+| task on Imtiaz Khan | refused — *left 2026-02-28, a task nobody will do* |
+| on the queue | 248 items — 247 derived, 1 written down, sorted together |
+
+> **The verifier's own cleanup was refused, and that was the design working.**
+> The first run tried to delete its rows on `workerDb` and got `permission
+> denied for table record_activities`. `ddms_worker` holds select, insert and
+> update and **not** delete — the same argument as cancelling a message rather
+> than removing it. A note nobody can prove existed is worse than a note
+> somebody withdrew, and **nothing unattended may erase a record, not even its
+> own.** Tidy-up moved to the CLI credential and the refusal became check 8.
+
+> **A person writing `SYSTEM` is recorded as `NOTE` rather than refused.** People
+> do notice things. The distinction being kept is *who noticed*, not whether
+> they were allowed to — so the row is corrected rather than rejected, which is
+> the friendlier half of the same rule.
 
 ### OBJ-23 — The journey model
 *Covers R-77, R-78. Needs 22.*

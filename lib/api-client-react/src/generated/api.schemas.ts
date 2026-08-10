@@ -748,6 +748,17 @@ export const QueueItemAssignAction = {
 } as const;
 
 /**
+ * DERIVED is everything the queue has ever held — computed from the mirror on every request, never stored, gone the moment the record moves. TASK is a row somebody wrote down. They sit in one list and are sorted together, because a separate Tasks screen recreates exactly the problem the queue was built to solve.
+ */
+export type QueueItemSource = typeof QueueItemSource[keyof typeof QueueItemSource];
+
+
+export const QueueItemSource = {
+  DERIVED: 'DERIVED',
+  TASK: 'TASK',
+} as const;
+
+/**
  * The whole of what the agent may call. The other ten registry actions assert that a person did something — rang the customer, chased the RTO, showed the bike — and a model cannot make a phone call. See CLOSED_TO_THE_AGENT in lib/dms/agent.ts, which names each one.
  */
 export type AgentSuggestionAction = typeof AgentSuggestionAction[keyof typeof AgentSuggestionAction];
@@ -815,6 +826,10 @@ export interface QueueItem {
      * @nullable
      */
   assignRole?: string | null;
+  /** DERIVED is everything the queue has ever held — computed from the mirror on every request, never stored, gone the moment the record moves. TASK is a row somebody wrote down. They sit in one list and are sorted together, because a separate Tasks screen recreates exactly the problem the queue was built to solve. */
+  source?: QueueItemSource;
+  /** Present only on a TASK row — what to close when it is done. */
+  taskId?: number;
   /** Who the agent would hand this to, and why. Only ever on an item in the Nobody's band that supports an assignment. Present whether or not the dealership has switched the agent on: off it is a suggestion with a person's click behind it, on the scheduler will already have applied it and the item will have changed band. Null when there is nobody left to hand it to. */
   agentSuggestion?: AgentSuggestion | null;
   /** The module screen, for anyone who wants the full picture. */
@@ -1521,6 +1536,199 @@ export interface OutboundMessage {
  */
 export interface MessageNoteInput {
   note?: string;
+}
+
+export type RecordActivityModule = typeof RecordActivityModule[keyof typeof RecordActivityModule];
+
+
+export const RecordActivityModule = {
+  DEAL: 'DEAL',
+  JOB_CARD: 'JOB_CARD',
+  ENQUIRY: 'ENQUIRY',
+  REGISTRATION: 'REGISTRATION',
+  PART: 'PART',
+  RECEIVABLE: 'RECEIVABLE',
+  VEHICLE: 'VEHICLE',
+} as const;
+
+/**
+ * NOTE is somebody's thought. CALL, VISIT and MESSAGE assert a person did something outside the system and only a person may write them. OBSERVED is the system recording what it checked — an agent may write this because it is what the agent did. INBOUND is the customer speaking, written when a reply arrives. SYSTEM is housekeeping.
+ */
+export type RecordActivityKind = typeof RecordActivityKind[keyof typeof RecordActivityKind];
+
+
+export const RecordActivityKind = {
+  NOTE: 'NOTE',
+  CALL: 'CALL',
+  VISIT: 'VISIT',
+  MESSAGE: 'MESSAGE',
+  OBSERVED: 'OBSERVED',
+  INBOUND: 'INBOUND',
+  SYSTEM: 'SYSTEM',
+} as const;
+
+export type RecordActivityAuthoredBy = typeof RecordActivityAuthoredBy[keyof typeof RecordActivityAuthoredBy];
+
+
+export const RecordActivityAuthoredBy = {
+  PERSON: 'PERSON',
+  AGENT: 'AGENT',
+} as const;
+
+export interface RecordActivity {
+  id: number;
+  ownerId: number;
+  showroomId: number;
+  module: RecordActivityModule;
+  recordKey: string;
+  /** NOTE is somebody's thought. CALL, VISIT and MESSAGE assert a person did something outside the system and only a person may write them. OBSERVED is the system recording what it checked — an agent may write this because it is what the agent did. INBOUND is the customer speaking, written when a reply arrives. SYSTEM is housekeeping. */
+  kind: RecordActivityKind;
+  body: string;
+  /**
+     * Null means the agent wrote it — the system did this, not we lost track of who.
+     * @nullable
+     */
+  userId?: number | null;
+  /** @nullable */
+  authorName?: string | null;
+  authoredBy: RecordActivityAuthoredBy;
+  /** @nullable */
+  retractedAt?: string | null;
+  /** @nullable */
+  retractedByUserId?: number | null;
+  /** @nullable */
+  retractedReason?: string | null;
+  createdAt: string;
+}
+
+/**
+ * INBOUND and SYSTEM are absent on purpose. INBOUND is written by the transport that received the reply, never composed by a caller; SYSTEM from a person is recorded as NOTE, because the distinction being kept is who noticed.
+ */
+export type ActivityInputKind = typeof ActivityInputKind[keyof typeof ActivityInputKind];
+
+
+export const ActivityInputKind = {
+  NOTE: 'NOTE',
+  CALL: 'CALL',
+  VISIT: 'VISIT',
+  MESSAGE: 'MESSAGE',
+  OBSERVED: 'OBSERVED',
+} as const;
+
+export interface ActivityInput {
+  showroomId: number;
+  /** INBOUND and SYSTEM are absent on purpose. INBOUND is written by the transport that received the reply, never composed by a caller; SYSTEM from a person is recorded as NOTE, because the distinction being kept is who noticed. */
+  kind?: ActivityInputKind;
+  /** @maxLength 2000 */
+  body: string;
+}
+
+export type TaskStatus = typeof TaskStatus[keyof typeof TaskStatus];
+
+
+export const TaskStatus = {
+  OPEN: 'OPEN',
+  DONE: 'DONE',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+/**
+ * Changes what closing it means. A JOURNEY task closes when the journey moves on; PERSON and AGENT tasks close only when a person says so.
+ */
+export type TaskSource = typeof TaskSource[keyof typeof TaskSource];
+
+
+export const TaskSource = {
+  PERSON: 'PERSON',
+  AGENT: 'AGENT',
+  JOURNEY: 'JOURNEY',
+} as const;
+
+export interface Task {
+  id: number;
+  ownerId: number;
+  showroomId: number;
+  title: string;
+  /** @nullable */
+  detail?: string | null;
+  /**
+     * Null for a standing job that belongs to no single record.
+     * @nullable
+     */
+  module?: string | null;
+  /** @nullable */
+  recordKey?: string | null;
+  /** @nullable */
+  assignedEmpCode?: string | null;
+  /** @nullable */
+  assignedEmpName?: string | null;
+  /**
+     * A date, not a timestamp. Dealerships work in days.
+     * @nullable
+     */
+  dueOn?: string | null;
+  status: TaskStatus;
+  /** Changes what closing it means. A JOURNEY task closes when the journey moves on; PERSON and AGENT tasks close only when a person says so. */
+  source: TaskSource;
+  /** @nullable */
+  createdByUserId?: number | null;
+  /** @nullable */
+  createdByName?: string | null;
+  /** @nullable */
+  completedAt?: string | null;
+  /** @nullable */
+  completedByUserId?: number | null;
+  /** @nullable */
+  outcome?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Why it was withdrawn. Kept on the row and shown beside it.
+ */
+export interface ActivityRetractInput {
+  reason?: string;
+}
+
+export type TaskCloseInputStatus = typeof TaskCloseInputStatus[keyof typeof TaskCloseInputStatus];
+
+
+export const TaskCloseInputStatus = {
+  DONE: 'DONE',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+export interface TaskCloseInput {
+  status?: TaskCloseInputStatus;
+  /** What was actually done, or why it was dropped. Both worth keeping. */
+  outcome?: string;
+}
+
+export type TaskInputModule = typeof TaskInputModule[keyof typeof TaskInputModule];
+
+
+export const TaskInputModule = {
+  DEAL: 'DEAL',
+  JOB_CARD: 'JOB_CARD',
+  ENQUIRY: 'ENQUIRY',
+  REGISTRATION: 'REGISTRATION',
+  PART: 'PART',
+  RECEIVABLE: 'RECEIVABLE',
+  VEHICLE: 'VEHICLE',
+} as const;
+
+export interface TaskInput {
+  showroomId: number;
+  /** @maxLength 200 */
+  title: string;
+  detail?: string;
+  module?: TaskInputModule;
+  recordKey?: string;
+  /** Must still work here. A task on a departed employee is a task nobody will do. */
+  assignedEmpCode?: string;
+  /** YYYY-MM-DD. */
+  dueOn?: string;
 }
 
 /**
@@ -2572,6 +2780,26 @@ status?: string;
 export type ListDmsMessages200 = {
   rows: OutboxRow[];
   summary: OutboxSummary;
+};
+
+export type ListRecordActivities200 = {
+  activities: RecordActivity[];
+};
+
+export type WriteRecordActivity201 = {
+  activity: RecordActivity;
+};
+
+export type RetractRecordActivity200 = {
+  activity: RecordActivity;
+};
+
+export type CreateDmsTask201 = {
+  task: Task;
+};
+
+export type CloseDmsTask200 = {
+  task: Task;
 };
 
 export type CancelDmsMessage200 = {

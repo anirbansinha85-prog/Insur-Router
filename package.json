@@ -11,6 +11,7 @@
     "db:seed-applications": "pnpm --filter @workspace/scripts run seed-applications",
     "db:seed-users": "pnpm --filter @workspace/scripts run seed-users",
     "db:rls": "pnpm --filter @workspace/scripts run rls",
+    "verify:records": "pnpm --filter @workspace/scripts run records",
     "verify:permissions": "pnpm --filter @workspace/scripts run permissions",
     "verify:agent": "pnpm --filter @workspace/scripts run agent",
     "db:probe": "pnpm --filter @workspace/scripts run probe",

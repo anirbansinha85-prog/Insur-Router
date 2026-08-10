@@ -110,6 +110,18 @@ export type {
   MatchingEnquiry,
 } from "./inventory-worklist";
 export { applyAction, listStaff } from "./actions";
+// The records DDMS owns rather than mirrors (OBJ-22, R-76).
+export {
+  writeActivity,
+  retractActivity,
+  listActivities,
+  createTask,
+  closeTask,
+  openTasks,
+  daysLate,
+  AGENT_KINDS,
+} from "./records";
+export type { ActivityKind, ActivityModule } from "./records";
 export {
   AGENT_ACTIONS,
   CLOSED_TO_THE_AGENT,

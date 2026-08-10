@@ -29,6 +29,13 @@ import {
   DmsError,
   applyAction,
   approveMessage,
+  writeActivity,
+  retractActivity,
+  listActivities,
+  createTask,
+  closeTask,
+  type ActivityKind,
+  type ActivityModule,
   buildInventoryWorklist,
   buildReceivablesWorklist,
   detectForShowrooms,
@@ -97,6 +104,23 @@ import { describePolicy, resetAllPolicy, setPolicy } from "../lib/dms/policy";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
+
+/**
+ * The seven a timeline or a task can point at.
+ *
+ * `OUTBOX` is absent: it is a module for permission purposes but not a place
+ * records live, and a note about the outbox is a note about the record the
+ * message is for.
+ */
+const ACTIVITY_MODULES = new Set<string>([
+  "DEAL",
+  "JOB_CARD",
+  "ENQUIRY",
+  "REGISTRATION",
+  "PART",
+  "RECEIVABLE",
+  "VEHICLE",
+]);
 
 /**
  * Two gates, on every route in this file and on nothing else.
@@ -764,6 +788,155 @@ router.post("/dms/messages/:id/send", async (req, res): Promise<void> => {
     return;
   }
   res.json({ message: result.message });
+});
+
+
+/**
+ * A record's own timeline — the first thing DDMS holds that no DMS has.
+ *
+ * Everything else on a record is either the dealer's data or a decision field
+ * hung off it. This is the dealership's own account of what happened, and
+ * OBJ-22's whole argument is that an agent can write here without lying: an
+ * activity it wrote asserts that it wrote it, and nothing more.
+ *
+ * Gated twice, on purpose. The permission table says whether this principal may
+ * write at all; the row policy says which records they may write about, using
+ * the same `app.can_read(module)` that gates the mirror row itself. A service
+ * advisor is refused a note on a receivable by Postgres, not by this handler.
+ */
+router.get("/dms/records/:module/:recordKey/activities", async (req, res): Promise<void> => {
+  const module = String(req.params.module).toUpperCase() as ActivityModule;
+  if (!ACTIVITY_MODULES.has(module)) {
+    res.status(400).json({ error: `Unknown module ${req.params.module}` });
+    return;
+  }
+  if (!(await assertModuleAccess(req, res, module as never))) return;
+
+  res.json({
+    activities: await listActivities(req.sessionUser!.ownerId, module, String(req.params.recordKey)),
+  });
+});
+
+router.post("/dms/records/:module/:recordKey/activities", async (req, res): Promise<void> => {
+  const module = String(req.params.module).toUpperCase() as ActivityModule;
+  if (!ACTIVITY_MODULES.has(module)) {
+    res.status(400).json({ error: `Unknown module ${req.params.module}` });
+    return;
+  }
+  if (!(await assertModuleAccess(req, res, module as never))) return;
+
+  const body = req.body as { kind?: unknown; body?: unknown; showroomId?: unknown };
+  const showroomId = Number(body.showroomId);
+  if (!Number.isInteger(showroomId) || !(await assertShowroomAccess(req, res, showroomId))) {
+    if (!res.headersSent) res.status(400).json({ error: "showroomId must be a positive integer" });
+    return;
+  }
+
+  const user = req.sessionUser!;
+  const result = await writeActivity({
+    ownerId: user.ownerId,
+    showroomId,
+    module,
+    recordKey: String(req.params.recordKey),
+    kind: (typeof body.kind === "string" ? body.kind : "NOTE") as ActivityKind,
+    body: typeof body.body === "string" ? body.body : "",
+    userId: user.userId,
+    authorName: user.name,
+    principal: user.role,
+  });
+
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+  res.status(201).json({ activity: result.row });
+});
+
+/** Withdrawn, not deleted. The row stays and says who withdrew it and why. */
+router.post("/dms/activities/:id/retract", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: "id must be a positive integer" });
+    return;
+  }
+  const reason = String((req.body as { reason?: unknown })?.reason ?? "");
+  const user = req.sessionUser!;
+  const result = await retractActivity(user.ownerId, user.userId, user.role, id, reason);
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+  res.json({ activity: result.row });
+});
+
+/**
+ * Work somebody decided needs doing.
+ *
+ * There is deliberately **no list endpoint**. Open tasks arrive on
+ * `GET /dms/queue` alongside everything else, because a second list is the
+ * problem OBJ-15 was built to remove — seven places to look and no answer to
+ * *what do I do next*.
+ */
+router.post("/dms/tasks", async (req, res): Promise<void> => {
+  const body = req.body as Record<string, unknown>;
+  const showroomId = Number(body.showroomId);
+  if (!Number.isInteger(showroomId) || !(await assertShowroomAccess(req, res, showroomId))) {
+    if (!res.headersSent) res.status(400).json({ error: "showroomId must be a positive integer" });
+    return;
+  }
+
+  const module = typeof body.module === "string" ? (body.module.toUpperCase() as ActivityModule) : null;
+  if (module && !ACTIVITY_MODULES.has(module)) {
+    res.status(400).json({ error: `Unknown module ${String(body.module)}` });
+    return;
+  }
+  if (module && !(await assertModuleAccess(req, res, module as never))) return;
+
+  const user = req.sessionUser!;
+  const result = await createTask({
+    ownerId: user.ownerId,
+    showroomId,
+    title: typeof body.title === "string" ? body.title : "",
+    detail: typeof body.detail === "string" ? body.detail : null,
+    module,
+    recordKey: typeof body.recordKey === "string" ? body.recordKey : null,
+    assignedEmpCode: typeof body.assignedEmpCode === "string" ? body.assignedEmpCode : null,
+    dueOn: typeof body.dueOn === "string" ? body.dueOn : null,
+    source: "PERSON",
+    userId: user.userId,
+    userName: user.name,
+    principal: user.role,
+  });
+
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+  res.status(201).json({ task: result.row });
+});
+
+router.post("/dms/tasks/:id/close", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: "id must be a positive integer" });
+    return;
+  }
+  const body = req.body as { status?: unknown; outcome?: unknown };
+  const status = body.status === "CANCELLED" ? "CANCELLED" : "DONE";
+  const user = req.sessionUser!;
+  const result = await closeTask(
+    user.ownerId,
+    user.userId,
+    user.role,
+    id,
+    status,
+    typeof body.outcome === "string" ? body.outcome : undefined,
+  );
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+  res.json({ task: result.row });
 });
 
 /**

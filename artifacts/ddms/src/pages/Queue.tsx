@@ -18,6 +18,7 @@ import {
 } from "lucide-react"
 import { ActionButton, AgentSuggestionCard, AssignPicker, ContactButtons } from "@/lib/actions"
 import { ExplainButton } from "@/lib/explain"
+import { Timeline } from "@/lib/timeline"
 
 /**
  * One queue, worked one at a time.
@@ -351,6 +352,20 @@ export default function Queue() {
                 Open the full screen <ChevronRight className="w-3 h-3" />
               </Link>
             </div>
+
+            {/* The dealership's own account of this record.
+                
+                Below the controls rather than above: the controls are what you
+                came here to do, and the history is what you read when the
+                controls are not obviously enough. A task row has no timeline of
+                its own — it *is* the thing somebody wrote down. */}
+            {current.source !== "TASK" && (
+              <Timeline
+                module={current.module}
+                recordKey={current.recordKey}
+                showroomId={current.showroomId}
+              />
+            )}
           </div>
 
           {/* Move on. Two doors, and they mean different things: one says this

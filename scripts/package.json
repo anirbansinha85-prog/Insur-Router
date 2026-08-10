@@ -13,7 +13,8 @@
     "rls": "tsx --env-file-if-exists=../.env ./src/apply-rls.ts",
     "probe": "tsx --env-file-if-exists=../.env ./src/rls-probe.ts",
     "agent": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-agent.ts",
-    "permissions": "tsx ../artifacts/api-server/src/scripts/verify-permissions.ts"
+    "permissions": "tsx ../artifacts/api-server/src/scripts/verify-permissions.ts",
+    "records": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-records.ts"
   },
   "dependencies": {
     "@workspace/db": "workspace:*",

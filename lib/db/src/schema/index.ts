@@ -12,6 +12,9 @@ export * from "./entities";
 export * from "./decision_log";
 export * from "./record_events";
 export * from "./dealer_policy";
+// The first records DDMS creates rather than copies (OBJ-22, R-76).
+export * from "./record_activities";
+export * from "./tasks";
 export * from "./outbound_messages";
 export * from "./providers";
 export * from "./insurer_panel";

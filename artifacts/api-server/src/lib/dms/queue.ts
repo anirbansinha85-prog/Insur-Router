@@ -62,6 +62,7 @@ import { buildReceivablesWorklist } from "./receivables-worklist";
 import { buildInventoryWorklist } from "./inventory-worklist";
 import type { ActionId } from "./actions";
 import { suggestForItems, type AgentSuggestion } from "./agent";
+import { openTasks, daysLate } from "./records";
 
 export type QueueModule =
   | "DEAL"
@@ -86,6 +87,21 @@ export interface QueueAction {
 }
 
 export interface QueueItem {
+  /**
+   * Where this row came from, and it is the only new field OBJ-22 added.
+   *
+   * `DERIVED` is everything the queue has ever held: computed from the mirror
+   * on every request, never stored, gone the moment the record moves.
+   * `TASK` is a row somebody wrote down — true because a person or a journey
+   * said so rather than because a classifier worked it out.
+   *
+   * They sit in **one list**, sorted together. A separate Tasks screen would
+   * recreate exactly the problem OBJ-15 was built to solve: seven places to
+   * look and no answer to *what do I do next*.
+   */
+  source: "DERIVED" | "TASK";
+  /** Set only on a `TASK` row — what to close when it is done. */
+  taskId?: number;
   module: QueueModule;
   recordKey: string;
   showroomId: number;
@@ -172,6 +188,20 @@ export interface QueueResult {
  */
 
 const BAND_ORDER: Record<QueueBand, number> = { MINE: 0, UNASSIGNED: 1, OUTLET: 2 };
+
+/** Where a task about a record sends you. The derived rows carry their own. */
+function hrefFor(module: QueueModule): string {
+  const map: Record<QueueModule, string> = {
+    DEAL: "/worklist",
+    JOB_CARD: "/service",
+    ENQUIRY: "/enquiries",
+    REGISTRATION: "/registrations",
+    PART: "/spares",
+    RECEIVABLE: "/receivables",
+    VEHICLE: "/inventory",
+  };
+  return map[module];
+}
 
 export interface QueueInput {
   ownerId: number;
@@ -299,6 +329,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         actions: [],
         assignAction: null,
         assignRole: null,
+        source: "DERIVED",
         agentSuggestion: null,
         href: "/worklist",
       });
@@ -339,6 +370,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         ],
         assignAction: null,
         assignRole: null,
+        source: "DERIVED",
         agentSuggestion: null,
         href: "/service",
       });
@@ -390,6 +422,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         ],
         assignAction: "ENQUIRY_REASSIGN",
         assignRole: "SALES_EXEC",
+        source: "DERIVED",
         agentSuggestion: null,
         href: "/enquiries",
       });
@@ -438,6 +471,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         ],
         assignAction: "REGISTRATION_ASSIGN_AGENT",
         assignRole: "RTO_AGENT",
+        source: "DERIVED",
         agentSuggestion: null,
         href: "/registrations",
       });
@@ -491,6 +525,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         ],
         assignAction: null,
         assignRole: null,
+        source: "DERIVED",
         agentSuggestion: null,
         href: "/spares",
       });
@@ -537,6 +572,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         ],
         assignAction: null,
         assignRole: null,
+        source: "DERIVED",
         agentSuggestion: null,
         href: "/receivables",
       });
@@ -576,8 +612,69 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         ],
         assignAction: null,
         assignRole: null,
+        source: "DERIVED",
         agentSuggestion: null,
         href: "/inventory",
+      });
+    }
+  }
+
+  /*
+   * And the work somebody wrote down.
+   *
+   * Appended before the sort so a task competes with everything else on the
+   * same three keys rather than being pinned to the top or the bottom. A task
+   * due yesterday should outrank a part below its reorder level, and it does —
+   * because it is scored, not because it is a task.
+   *
+   * Severity is derived from the due date rather than set by whoever raised it.
+   * Letting a person mark their own task urgent makes every task urgent within
+   * a fortnight, which is the failure every to-do list in the world has.
+   */
+  if (may("TASK" as AccessModule) || true) {
+    for (const task of await openTasks(input.ownerId, visibleShowroomIds)) {
+      // A task about a module this role cannot read is already excluded by the
+      // row policy; this is the same check the derived rows get, so the two
+      // sources cannot disagree about what is visible.
+      if (task.module && !may(task.module as AccessModule)) continue;
+
+      const late = daysLate(task.dueOn);
+      const carrier = task.assignedEmpCode ? staff.get(task.assignedEmpCode) : undefined;
+      const gone = task.assignedEmpCode ? (carrier ? !carrier.active : false) : false;
+
+      items.push({
+        source: "TASK",
+        taskId: task.id,
+        module: (task.module ?? "DEAL") as QueueModule,
+        recordKey: task.recordKey ?? `TASK-${task.id}`,
+        showroomId: task.showroomId,
+        showroomCode: null,
+        band:
+          !task.assignedEmpCode || gone
+            ? "UNASSIGNED"
+            : empCode && task.assignedEmpCode === empCode
+              ? "MINE"
+              : "OUTLET",
+        // Overdue is today's work, due within three days is this week's, and
+        // anything else is background. The same three bands the rest of the
+        // queue uses, so the numbers mean one thing across both sources.
+        severity: late > 0 ? 3 : late > -3 ? 2 : 1,
+        waitingDays: Math.max(0, late),
+        title: task.title,
+        subtitle: task.recordKey,
+        state: "TASK",
+        note: task.detail,
+        actionRequired: task.title,
+        assignedEmpCode: task.assignedEmpCode,
+        assignedEmpName: task.assignedEmpName,
+        assigneeGone: gone,
+        contactName: null,
+        contactMobile: null,
+        actions: [],
+        assignAction: null,
+        assignRole: null,
+        agentSuggestion: null,
+        href: task.module && task.recordKey ? hrefFor(task.module as QueueModule) : "/",
       });
     }
   }

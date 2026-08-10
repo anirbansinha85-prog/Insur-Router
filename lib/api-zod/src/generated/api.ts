@@ -946,6 +946,191 @@ export const ApproveDmsMessageResponse = zod.object({
 
 
 /**
+ * The first thing DDMS holds that no DMS has a field for. Everything else on a record is either the dealer's data or a decision field hung off it; this is the dealership's own account of what happened.
+ * Gated twice. The permission table says whether this principal may read activities at all; the row policy says which records, using the same app.can_read(module) that gates the mirror row itself.
+ * @summary A record's own timeline
+ */
+export const ListRecordActivitiesParams = zod.object({
+  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART', 'RECEIVABLE', 'VEHICLE']),
+  "recordKey": zod.coerce.string()
+})
+
+export const ListRecordActivitiesResponse = zod.object({
+  "activities": zod.array(zod.object({
+  "id": zod.number().int(),
+  "ownerId": zod.number().int(),
+  "showroomId": zod.number().int(),
+  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART', 'RECEIVABLE', 'VEHICLE']),
+  "recordKey": zod.string(),
+  "kind": zod.enum(['NOTE', 'CALL', 'VISIT', 'MESSAGE', 'OBSERVED', 'INBOUND', 'SYSTEM']).describe('NOTE is somebody\'s thought. CALL, VISIT and MESSAGE assert a person did something outside the system and only a person may write them. OBSERVED is the system recording what it checked — an agent may write this because it is what the agent did. INBOUND is the customer speaking, written when a reply arrives. SYSTEM is housekeeping.\n'),
+  "body": zod.string(),
+  "userId": zod.number().int().nullish().describe('Null means the agent wrote it — the system did this, not we lost track of who.'),
+  "authorName": zod.string().nullish(),
+  "authoredBy": zod.enum(['PERSON', 'AGENT']),
+  "retractedAt": zod.string().nullish(),
+  "retractedByUserId": zod.number().int().nullish(),
+  "retractedReason": zod.string().nullish(),
+  "createdAt": zod.string()
+}))
+})
+
+
+/**
+ * An agent may record what the agent did; it may never record what a person did. CALL, VISIT and MESSAGE describe human acts and are refused to a non-human caller — the closed set an agent may write is OBSERVED and SYSTEM, and that is the rule which makes owning records safe.
+ * A person writing SYSTEM is recorded as NOTE rather than refused. People do notice things; the distinction being kept is who noticed, not whether they were allowed to.
+ * @summary Add to a record's timeline
+ */
+export const WriteRecordActivityParams = zod.object({
+  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART', 'RECEIVABLE', 'VEHICLE']),
+  "recordKey": zod.coerce.string()
+})
+
+export const writeRecordActivityBodyBodyMax = 2000;
+
+
+
+export const WriteRecordActivityBody = zod.object({
+  "showroomId": zod.number().int(),
+  "kind": zod.enum(['NOTE', 'CALL', 'VISIT', 'MESSAGE', 'OBSERVED']).optional().describe('INBOUND and SYSTEM are absent on purpose. INBOUND is written by the transport that received the reply, never composed by a caller; SYSTEM from a person is recorded as NOTE, because the distinction being kept is who noticed.\n'),
+  "body": zod.string().max(writeRecordActivityBodyBodyMax)
+})
+
+export const WriteRecordActivityResponse = zod.object({
+  "activity": zod.object({
+  "id": zod.number().int(),
+  "ownerId": zod.number().int(),
+  "showroomId": zod.number().int(),
+  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART', 'RECEIVABLE', 'VEHICLE']),
+  "recordKey": zod.string(),
+  "kind": zod.enum(['NOTE', 'CALL', 'VISIT', 'MESSAGE', 'OBSERVED', 'INBOUND', 'SYSTEM']).describe('NOTE is somebody\'s thought. CALL, VISIT and MESSAGE assert a person did something outside the system and only a person may write them. OBSERVED is the system recording what it checked — an agent may write this because it is what the agent did. INBOUND is the customer speaking, written when a reply arrives. SYSTEM is housekeeping.\n'),
+  "body": zod.string(),
+  "userId": zod.number().int().nullish().describe('Null means the agent wrote it — the system did this, not we lost track of who.'),
+  "authorName": zod.string().nullish(),
+  "authoredBy": zod.enum(['PERSON', 'AGENT']),
+  "retractedAt": zod.string().nullish(),
+  "retractedByUserId": zod.number().int().nullish(),
+  "retractedReason": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+})
+
+
+/**
+ * The row stays, struck through, with who withdrew it and why. "We decided this was wrong" and "it never happened" are different facts about a dealership and only one of them is defensible — the same argument as cancelling a message rather than deleting it.
+ * @summary Withdraw a claim without erasing that it was made
+ */
+export const RetractRecordActivityParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const RetractRecordActivityBody = zod.object({
+  "reason": zod.string().optional()
+}).describe('Why it was withdrawn. Kept on the row and shown beside it.')
+
+export const RetractRecordActivityResponse = zod.object({
+  "activity": zod.object({
+  "id": zod.number().int(),
+  "ownerId": zod.number().int(),
+  "showroomId": zod.number().int(),
+  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART', 'RECEIVABLE', 'VEHICLE']),
+  "recordKey": zod.string(),
+  "kind": zod.enum(['NOTE', 'CALL', 'VISIT', 'MESSAGE', 'OBSERVED', 'INBOUND', 'SYSTEM']).describe('NOTE is somebody\'s thought. CALL, VISIT and MESSAGE assert a person did something outside the system and only a person may write them. OBSERVED is the system recording what it checked — an agent may write this because it is what the agent did. INBOUND is the customer speaking, written when a reply arrives. SYSTEM is housekeeping.\n'),
+  "body": zod.string(),
+  "userId": zod.number().int().nullish().describe('Null means the agent wrote it — the system did this, not we lost track of who.'),
+  "authorName": zod.string().nullish(),
+  "authoredBy": zod.enum(['PERSON', 'AGENT']),
+  "retractedAt": zod.string().nullish(),
+  "retractedByUserId": zod.number().int().nullish(),
+  "retractedReason": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+})
+
+
+/**
+ * As opposed to work the product noticed. Every row on the queue until now was derived — computed from the mirror on every request, never stored. A task is true because a person or a journey said so.
+ * There is deliberately no list endpoint. Open tasks arrive on GET /dms/queue alongside everything else, because a second list recreates the problem the queue was built to remove.
+ * The assignee must still work here — the same check the reassignment actions make. A task on a departed employee's list is a task nobody will do, which is the failure the queue's middle band exists to surface.
+ * @summary Work somebody decided needs doing
+ */
+export const createDmsTaskBodyTitleMax = 200;
+
+
+
+export const CreateDmsTaskBody = zod.object({
+  "showroomId": zod.number().int(),
+  "title": zod.string().max(createDmsTaskBodyTitleMax),
+  "detail": zod.string().optional(),
+  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART', 'RECEIVABLE', 'VEHICLE']).optional(),
+  "recordKey": zod.string().optional(),
+  "assignedEmpCode": zod.string().optional().describe('Must still work here. A task on a departed employee is a task nobody will do.'),
+  "dueOn": zod.string().optional().describe('YYYY-MM-DD.')
+})
+
+export const CreateDmsTaskResponse = zod.object({
+  "task": zod.object({
+  "id": zod.number().int(),
+  "ownerId": zod.number().int(),
+  "showroomId": zod.number().int(),
+  "title": zod.string(),
+  "detail": zod.string().nullish(),
+  "module": zod.string().nullish().describe('Null for a standing job that belongs to no single record.'),
+  "recordKey": zod.string().nullish(),
+  "assignedEmpCode": zod.string().nullish(),
+  "assignedEmpName": zod.string().nullish(),
+  "dueOn": zod.string().nullish().describe('A date, not a timestamp. Dealerships work in days.'),
+  "status": zod.enum(['OPEN', 'DONE', 'CANCELLED']),
+  "source": zod.enum(['PERSON', 'AGENT', 'JOURNEY']).describe('Changes what closing it means. A JOURNEY task closes when the journey moves on; PERSON and AGENT tasks close only when a person says so.\n'),
+  "createdByUserId": zod.number().int().nullish(),
+  "createdByName": zod.string().nullish(),
+  "completedAt": zod.string().nullish(),
+  "completedByUserId": zod.number().int().nullish(),
+  "outcome": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+})
+
+
+/**
+ * The agent does not hold this permission. Closing a task asserts the work was done, and whether it was is a fact only the person who did it holds — the same reasoning that keeps eight registry actions closed to it.
+ * @summary Done, or decided against
+ */
+export const CloseDmsTaskParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const CloseDmsTaskBody = zod.object({
+  "status": zod.enum(['DONE', 'CANCELLED']).optional(),
+  "outcome": zod.string().optional().describe('What was actually done, or why it was dropped. Both worth keeping.')
+})
+
+export const CloseDmsTaskResponse = zod.object({
+  "task": zod.object({
+  "id": zod.number().int(),
+  "ownerId": zod.number().int(),
+  "showroomId": zod.number().int(),
+  "title": zod.string(),
+  "detail": zod.string().nullish(),
+  "module": zod.string().nullish().describe('Null for a standing job that belongs to no single record.'),
+  "recordKey": zod.string().nullish(),
+  "assignedEmpCode": zod.string().nullish(),
+  "assignedEmpName": zod.string().nullish(),
+  "dueOn": zod.string().nullish().describe('A date, not a timestamp. Dealerships work in days.'),
+  "status": zod.enum(['OPEN', 'DONE', 'CANCELLED']),
+  "source": zod.enum(['PERSON', 'AGENT', 'JOURNEY']).describe('Changes what closing it means. A JOURNEY task closes when the journey moves on; PERSON and AGENT tasks close only when a person says so.\n'),
+  "createdByUserId": zod.number().int().nullish(),
+  "createdByName": zod.string().nullish(),
+  "completedAt": zod.string().nullish(),
+  "completedByUserId": zod.number().int().nullish(),
+  "outcome": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+})
+
+
+/**
  * The Outbox shipped with no editing, because a rewrite check exists to stop a model inventing a figure the facts do not support. That check is still right and it is not this case: a named manager adding "Mr Verma is coming in on Saturday, please have the file ready" is asserting something only they know, and there is nothing in the mirror to check it against.
  * What editing does to the gate matters more than what it does to the text. An edited message can never take the rule path again, so an internal notification a rule would have sent unattended now waits for the person who edited it to approve it. The composed text is kept alongside, written once, so what the product proposed and what the dealership said are both answerable later.
  * DRAFT only. Approval means somebody read it as it stood.
@@ -1335,6 +1520,8 @@ export const GetDmsQueueResponse = zod.object({
 }).describe('A control the row may offer. Decided by the rules that own the module rather than by the screen, so the queue can render any module\'s controls without knowing what any of them mean.\n')),
   "assignAction": zod.union([zod.literal('ENQUIRY_REASSIGN'),zod.literal('REGISTRATION_ASSIGN_AGENT'),zod.literal(null)]).nullish().describe('The reassignment this row supports, when it has one. Not a button — a picker over staff who still work here, each carrying what they already hold. R-54 asks that work never becomes unroutable, and the screen that shows orphaned work has to be where it can be handed on, or \"reassign to someone still here\" is advice with a trip to another screen attached.\n'),
   "assignRole": zod.string().nullish().describe('Which role the picker offers. Null means everybody at the outlet.'),
+  "source": zod.enum(['DERIVED', 'TASK']).optional().describe('DERIVED is everything the queue has ever held — computed from the mirror on every request, never stored, gone the moment the record moves. TASK is a row somebody wrote down. They sit in one list and are sorted together, because a separate Tasks screen recreates exactly the problem the queue was built to solve.\n'),
+  "taskId": zod.number().int().optional().describe('Present only on a TASK row — what to close when it is done.'),
   "agentSuggestion": zod.union([zod.object({
   "action": zod.enum(['ENQUIRY_REASSIGN', 'REGISTRATION_ASSIGN_AGENT']).describe('The whole of what the agent may call. The other ten registry actions assert that a person did something — rang the customer, chased the RTO, showed the bike — and a model cannot make a phone call. See CLOSED_TO_THE_AGENT in lib\/dms\/agent.ts, which names each one.\n'),
   "empCode": zod.string(),
