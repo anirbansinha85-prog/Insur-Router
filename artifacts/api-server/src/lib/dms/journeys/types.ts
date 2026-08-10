@@ -79,6 +79,22 @@ export interface Wait {
    * wait: the day it stops being normal and starts being late.
    */
   notBefore?: string | null;
+  /**
+   * Whether this is something going wrong or something worth doing (OBJ-25).
+   *
+   * Every row this product has ever put on a queue has been a problem — a file
+   * the RTO sent back, a certificate nobody collected. *Everything is in place,
+   * the invoice can be generated* is not a problem, and presenting it as one
+   * would teach a dealership that the queue is a list of failures and that
+   * finishing it is the goal.
+   *
+   * > **Invoices are not late because typing is hard. They are late because
+   * > nobody noticed the deal became ready.**
+   *
+   * It does not change urgency — an opportunity is sorted on the same three
+   * keys as everything else. It changes what the row says it is.
+   */
+  tone?: "PROBLEM" | "OPPORTUNITY";
 }
 
 /**
@@ -93,6 +109,8 @@ export interface Step<F> {
   /** What this step is, in the dealership's words rather than the schema's. */
   title: string;
   actor: Actor;
+  /** A `SEVERITY.<module>.<state>` this step shares, where one fits. */
+  severityState?: (f: F) => string | null;
 
   /**
    * Has it happened? A rule over facts, and the only question the runtime asks
@@ -153,6 +171,31 @@ export interface JourneyDefinition<F> {
   label(f: F): { title: string; subtitle: string | null };
   /** Somebody to ring, where the journey has one. */
   contact(f: F): { name: string | null; mobile: string | null };
+  /**
+   * Everything this map needs, gathered once per outlet.
+   *
+   * On the definition rather than in the runtime, which is what made a **second
+   * journey** possible without touching the runtime at all (OBJ-25). Two maps
+   * read two entirely different sets of tables — one joins the registration
+   * mirror to the deal mirror, the other joins deals to price lists — and the
+   * runtime that walks them both must not know either.
+   */
+  loadFacts(input: {
+    ownerId: number;
+    showroomIds: number[];
+    /** The dealership's own numbers. */
+    policy: unknown;
+    now: Date;
+  }): Promise<Map<string, F>>;
+  /**
+   * Which `SEVERITY.*` state a step borrows, where one fits.
+   *
+   * On the definition because it is a property of the map, and a function of
+   * the facts because one step can be two degrees of urgent — `DOCUMENTS` is
+   * *waiting on the customer* most of the time and *the RTO rejected this*
+   * after a loop, and the dealership rated those differently.
+   */
+  severityModule: string;
 }
 
 /** Where a journey stands, worked out fresh from facts. Never stored. */

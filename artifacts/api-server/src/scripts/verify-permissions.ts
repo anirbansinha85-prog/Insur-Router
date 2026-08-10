@@ -167,6 +167,22 @@ check("does NOT hold task.complete", may("AGENT", "task.complete"), false);
 check("does NOT hold activity.retract", may("AGENT", "activity.retract"), false);
 console.log(`  why not: ${whyNot("AGENT", "task.complete")}`);
 
+// ── 7c. The document, and what the agent may not put a price on ─────────────
+
+section("7c. the agent may notice a deal is ready and may not invoice it");
+
+check("does NOT hold invoice.generate", may("AGENT", "invoice.generate"), false);
+check("does NOT hold pricelist.set", may("AGENT", "pricelist.set"), false);
+check("an owner does", may("OWNER", "invoice.generate"), true);
+check("and so does accounts", may("ACCOUNTS", "invoice.generate"), true);
+check("a technician does not", may("TECHNICIAN", "invoice.generate"), false);
+check(
+  "only an owner or a manager writes a price list",
+  [may("OWNER", "pricelist.set"), may("ACCOUNTS", "pricelist.set"), may("SALES_EXEC", "pricelist.set")],
+  [true, false, false],
+);
+console.log(`  why not: ${whyNot("AGENT", "invoice.generate")}`);
+
 // ── 8. Nothing grants what nothing should ───────────────────────────────────
 
 section("8. no principal holds a permission that does not exist");
@@ -185,6 +201,9 @@ const NAMED: Permission[] = [
   // check did not exist to catch the one that was forgotten.
   "activity.view", "activity.write", "activity.retract",
   "task.view", "task.create", "task.complete",
+  // OBJ-25. The first grants that put a number on a piece of paper a customer
+  // keeps, and on some dealerships spend a tax-invoice number.
+  "invoice.view", "invoice.generate", "pricelist.set",
 ];
 const named = new Set<string>(NAMED);
 let stray = 0;

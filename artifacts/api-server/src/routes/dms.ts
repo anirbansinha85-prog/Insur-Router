@@ -98,10 +98,19 @@ import {
   PERMISSION_FOR_ACTION,
   type RegistryActionId,
 } from "../lib/dms/permissions";
+import { showroomIdsForOwner } from "../lib/dms/events";
 import { buildQueue } from "../lib/dms/queue";
 import { describeRules, MAX_RULES } from "../lib/dms/rules";
 import { describePolicy, loadPolicy, resetAllPolicy, setPolicy } from "../lib/dms/policy";
 import { traceFor } from "../lib/dms/journeys";
+import {
+  cancelDocument,
+  generateDocument,
+  listDocuments,
+  listPriceLists,
+  readinessFor,
+  unclaimedSchemes,
+} from "../lib/dms/invoice";
 import {
   confirmMapping,
   describeSources,
@@ -813,6 +822,175 @@ router.post("/dms/messages/:id/send", async (req, res): Promise<void> => {
  * the same `app.can_read(module)` that gates the mirror row itself. A service
  * advisor is refused a note on a receivable by Postgres, not by this handler.
  */
+/**
+ * What can be invoiced right now, and what is stopping the rest (OBJ-25).
+ *
+ * The readiness gate. Every condition is a column test — is there a chassis,
+ * does a price list cover the model, has something been issued already — and
+ * the answer says which ones are unmet rather than a bare yes or no, because
+ * *not ready* is useless and *no price list covers the Xpulse* is a job
+ * somebody can do this morning.
+ */
+router.get("/dms/invoice/readiness", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  if (!may(user.role, "invoice.view")) {
+    res.status(403).json({ error: whyNot(user.role, "invoice.view") });
+    return;
+  }
+  const showroomId = Number(req.query.showroomId);
+  if (!Number.isInteger(showroomId) || !(await assertShowroomAccess(req, res, showroomId))) {
+    if (!res.headersSent) res.status(400).json({ error: "showroomId must be a positive integer" });
+    return;
+  }
+
+  const all = await readinessFor({
+    ownerId: user.ownerId,
+    showroomIds: [showroomId],
+    onDate: new Date().toISOString().slice(0, 10),
+  });
+  res.json({
+    ready: all.filter((r) => r.ready),
+    blocked: all.filter((r) => !r.ready && r.existing === null),
+    issued: all.filter((r) => r.existing !== null).length,
+  });
+});
+
+/**
+ * Issue the document.
+ *
+ * **The one door** (R-81). This is the only path that writes a `sale_documents`
+ * row, and when a journey later wants an invoice raised it calls the same
+ * function with a person's consent behind it rather than growing a second way
+ * in.
+ *
+ * A salesman may quote and may not invoice. That is not in the permission
+ * table, because the table answers *may this principal issue a document at all*
+ * and this is *what kind* — a distinction that belongs where the intent is
+ * read.
+ */
+router.post("/dms/invoice/generate", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  const body = req.body as Record<string, unknown>;
+
+  const showroomId = Number(body["showroomId"]);
+  if (!Number.isInteger(showroomId) || !(await assertShowroomAccess(req, res, showroomId))) {
+    if (!res.headersSent) res.status(400).json({ error: "showroomId must be a positive integer" });
+    return;
+  }
+
+  const intent = String(body["intent"] ?? "SALE").toUpperCase();
+  if (!["SALE", "QUOTATION", "PROFORMA"].includes(intent)) {
+    res.status(400).json({ error: "intent must be SALE, QUOTATION or PROFORMA" });
+    return;
+  }
+  if (intent === "SALE" && !seesEveryOutlet(user.role) && user.role !== "ACCOUNTS") {
+    res.status(403).json({
+      error:
+        "A salesman may quote and may not invoice. Send this as a QUOTATION, or ask accounts to raise it.",
+    });
+    return;
+  }
+
+  const result = await generateDocument({
+    ownerId: user.ownerId,
+    showroomId,
+    dealerCode: String(body["dealerCode"] ?? ""),
+    dealId: String(body["dealId"] ?? ""),
+    intent: intent as "SALE" | "QUOTATION" | "PROFORMA",
+    priceListId: body["priceListId"] === undefined ? null : Number(body["priceListId"]),
+    dealerDiscount: Number(body["dealerDiscount"] ?? 0),
+    oemSchemeAmount: Number(body["oemSchemeAmount"] ?? 0),
+    oemSchemePassedOn: Number(body["oemSchemePassedOn"] ?? 0),
+    otherCharges: Array.isArray(body["otherCharges"])
+      ? (body["otherCharges"] as Array<{ label: string; amount: number }>)
+      : undefined,
+    placeOfSupply: typeof body["placeOfSupply"] === "string" ? body["placeOfSupply"] : null,
+    userId: user.userId,
+    userName: user.name,
+    principal: user.role,
+    policy: await loadPolicy(user.ownerId),
+  });
+
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+  res.status(201).json({ document: result.document, warnings: result.warnings });
+});
+
+/** What has been issued, newest first. */
+router.get("/dms/invoice/documents", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  if (!may(user.role, "invoice.view")) {
+    res.status(403).json({ error: whyNot(user.role, "invoice.view") });
+    return;
+  }
+  const showroomId = Number(req.query.showroomId);
+  if (!Number.isInteger(showroomId) || !(await assertShowroomAccess(req, res, showroomId))) {
+    if (!res.headersSent) res.status(400).json({ error: "showroomId must be a positive integer" });
+    return;
+  }
+  res.json({ documents: await listDocuments(user.ownerId, showroomId) });
+});
+
+/** Cancelled, never deleted. The number stays spent. */
+router.post("/dms/invoice/documents/:id/cancel", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: "id must be a positive integer" });
+    return;
+  }
+  const result = await cancelDocument({
+    ownerId: user.ownerId,
+    id,
+    reason: String((req.body as { reason?: unknown })?.reason ?? ""),
+    principal: user.role,
+  });
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+  res.json({ document: result.document });
+});
+
+/**
+ * What the manufacturer still owes this dealership (R-88).
+ *
+ * The number nobody currently has, because it lives in two places at once: the
+ * scheme is the manufacturer's and the decision about passing it on is the
+ * dealer's, and only DDMS's document holds both. **The claim is owed on the
+ * full scheme whatever the customer was told** — a dealer who retained it made
+ * a commercial decision and is still owed it, and an unclaimed scheme is money
+ * given away twice.
+ */
+router.get("/dms/invoice/claims", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  if (!may(user.role, "invoice.view")) {
+    res.status(403).json({ error: whyNot(user.role, "invoice.view") });
+    return;
+  }
+  const showroomIds = user.showroomId
+    ? [user.showroomId]
+    : await showroomIdsForOwner(user.ownerId);
+  res.json(await unclaimedSchemes(user.ownerId, showroomIds));
+});
+
+/** Every price list this outlet prices from, current first. */
+router.get("/dms/invoice/price-lists", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  if (!may(user.role, "invoice.view")) {
+    res.status(403).json({ error: whyNot(user.role, "invoice.view") });
+    return;
+  }
+  const showroomId = Number(req.query.showroomId);
+  if (!Number.isInteger(showroomId) || !(await assertShowroomAccess(req, res, showroomId))) {
+    if (!res.headersSent) res.status(400).json({ error: "showroomId must be a positive integer" });
+    return;
+  }
+  res.json({ lists: await listPriceLists(user.ownerId, showroomId) });
+});
+
 /**
  * How this outlet is connected, per kind of data (OBJ-24).
  *

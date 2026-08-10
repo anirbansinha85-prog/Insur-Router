@@ -132,18 +132,12 @@ function underObjection(f: DeliveryFacts): boolean {
  * RC outranks a quiet RTO decided that for the whole product, and a second
  * table would let the queue and the journey disagree about the same file.
  */
-export interface DeliveryStep extends Step<DeliveryFacts> {
-  /**
-   * A `REGISTRATION` state whose severity this step shares, where one fits.
-   *
-   * A function of the facts rather than a constant, because one step can be two
-   * different degrees of urgent. `DOCUMENTS` is *waiting on the customer* most
-   * of the time and *the RTO rejected this* after a loop, and the dealership
-   * rated those 2 and 3. The first version had it as a constant and quietly
-   * demoted every objected file to the lower of the two.
-   */
-  severityState?: (f: DeliveryFacts) => string | null;
-}
+/**
+ * `severityState` moved onto `Step` itself when the second journey arrived
+ * (OBJ-25) — it was never specific to this map. The alias stays so this file
+ * reads the way it did.
+ */
+export type DeliveryStep = Step<DeliveryFacts>;
 
 /**
  * The first step, and the one that taught the model the difference between *we
@@ -408,13 +402,12 @@ const HANDED_OVER: DeliveryStep = {
   },
 };
 
-export const VEHICLE_DELIVERY: JourneyDefinition<DeliveryFacts> & {
-  steps: DeliveryStep[];
-} = {
+export const VEHICLE_DELIVERY: JourneyDefinition<DeliveryFacts> = {
   id: "VEHICLE_DELIVERY",
   version: 1,
   title: "Invoice to certificate",
   subjectModule: "REGISTRATION",
+  severityModule: "REGISTRATION",
   steps: [
     INVOICED,
     INSURED,
@@ -448,4 +441,12 @@ export const VEHICLE_DELIVERY: JourneyDefinition<DeliveryFacts> & {
   }),
 
   contact: (f) => ({ name: f.customerName, mobile: f.customerMobile }),
+
+  // Defined in `runtime.ts` and attached there, because the load reaches for
+  // `db` and this file is deliberately free of it — every predicate above is a
+  // pure function of facts, and an import of the database in the same module
+  // is the first step towards one of them quietly not being.
+  loadFacts: async () => {
+    throw new Error("loadFacts is attached in runtime.ts");
+  },
 };

@@ -95,6 +95,26 @@ async function reset(): Promise<void> {
   await ownerDb.delete(ingestBatchesTable).where(eq(ingestBatchesTable.showroomId, SHOWROOM));
   await ownerDb.delete(ingestMappingsTable).where(eq(ingestMappingsTable.showroomId, SHOWROOM));
   await ownerDb.delete(ingestSourcesTable).where(eq(ingestSourcesTable.showroomId, SHOWROOM));
+
+  /*
+   * Put the provenance back directly, rather than leaving it to a sync.
+   *
+   * **A sync only reloads what moved.** That is the optimisation the whole
+   * `list`/`load` split exists for, and it means a row whose *content* is
+   * unchanged but whose *provenance* is stale is precisely the case it will
+   * not notice. A run that died between the report pass and the restore
+   * therefore leaves rows saying `REPORT` with a hash the API agrees with, and
+   * the next run's opening assertion fails for a reason that has nothing to do
+   * with the code.
+   *
+   * Section 9 still proves the round trip properly: by then the report and
+   * document passes have genuinely rewritten the rows, and the sync there has
+   * real work to do.
+   */
+  await ownerDb
+    .update(dmsDealsTable)
+    .set({ ingestPath: "API", fieldConfidence: null, ingestBatchId: null })
+    .where(eq(dmsDealsTable.dealerCode, DEALER));
 }
 
 await reset();

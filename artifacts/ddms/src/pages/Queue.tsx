@@ -20,6 +20,7 @@ import { ActionButton, AgentSuggestionCard, AssignPicker, ContactButtons } from 
 import { ExplainButton } from "@/lib/explain"
 import { Timeline } from "@/lib/timeline"
 import { JourneyPanel } from "../lib/journey"
+import { InvoiceButton } from "../lib/invoice"
 
 /**
  * One queue, worked one at a time.
@@ -278,9 +279,35 @@ export default function Queue() {
 
             {current.note && <p className="text-sm text-slate-600">{current.note}</p>}
 
-            <div className="bg-slate-50 border border-slate-200 rounded-md px-4 py-3">
-              <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
-                What to do
+            {/* The one row on this screen that is not something going wrong.
+
+                Above *What to do* rather than inside it, because the action is
+                the whole point of the row and putting it under a heading that
+                says "what to do" would make it read like the sixth instruction
+                of the morning rather than the easy win it is. */}
+            {current.tone === "OPPORTUNITY" &&
+              current.journey?.stepId === "INVOICED" &&
+              current.module === "DEAL" && (
+                <InvoiceButton
+                  dealerCode={current.journey.dealerCode ?? ""}
+                  dealId={current.recordKey}
+                  showroomId={current.showroomId}
+                />
+              )}
+
+            <div
+              className={`border rounded-md px-4 py-3 ${
+                current.tone === "OPPORTUNITY"
+                  ? "bg-emerald-50/50 border-emerald-200"
+                  : "bg-slate-50 border-slate-200"
+              }`}
+            >
+              <div
+                className={`text-[11px] font-semibold uppercase tracking-wider mb-1 ${
+                  current.tone === "OPPORTUNITY" ? "text-emerald-700" : "text-slate-500"
+                }`}
+              >
+                {current.tone === "OPPORTUNITY" ? "Worth doing" : "What to do"}
               </div>
               <p className="text-sm font-medium text-slate-900">{current.actionRequired}</p>
               {current.waitingDays > 0 && (

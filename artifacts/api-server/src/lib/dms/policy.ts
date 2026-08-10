@@ -78,6 +78,32 @@ const SWITCH_KEYS: PolicyKey[] = [
     max: 1,
     unit: "switch",
   },
+  {
+    /*
+     * Only one system may hold a sequential tax-invoice series (R-90), and
+     * which one is a fact about this dealership rather than a product decision.
+     *
+     * Off by default, and the default is the safe direction: DDMS issues a
+     * *sale confirmation* carrying the DMS's invoice number for linkage, and
+     * says on its face that it is not a tax invoice. Switching it on is a
+     * dealership saying "our GST series is yours now", which is a real
+     * commitment and must be a deliberate act rather than something that
+     * happened because a default was convenient.
+     */
+    key: "SWITCH.DDMS_HOLDS_TAX_SERIES",
+    group: "SWITCH",
+    section: "Invoicing",
+    label: "DDMS issues the tax invoice",
+    help:
+      "Off, your own system numbers the tax invoice and ours is a sale confirmation that " +
+      "carries your number and says it is not a tax invoice. On, ours issues the number " +
+      "from its own series. Only one system may hold the series — two produces gaps or " +
+      "duplicates, and both are audit findings.",
+    default: 0,
+    min: 0,
+    max: 1,
+    unit: "switch",
+  },
 ];
 
 /**
@@ -96,6 +122,16 @@ const SEVERITY_KEYS: Array<[string, string, string, string, number]> = [
   ["DEAL", "BEHIND", "Policy not recorded", "We issued it; the OEM's system does not have it.", 2],
   ["DEAL", "NOT_STARTED", "No insurance yet", "A delivered vehicle with no policy anywhere.", 2],
   ["DEAL", "AHEAD", "OEM catching up", "We have it, theirs has not caught up yet.", 1],
+
+  // The sale journey (OBJ-25). READY_TO_INVOICE is the first entry in this
+  // table that is not a fault — nothing is wrong, there is simply money
+  // standing still. Two rather than three by default: an owner who wants
+  // invoicing chased daily can raise it, and starting it at the top of every
+  // queue would bury the things that are actually broken.
+  ["DEAL", "READY_TO_INVOICE", "Ready to invoice", "Everything is in place and nobody has raised it.", 2],
+  ["DEAL", "UNPRICED", "No price for this model", "No price list covers it, so it cannot be invoiced at all.", 2],
+  ["DEAL", "UNALLOCATED", "No vehicle against it", "Booked, and no chassis allocated yet.", 1],
+  ["DEAL", "UNDELIVERED", "Invoiced, not handed over", "Sold, and still on the floor.", 1],
 
   ["JOB_CARD", "OVERDUE", "Past the promised date", "The customer was given a date and it has passed.", 3],
   ["JOB_CARD", "READY_UNCOLLECTED", "Finished, not collected", "Done, and the bay is holding it.", 3],

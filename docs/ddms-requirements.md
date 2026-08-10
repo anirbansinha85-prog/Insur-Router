@@ -1831,10 +1831,10 @@ and the one we lack.
 | R-84 | ✅ **Ingestion varies; completion does not.** Direct fetch, report drop and document scan produce one canonical record, and the readiness check does not know which path a field arrived by  | ✅ |
 | R-85 | ✅ **Every ingested field carries its source and its confidence.** A value read off a mapped column is not the same fact as one an API returned, and nothing downstream may treat them alike  | ✅ |
 | R-86 | ✅ **A mapping is confirmed once by a person, then it is fixed.** The model reads unfamiliar column headings once; a person approves; extraction is deterministic thereafter. Model cost is per report type, not per row — and the same shape as graduation  | ✅ |
-| R-87 | **Price is the dealer's decision, and DDMS records which list was used.** Selling at an older list, discounting ageing stock or retaining an OEM scheme are commercial calls. DDMS holds price lists with effective dates and prints which one an invoice was priced against | ○ |
-| R-88 | **An OEM scheme is claimable whatever the customer was told.** The claim is owed on the scheme amount regardless of how much was passed on, and DDMS is the only system holding both halves | ○ |
-| R-89 | **A document must say what it is.** If it is not a tax invoice it must not look like one. Same instinct as *held — nothing was delivered* and the `SIM-` prefix | ○ |
-| R-90 | **Only one system may hold the tax-invoice series.** Which one is a per-dealer setting; two systems issuing from one sequential series produces gaps or duplicates, and both are audit findings | ○ |
+| R-87 | ✅ **Price is the dealer's decision, and DDMS records which list was used.** Selling at an older list, discounting ageing stock or retaining an OEM scheme are commercial calls. DDMS holds price lists with effective dates and prints which one an invoice was priced against | ✅ |
+| R-88 | ✅ **An OEM scheme is claimable whatever the customer was told.** The claim is owed on the scheme amount regardless of how much was passed on, and DDMS is the only system holding both halves | ✅ |
+| R-89 | ✅ **A document must say what it is.** If it is not a tax invoice it must not look like one. Same instinct as *held — nothing was delivered* and the `SIM-` prefix | ✅ |
+| R-90 | ✅ **Only one system may hold the tax-invoice series.** Which one is a per-dealer setting; two systems issuing from one sequential series produces gaps or duplicates, and both are audit findings | ✅ |
 | R-91 | **A person may ask the agent to act, under their name and their permissions.** The third mode, and the safest, because accountability is unambiguous from the start | ○ |
 | R-92 | **An agent run has a cost and a cap.** Per-run cost, a daily ceiling, and attribution. wrrk quotes $0.01–$0.05 a run and caps at 50/org/day **[Documented]**; DDMS meters nothing | ○ |
 | R-93 | **A run is a trace, not a row.** The decision log answers *what happened to this record*. A multi-agent run is a narrative across records and agents, and nothing today can show it as one thing | ○ |
@@ -1849,7 +1849,7 @@ and the one we lack.
 | 22 | ~~**DDMS owns its own records**~~ ✅ | no | 21 | the unlock. Notes, activities, tasks, quotations, price lists. Nothing an agent can honestly write until this exists |
 | 23 | ~~**The journey model**~~ ✅ | no | 22 | the runtime, proved end to end on one journey |
 | 24 | ~~**Ingestion beyond the API**~~ ✅ | at the mapping step only | — | independent of everything, and the thing that decides how many dealers can be sold to at all |
-| 25 | **The invoice DDMS produces** | no | 22, 23, 24 | the first document the product issues, and the first record it holds *before* the DMS knows anything |
+| 25 | ~~**The invoice DDMS produces**~~ ✅ | no | 22, 23, 24 | the first document the product issues, and the first record it holds *before* the DMS knows anything |
 | 26 | **Autonomy: the ladder and graduation** | recall only | 21, 23 | needs journeys running long enough to have history to cite. Absorbs OBJ-19 |
 | 27 | **dm-concierge — messages out, replies in** | no | 22 | the Outbox has no transport at all. Inbound is the larger half: a reply is a fact the DMS will never hold |
 | 28 | **The trace and the stand-down** | no | 23, 26 | you cannot supervise what you cannot watch, and cost belongs here |
@@ -2323,7 +2323,7 @@ are looking at the file.
 > is the part that must not be lost. What had to be built here is *whether three
 > paths can produce one record*; a bucket is plumbing that answers nothing.
 
-### OBJ-25 — The invoice DDMS produces
+### OBJ-25 — The invoice DDMS produces  ✅ **done 10 Aug**
 *Covers R-87, R-88, R-89, R-90. Needs 22, 23, 24.*
 
 DDMS's document is the DMS's facts **plus the commercial agreement**, and
@@ -2342,6 +2342,129 @@ that is the automation. Invoices are not late because typing is hard.
 and the document says so, the OEM claim is raised for the full scheme amount
 regardless of what was passed on, and the readiness row appears the moment the
 last condition is satisfied rather than when somebody opens a screen.
+
+**Three tables.** `price_lists` and `price_list_items` keep the history the DMS
+discards — a current-state system holds today's price and forgets yesterday's,
+which is fine until a dealer lawfully sells at an older rate. `sale_documents`
+is the document itself, and `kind` on it is load-bearing rather than
+descriptive.
+
+**The tax rates are per model, not a setting.** HSN, GST and cess live on the
+price-list item because a motorcycle above 350cc attracts a cess the one below
+it does not. One rate in a policy registry would have been tidier and wrong for
+half the range.
+
+> **Only one system may hold the series, and which one is a switch.**
+
+`SWITCH.DDMS_HOLDS_TAX_SERIES`, **off by default**, and the default is the safe
+direction. Off, DDMS issues a `SALE_CONFIRMATION` that carries the DMS's invoice
+number for linkage and says on its face that it is not a tax invoice. On, a
+`TAX_INVOICE` with a number from its own sequential series. Same generator, one
+flag — and the second is not a lesser feature: a dealer whose DMS numbers his
+invoices still wants DDMS's document, because DDMS's is the one with the
+commercial agreement on it.
+
+The series number is taken inside the insert, the financial year is April to
+March because Indian series restart with it, and a unique index on
+`(ownerId, taxInvoiceNo)` is the backstop that must never fire.
+
+**The discount is split by who is paying for it** (R-88), and the two halves
+answer different questions:
+
+| | |
+|---|---|
+| `dealerDiscount` | his own margin, given away |
+| `oemSchemeAmount` | the manufacturer's, **claimable in full whatever happened next** |
+| `oemSchemePassedOn` | how much of it reached the customer. May be zero |
+
+The taxable value falls by what the customer was actually given. The scheme the
+dealer kept never reaches that line, because the customer never got it — and
+`oemSchemeAmount` stays at full value on the row, because **the claim is owed on
+the scheme rather than on the part of it that was passed on.** An unclaimed
+scheme is money given away twice, and `GET /dms/invoice/claims` is the number
+nobody previously had: it lives in two places at once and only DDMS's document
+holds both.
+
+**A second journey, and the runtime did not change to accept it.** `VEHICLE_SALE`
+— booked → allocated → priceable → **invoiced** → delivered, on the `DEAL`
+module. That was the test OBJ-23 set for itself without saying so: a journey
+model is a model if the second journey costs a file and a special case if it
+costs a refactor. What moved was `loadFacts` onto the definition and
+`severityState` onto `Step`; the walk, the loop detection and the queue
+projection are untouched. Where it finishes, `VEHICLE_DELIVERY` begins — and
+that journey's `INSURED` step already knew how to say *waiting on another
+process*.
+
+It also closes the funnel Anirban said was missing: *lead → pre-sales → sale →
+booking → finance → invoice*. This is its second half.
+
+**`PRICEABLE` is a stall nothing in the product could previously describe.** Not
+*the customer has not paid* and not *the RTO is slow*: **we cannot invoice this
+because nobody has told us what the model costs.** An onboarding gap, invisible
+until something tries to price a sale — which is what a journey does and a
+classifier never did.
+
+**The opportunity.** `Wait` gained `tone`, and `INVOICED` is the first row in
+this product's history that is not something going wrong. It does **not** change
+the sort: an opportunity competes on the same three keys, because a dealership
+that always did the pleasant rows first would have a growing pile of the others.
+
+**Proved by `pnpm run verify:invoice`** — ten sections, and then driven through
+HTTP because the library passing is not the same as the product working:
+
+| | |
+|---|---|
+| priced off July when August is current | `pricedOffCurrentList: N`, and the warning names the current price |
+| the tax split | CGST and SGST are halves of one whole, to the paisa |
+| scheme ₹5,000, none passed on | ₹5,000 claimable, taxable value down only by the ₹2,000 he actually gave |
+| series off | `SALE_CONFIRMATION`, carrying the DMS's number, titled as not a tax invoice |
+| series on | `INV/2627/00001` |
+| a second sale on one deal | refused |
+| a quotation on the same deal | allowed |
+| cancelling | needs a reason; the row stays and the number stays spent |
+| the agent | **refused**, by the same table that refuses a technician |
+| the runtime | 79 sale journeys, 5 opportunities, at position 72 of 286 on the one queue |
+
+> **The bug the API found that the library did not.** The existence check said
+> *only a sale may already exist* in its comment and filtered on status alone in
+> its query — so a salesman quoting a customer in the morning made the deal
+> un-invoiceable for the rest of the day. Found by quoting and then invoicing
+> through the routes. **Driving the library is not driving the product.**
+
+> **A refusal named the wrong reason, and the code had predicted it.** `whyNot`
+> returned the `policy.set` sentence for every permission belonging to no
+> module, with a comment saying that was the only one. This objective added
+> three more, so a service advisor asking to read an invoice was told they may
+> not set the dealership's thresholds — true of them, and not what they asked.
+> Exactly the defect OBJ-21 fixed on `POST /dms/actions`, arriving from the
+> other side: **defence in depth working is not the same as the application
+> being honest.**
+
+> **A correlated subquery silently returned 1.** The price-list screen's model
+> count, written through the ORM's SQL template, reported one model for a list
+> holding six — not an error, not an empty result, a plausible wrong number. It
+> is a join and a `group by` now, and the count each list reports is checked
+> against the count it holds. Caught only because the seeded data is a shape
+> somebody knows.
+
+> **A vehicle delivered with no invoice is not an opportunity.** Same step, same
+> missing document, opposite reading: *here is money you can collect* against
+> *you have handed over a vehicle you never billed for*. A row calling the
+> second one an opportunity would be the product being cheerful about an
+> accounting hole.
+
+**`pnpm run db:seed-pricelists`** builds two lists from the mirror — July, and
+an August one four per cent higher — because the interesting case needs a
+superseded list to exist.
+
+> **The scope that was left.** Place of supply defaults to the outlet's own
+> state, because the deal mirror carries no customer address; the field is an
+> input rather than an assumption and the document records the answer, so
+> inter-state is reachable the moment the address is. E-invoicing (IRP
+> registration above the threshold) is not built. And the readiness row appears
+> on the **next scheduler pass** rather than instantaneously — which is what
+> *rather than when somebody opens a screen* actually buys: a timestamped record
+> that the deal became ready, written with nobody signed in.
 
 ### OBJ-26 — Autonomy: the ladder and graduation
 *Covers R-79, R-80, and R-66 to R-71. Absorbs OBJ-19. Needs 21 and 23.*

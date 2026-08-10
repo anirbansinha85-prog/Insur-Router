@@ -114,6 +114,10 @@ export interface QueueItem {
    */
   journey?: {
     id: number;
+    /** Which map — `VEHICLE_SALE`, `VEHICLE_DELIVERY`. */
+    definitionId: string;
+    /** Which dealer code the record belongs to. A deal id alone is not unique. */
+    dealerCode: string | null;
     stepId: string;
     stepTitle: string;
     /** Which of the four kinds of waiting. `TIME` never reaches this list. */
@@ -122,6 +126,17 @@ export interface QueueItem {
     total: number;
     loops: number;
   };
+  /**
+   * Whether this row is something going wrong or something worth doing.
+   *
+   * `PROBLEM` on everything the queue has ever held. `OPPORTUNITY` arrived with
+   * OBJ-25 and means *everything is in place, this can be done now* — the
+   * invoice on a deal that quietly became ready overnight. It does **not**
+   * change the sort: an opportunity competes on the same three keys as
+   * everything else, because a dealership that always did the pleasant rows
+   * first would be a dealership with a growing pile of the others.
+   */
+  tone: "PROBLEM" | "OPPORTUNITY";
   module: QueueModule;
   recordKey: string;
   showroomId: number;
@@ -362,6 +377,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         assignAction: null,
         assignRole: null,
         source: "DERIVED",
+        tone: "PROBLEM",
         agentSuggestion: null,
         href: "/worklist",
       });
@@ -403,6 +419,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         assignAction: null,
         assignRole: null,
         source: "DERIVED",
+        tone: "PROBLEM",
         agentSuggestion: null,
         href: "/service",
       });
@@ -455,6 +472,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         assignAction: "ENQUIRY_REASSIGN",
         assignRole: "SALES_EXEC",
         source: "DERIVED",
+        tone: "PROBLEM",
         agentSuggestion: null,
         href: "/enquiries",
       });
@@ -507,6 +525,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         assignAction: "REGISTRATION_ASSIGN_AGENT",
         assignRole: "RTO_AGENT",
         source: "DERIVED",
+        tone: "PROBLEM",
         agentSuggestion: null,
         href: "/registrations",
       });
@@ -561,6 +580,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         assignAction: null,
         assignRole: null,
         source: "DERIVED",
+        tone: "PROBLEM",
         agentSuggestion: null,
         href: "/spares",
       });
@@ -608,6 +628,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         assignAction: null,
         assignRole: null,
         source: "DERIVED",
+        tone: "PROBLEM",
         agentSuggestion: null,
         href: "/receivables",
       });
@@ -648,6 +669,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         assignAction: null,
         assignRole: null,
         source: "DERIVED",
+        tone: "PROBLEM",
         agentSuggestion: null,
         href: "/inventory",
       });
@@ -693,15 +715,18 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
      * asked for; taking the middle band is honest and visible.
      */
     const severity = j.severityState
-      ? (policy.severity("REGISTRATION", j.severityState) ?? 2)
+      ? (policy.severity(j.severityModule, j.severityState) ?? 2)
       : 2;
 
     const who = carrier(j.assignedEmpCode);
 
     items.push({
       source: "JOURNEY",
+      tone: j.tone === "OPPORTUNITY" ? "OPPORTUNITY" : "PROBLEM",
       journey: {
         id: j.journeyId,
+        definitionId: j.definitionId,
+        dealerCode: j.dealerCode,
         stepId: j.stepId,
         stepTitle: j.stepTitle,
         waitKind: j.waitKind,
@@ -726,10 +751,11 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
       assigneeGone: who.gone,
       contactName: j.contactName,
       contactMobile: j.contactMobile,
-      // The same two controls the registration screen offers, because they are
-      // the same file. What changed is why the row is here, not what can be
-      // done about it.
-      actions: [
+      // The registration controls, and only for a registration file. A deal
+      // row's action is the invoice, which is not a decision field and does
+      // not go through `applyAction` — it issues a document, and that has its
+      // own route because it produces something rather than marking something.
+      actions: j.subjectModule !== "REGISTRATION" ? [] : [
         {
           action: "REGISTRATION_MARK_NOTIFIED",
           label: "Mark customer told",
@@ -745,10 +771,14 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
           tone: "slate",
         },
       ],
-      assignAction: "REGISTRATION_ASSIGN_AGENT",
-      assignRole: j.role ?? "RTO_AGENT",
+      // Only registration files can be handed to somebody: the deal mirror
+      // carries no assignee at all, which is why every deal row has always
+      // landed in the queue's **Nobody's** band and why offering a picker there
+      // would be offering to write a field that does not exist.
+      assignAction: j.subjectModule === "REGISTRATION" ? "REGISTRATION_ASSIGN_AGENT" : null,
+      assignRole: j.subjectModule === "REGISTRATION" ? (j.role ?? "RTO_AGENT") : null,
       agentSuggestion: null,
-      href: "/registrations",
+      href: hrefFor(j.subjectModule as QueueModule),
     });
   }
 
@@ -777,6 +807,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
 
       items.push({
         source: "TASK",
+        tone: "PROBLEM",
         taskId: task.id,
         module: (task.module ?? "DEAL") as QueueModule,
         recordKey: task.recordKey ?? `TASK-${task.id}`,

@@ -750,6 +750,13 @@ export const QueueJourneyWaitKind = {
 
 export interface QueueJourney {
   id: number;
+  /** Which map — VEHICLE_SALE, VEHICLE_DELIVERY. */
+  definitionId: string;
+  /**
+     * A deal id alone is not unique across two brands at one address.
+     * @nullable
+     */
+  dealerCode?: string | null;
   stepId: string;
   stepTitle: string;
   /** TIME never reaches the queue. A file lodged on Tuesday is not work on Wednesday, and a queue full of things nobody can act on is one people stop reading. */
@@ -782,6 +789,17 @@ export const QueueItemSource = {
   DERIVED: 'DERIVED',
   TASK: 'TASK',
   JOURNEY: 'JOURNEY',
+} as const;
+
+/**
+ * PROBLEM on everything the queue has ever held. OPPORTUNITY arrived with OBJ-25 and means "everything is in place, this can be done now". It does not change the sort — an opportunity competes on the same three keys, because a dealership that always did the pleasant rows first would have a growing pile of the others.
+ */
+export type QueueItemTone = typeof QueueItemTone[keyof typeof QueueItemTone];
+
+
+export const QueueItemTone = {
+  PROBLEM: 'PROBLEM',
+  OPPORTUNITY: 'OPPORTUNITY',
 } as const;
 
 /**
@@ -857,6 +875,8 @@ export interface QueueItem {
      * They sit in one list and are sorted together, because a separate screen for any of them recreates exactly the problem the queue was built to solve. Where a record has a live journey the classifier stands aside, so no record appears twice saying two different things.
      */
   source?: QueueItemSource;
+  /** PROBLEM on everything the queue has ever held. OPPORTUNITY arrived with OBJ-25 and means "everything is in place, this can be done now". It does not change the sort — an opportunity competes on the same three keys, because a dealership that always did the pleasant rows first would have a growing pile of the others. */
+  tone?: QueueItemTone;
   /** Set only on a JOURNEY row. Which step the sale stopped on, how far through it is, and how many times it has been sent backwards. */
   journey?: QueueJourney | null;
   /** Present only on a TASK row — what to close when it is done. */
@@ -1569,6 +1589,219 @@ export interface MessageNoteInput {
   note?: string;
 }
 
+export interface InvoiceReadinessCondition {
+  id: string;
+  what: string;
+  met: boolean;
+  missing?: string;
+}
+
+export type InvoiceReadinessPreview = {
+  /** @nullable */
+  customerName?: string | null;
+  /** @nullable */
+  modelDescription?: string | null;
+  /** @nullable */
+  chassisNo?: string | null;
+  /** @nullable */
+  exShowroomAmount?: number | null;
+  /** @nullable */
+  priceListName?: string | null;
+  /** @nullable */
+  priceListEffectiveFrom?: string | null;
+  pricedOffCurrentList: boolean;
+} | null;
+
+export interface InvoiceReadiness {
+  dealerCode: string;
+  dealId: string;
+  showroomId: number;
+  ready: boolean;
+  conditions: InvoiceReadinessCondition[];
+  preview?: InvoiceReadinessPreview;
+}
+
+export type GenerateDocumentInputIntent = typeof GenerateDocumentInputIntent[keyof typeof GenerateDocumentInputIntent];
+
+
+export const GenerateDocumentInputIntent = {
+  SALE: 'SALE',
+  QUOTATION: 'QUOTATION',
+  PROFORMA: 'PROFORMA',
+} as const;
+
+export type GenerateDocumentInputOtherChargesItem = {
+  label: string;
+  amount: number;
+};
+
+export interface GenerateDocumentInput {
+  showroomId: number;
+  dealerCode: string;
+  dealId: string;
+  intent?: GenerateDocumentInputIntent;
+  /**
+     * The dealer's choice of list. Absent means the current one. Naming a list that does not cover the model is refused rather than quietly falling back — he asked for a specific price.
+     * @nullable
+     */
+  priceListId?: number | null;
+  /** The dealer's own margin, given away. His decision. */
+  dealerDiscount?: number;
+  /** The manufacturer's scheme on this unit. Claimable in full whatever happens to the next field. */
+  oemSchemeAmount?: number;
+  /** How much of the scheme reached the customer. May be zero. */
+  oemSchemePassedOn?: number;
+  otherCharges?: GenerateDocumentInputOtherChargesItem[];
+  /**
+     * Decides CGST+SGST against IGST. Defaults to the outlet's own state.
+     * @nullable
+     */
+  placeOfSupply?: string | null;
+}
+
+/**
+ * Load-bearing, not decoration (R-89). A SALE_CONFIRMATION carries the same figures as a tax invoice and is not one, because on that dealership the DMS holds the series. A document that looked like a tax invoice and was not would have somebody claiming input credit against it.
+ */
+export type SaleDocumentKind = typeof SaleDocumentKind[keyof typeof SaleDocumentKind];
+
+
+export const SaleDocumentKind = {
+  QUOTATION: 'QUOTATION',
+  PROFORMA: 'PROFORMA',
+  TAX_INVOICE: 'TAX_INVOICE',
+  SALE_CONFIRMATION: 'SALE_CONFIRMATION',
+} as const;
+
+/**
+ * N means the list used was not the current one, which is lawful and printed on the document. Hiding it would be the product concealing the dealer's own commercial decision from the customer it was made for.
+ */
+export type SaleDocumentPricedOffCurrentList = typeof SaleDocumentPricedOffCurrentList[keyof typeof SaleDocumentPricedOffCurrentList];
+
+
+export const SaleDocumentPricedOffCurrentList = {
+  Y: 'Y',
+  N: 'N',
+} as const;
+
+export type SaleDocumentOtherCharges = {
+  label: string;
+  amount: number;
+}[] | null;
+
+export type SaleDocumentStatus = typeof SaleDocumentStatus[keyof typeof SaleDocumentStatus];
+
+
+export const SaleDocumentStatus = {
+  DRAFT: 'DRAFT',
+  ISSUED: 'ISSUED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+export interface SaleDocument {
+  id: number;
+  /** Load-bearing, not decoration (R-89). A SALE_CONFIRMATION carries the same figures as a tax invoice and is not one, because on that dealership the DMS holds the series. A document that looked like a tax invoice and was not would have somebody claiming input credit against it. */
+  kind: SaleDocumentKind;
+  reference: string;
+  /** @nullable */
+  taxInvoiceNo?: string | null;
+  /** @nullable */
+  dmsInvoiceNo?: string | null;
+  documentDate: string;
+  dealerCode: string;
+  dealId: string;
+  /** @nullable */
+  customerName?: string | null;
+  /** @nullable */
+  customerMobile?: string | null;
+  /** @nullable */
+  modelDescription?: string | null;
+  /** @nullable */
+  chassisNo?: string | null;
+  /** @nullable */
+  engineNo?: string | null;
+  /** @nullable */
+  hsn?: string | null;
+  /** @nullable */
+  priceListId?: number | null;
+  /** @nullable */
+  priceListName?: string | null;
+  /** @nullable */
+  priceListEffectiveFrom?: string | null;
+  /** N means the list used was not the current one, which is lawful and printed on the document. Hiding it would be the product concealing the dealer's own commercial decision from the customer it was made for. */
+  pricedOffCurrentList: SaleDocumentPricedOffCurrentList;
+  exShowroomAmount: string;
+  dealerDiscount?: string;
+  oemSchemeAmount?: string;
+  oemSchemePassedOn?: string;
+  taxableAmount: string;
+  gstRatePct?: string;
+  cessRatePct?: string;
+  cgstAmount?: string;
+  sgstAmount?: string;
+  igstAmount?: string;
+  cessAmount?: string;
+  otherCharges?: SaleDocumentOtherCharges;
+  otherChargesTotal?: string;
+  totalAmount: string;
+  /** @nullable */
+  sellerLegalName?: string | null;
+  /** @nullable */
+  sellerGstin?: string | null;
+  /** @nullable */
+  placeOfSupply?: string | null;
+  status: SaleDocumentStatus;
+  /** @nullable */
+  cancelledReason?: string | null;
+  /** @nullable */
+  issuedByName?: string | null;
+  createdAt?: string;
+}
+
+export interface DocumentCancelInput {
+  reason: string;
+}
+
+export type OemClaimsDocumentsItem = {
+  reference: string;
+  dealId: string;
+  /** @nullable */
+  modelDescription?: string | null;
+  schemeAmount: number;
+  passedOn: number;
+  retained: number;
+  documentDate: string;
+};
+
+export interface OemClaims {
+  documents: OemClaimsDocumentsItem[];
+  /** The full scheme on every unit, because that is what is owed. */
+  totalClaimable: number;
+  totalRetained: number;
+}
+
+export type PriceListSource = typeof PriceListSource[keyof typeof PriceListSource];
+
+
+export const PriceListSource = {
+  OEM: 'OEM',
+  DEALER: 'DEALER',
+} as const;
+
+export interface PriceList {
+  id: number;
+  name: string;
+  source: PriceListSource;
+  effectiveFrom: string;
+  /** @nullable */
+  effectiveTo?: string | null;
+  /**
+     * Null is the whole group's. An outlet's own list outranks it.
+     * @nullable
+     */
+  showroomId?: number | null;
+  models: number;
+}
+
 /**
  * API is a live integration. REPORT is a file the dealer exports from their own system and drops here. DOCUMENT is a scan, read one record at a time. Not a fallback chain — a dealership picks one per data type and it is theirs.
  */
@@ -1759,6 +1992,14 @@ export const JourneyWaitKind = {
   TIME: 'TIME',
 } as const;
 
+export type JourneyWaitTone = typeof JourneyWaitTone[keyof typeof JourneyWaitTone];
+
+
+export const JourneyWaitTone = {
+  PROBLEM: 'PROBLEM',
+  OPPORTUNITY: 'OPPORTUNITY',
+} as const;
+
 export interface JourneyWait {
   /** The four kinds of waiting, and DDMS could express none of them before. PERSON is always work. OUTSIDE is work only once it has gone on too long. JOURNEY means another process must finish first — insurance, before registration can move. TIME is never work, and saying so is the point: a file lodged on Tuesday is not late on Wednesday. */
   kind: JourneyWaitKind;
@@ -1770,6 +2011,7 @@ export interface JourneyWait {
      * @nullable
      */
   notBefore?: string | null;
+  tone?: JourneyWaitTone;
 }
 
 export type JourneyArrivalDirection = typeof JourneyArrivalDirection[keyof typeof JourneyArrivalDirection];
@@ -3062,6 +3304,42 @@ status?: string;
 export type ListDmsMessages200 = {
   rows: OutboxRow[];
   summary: OutboxSummary;
+};
+
+export type ListInvoiceReadinessParams = {
+showroomId: number;
+};
+
+export type ListInvoiceReadiness200 = {
+  ready: InvoiceReadiness[];
+  blocked: InvoiceReadiness[];
+  issued: number;
+};
+
+export type GenerateSaleDocument201 = {
+  document: SaleDocument;
+  /** Priced off a superseded list, or no DMS invoice number to reference. Not refusals — the dealer is entitled to both — but not things to leave unsaid either. */
+  warnings: string[];
+};
+
+export type ListSaleDocumentsParams = {
+showroomId: number;
+};
+
+export type ListSaleDocuments200 = {
+  documents: SaleDocument[];
+};
+
+export type CancelSaleDocument200 = {
+  document: SaleDocument;
+};
+
+export type ListPriceListsParams = {
+showroomId: number;
+};
+
+export type ListPriceLists200 = {
+  lists: PriceList[];
 };
 
 export type ListIngestSourcesParams = {

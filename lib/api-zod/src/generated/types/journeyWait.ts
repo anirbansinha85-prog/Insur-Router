@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { JourneyWaitKind } from './journeyWaitKind';
+import type { JourneyWaitTone } from './journeyWaitTone';
 
 export interface JourneyWait {
   /** The four kinds of waiting, and DDMS could express none of them before. PERSON is always work. OUTSIDE is work only once it has gone on too long. JOURNEY means another process must finish first — insurance, before registration can move. TIME is never work, and saying so is the point: a file lodged on Tuesday is not late on Wednesday. */
@@ -18,4 +19,5 @@ export interface JourneyWait {
      * @nullable
      */
   notBefore?: string | null;
+  tone?: JourneyWaitTone;
 }

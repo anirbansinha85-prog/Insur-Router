@@ -987,6 +987,206 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /dms/invoice/readiness:
+    get:
+      operationId: listInvoiceReadiness
+      tags: [dms]
+      summary: What can be invoiced now, and what is stopping the rest
+      description: >
+        Every condition is a column test — a chassis against the deal, a price
+        list covering the model, nothing issued already. The answer names the
+        unmet ones rather than returning a bare yes or no, because "not ready" is
+        useless and "no price list covers the Xpulse" is a job somebody can do
+        this morning.
+
+        Invoices are not late because typing is hard. They are late because
+        nobody noticed the deal became ready.
+      parameters:
+        - name: showroomId
+          in: query
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Ready, blocked, and how many are already issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ready:
+                    type: array
+                    items: { $ref: "#/components/schemas/InvoiceReadiness" }
+                  blocked:
+                    type: array
+                    items: { $ref: "#/components/schemas/InvoiceReadiness" }
+                  issued: { type: integer }
+                required: [ready, blocked, issued]
+        "403":
+          description: Not a role that sees what a customer paid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /dms/invoice/generate:
+    post:
+      operationId: generateSaleDocument
+      tags: [dms]
+      summary: Issue the document
+      description: >
+        DDMS's document is the DMS's facts plus the commercial agreement, and
+        neither system holds both. The dealer may price from an older list,
+        discount ageing stock, or keep the manufacturer's scheme rather than pass
+        it on — all three are lawful decisions and the product's job is to
+        support and record them, not to have an opinion.
+
+        Which kind of document comes out depends on who holds the tax-invoice
+        series (R-90). Where DDMS holds it, a TAX_INVOICE with a number from a
+        sequential series. Where the dealer's own system does, a SALE_CONFIRMATION
+        that carries their number for linkage and says on its face that it is not
+        a tax invoice (R-89).
+
+        A salesman may send QUOTATION and may not send SALE.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GenerateDocumentInput" }
+      responses:
+        "201":
+          description: Issued, with anything worth saying out loud
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  document: { $ref: "#/components/schemas/SaleDocument" }
+                  warnings:
+                    type: array
+                    items: { type: string }
+                    description: >
+                      Priced off a superseded list, or no DMS invoice number to
+                      reference. Not refusals — the dealer is entitled to both —
+                      but not things to leave unsaid either.
+                required: [document, warnings]
+        "403":
+          description: Not a role that may issue this kind of document
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: Something has already been issued for this deal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /dms/invoice/documents:
+    get:
+      operationId: listSaleDocuments
+      tags: [dms]
+      summary: What has been issued, newest first
+      parameters:
+        - name: showroomId
+          in: query
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  documents:
+                    type: array
+                    items: { $ref: "#/components/schemas/SaleDocument" }
+                required: [documents]
+
+  /dms/invoice/documents/{id}/cancel:
+    post:
+      operationId: cancelSaleDocument
+      tags: [dms]
+      summary: Cancel a document, keeping its number
+      description: >
+        A cancelled tax invoice keeps its number and says it was cancelled. A
+        hole in a sequential series is an audit finding, and "we chose not to
+        issue this" and "nobody ever issued anything" are different facts of
+        which only one can be defended later. Same argument as a cancelled
+        outbox message staying a row.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DocumentCancelInput" }
+      responses:
+        "200":
+          description: Cancelled, number spent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  document: { $ref: "#/components/schemas/SaleDocument" }
+                required: [document]
+        "400":
+          description: No reason given
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /dms/invoice/claims:
+    get:
+      operationId: listOemClaims
+      tags: [dms]
+      summary: What the manufacturer still owes this dealership
+      description: >
+        The number nobody currently has, because it lives in two places at once:
+        the scheme is the manufacturer's and the decision about passing it on is
+        the dealer's, and only DDMS's document holds both.
+
+        The claim is owed on the full scheme whatever the customer was told
+        (R-88). A dealer who retained it made a commercial decision and is still
+        owed it; an unclaimed scheme is money given away twice.
+      responses:
+        "200":
+          description: Every document carrying a scheme
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OemClaims" }
+
+  /dms/invoice/price-lists:
+    get:
+      operationId: listPriceLists
+      tags: [dms]
+      summary: Every list this outlet may price from, current first
+      description: >
+        The DMS is a current-state system that forgets yesterday's price. DDMS
+        keeps the history, because a dealer selling at an older rate is lawful
+        and is his decision — and the invoice prints which list it used.
+      parameters:
+        - name: showroomId
+          in: query
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Newest effective date first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lists:
+                    type: array
+                    items: { $ref: "#/components/schemas/PriceList" }
+                required: [lists]
+
   /dms/ingest/sources:
     get:
       operationId: listIngestSources
@@ -3146,6 +3346,12 @@ components:
       type: object
       properties:
         id: { type: integer }
+        definitionId:
+          type: string
+          description: Which map — VEHICLE_SALE, VEHICLE_DELIVERY.
+        dealerCode:
+          type: ["string", "null"]
+          description: A deal id alone is not unique across two brands at one address.
         stepId: { type: string }
         stepTitle: { type: string }
         waitKind:
@@ -3158,7 +3364,7 @@ components:
         completed: { type: integer }
         total: { type: integer }
         loops: { type: integer }
-      required: [id, stepId, stepTitle, waitKind, completed, total, loops]
+      required: [id, definitionId, stepId, stepTitle, waitKind, completed, total, loops]
 
     QueueItem:
       type: object
@@ -3218,6 +3424,15 @@ components:
             screen for any of them recreates exactly the problem the queue was
             built to solve. Where a record has a live journey the classifier
             stands aside, so no record appears twice saying two different things.
+        tone:
+          type: string
+          enum: [PROBLEM, OPPORTUNITY]
+          description: >
+            PROBLEM on everything the queue has ever held. OPPORTUNITY arrived
+            with OBJ-25 and means "everything is in place, this can be done now".
+            It does not change the sort — an opportunity competes on the same
+            three keys, because a dealership that always did the pleasant rows
+            first would have a growing pile of the others.
         journey:
           description: >
             Set only on a JOURNEY row. Which step the sale stopped on, how far
@@ -3897,6 +4112,196 @@ components:
       properties:
         note: { type: string }
 
+    InvoiceReadinessCondition:
+      type: object
+      properties:
+        id: { type: string }
+        what: { type: string }
+        met: { type: boolean }
+        missing: { type: string }
+      required: [id, what, met]
+
+    InvoiceReadiness:
+      type: object
+      properties:
+        dealerCode: { type: string }
+        dealId: { type: string }
+        showroomId: { type: integer }
+        ready: { type: boolean }
+        conditions:
+          type: array
+          items: { $ref: "#/components/schemas/InvoiceReadinessCondition" }
+        preview:
+          oneOf:
+            - type: object
+              properties:
+                customerName: { type: ["string", "null"] }
+                modelDescription: { type: ["string", "null"] }
+                chassisNo: { type: ["string", "null"] }
+                exShowroomAmount: { type: ["number", "null"] }
+                priceListName: { type: ["string", "null"] }
+                priceListEffectiveFrom: { type: ["string", "null"] }
+                pricedOffCurrentList: { type: boolean }
+              required: [pricedOffCurrentList]
+            - type: "null"
+      required: [dealerCode, dealId, showroomId, ready, conditions]
+
+    GenerateDocumentInput:
+      type: object
+      properties:
+        showroomId: { type: integer }
+        dealerCode: { type: string }
+        dealId: { type: string }
+        intent:
+          type: string
+          enum: [SALE, QUOTATION, PROFORMA]
+          default: SALE
+        priceListId:
+          type: ["integer", "null"]
+          description: >
+            The dealer's choice of list. Absent means the current one. Naming a
+            list that does not cover the model is refused rather than quietly
+            falling back — he asked for a specific price.
+        dealerDiscount:
+          type: number
+          description: The dealer's own margin, given away. His decision.
+        oemSchemeAmount:
+          type: number
+          description: >
+            The manufacturer's scheme on this unit. Claimable in full whatever
+            happens to the next field.
+        oemSchemePassedOn:
+          type: number
+          description: How much of the scheme reached the customer. May be zero.
+        otherCharges:
+          type: array
+          items:
+            type: object
+            properties:
+              label: { type: string }
+              amount: { type: number }
+            required: [label, amount]
+        placeOfSupply:
+          type: ["string", "null"]
+          description: Decides CGST+SGST against IGST. Defaults to the outlet's own state.
+      required: [showroomId, dealerCode, dealId]
+
+    SaleDocument:
+      type: object
+      properties:
+        id: { type: integer }
+        kind:
+          type: string
+          enum: [QUOTATION, PROFORMA, TAX_INVOICE, SALE_CONFIRMATION]
+          description: >
+            Load-bearing, not decoration (R-89). A SALE_CONFIRMATION carries the
+            same figures as a tax invoice and is not one, because on that
+            dealership the DMS holds the series. A document that looked like a
+            tax invoice and was not would have somebody claiming input credit
+            against it.
+        reference: { type: string }
+        taxInvoiceNo: { type: ["string", "null"] }
+        dmsInvoiceNo: { type: ["string", "null"] }
+        documentDate: { type: string }
+        dealerCode: { type: string }
+        dealId: { type: string }
+        customerName: { type: ["string", "null"] }
+        customerMobile: { type: ["string", "null"] }
+        modelDescription: { type: ["string", "null"] }
+        chassisNo: { type: ["string", "null"] }
+        engineNo: { type: ["string", "null"] }
+        hsn: { type: ["string", "null"] }
+        priceListId: { type: ["integer", "null"] }
+        priceListName: { type: ["string", "null"] }
+        priceListEffectiveFrom: { type: ["string", "null"] }
+        pricedOffCurrentList:
+          type: string
+          enum: [Y, N]
+          description: >
+            N means the list used was not the current one, which is lawful and
+            printed on the document. Hiding it would be the product concealing
+            the dealer's own commercial decision from the customer it was made
+            for.
+        exShowroomAmount: { type: string }
+        dealerDiscount: { type: string }
+        oemSchemeAmount: { type: string }
+        oemSchemePassedOn: { type: string }
+        taxableAmount: { type: string }
+        gstRatePct: { type: string }
+        cessRatePct: { type: string }
+        cgstAmount: { type: string }
+        sgstAmount: { type: string }
+        igstAmount: { type: string }
+        cessAmount: { type: string }
+        otherCharges:
+          oneOf:
+            - type: array
+              items:
+                type: object
+                properties:
+                  label: { type: string }
+                  amount: { type: number }
+                required: [label, amount]
+            - type: "null"
+        otherChargesTotal: { type: string }
+        totalAmount: { type: string }
+        sellerLegalName: { type: ["string", "null"] }
+        sellerGstin: { type: ["string", "null"] }
+        placeOfSupply: { type: ["string", "null"] }
+        status:
+          type: string
+          enum: [DRAFT, ISSUED, CANCELLED]
+        cancelledReason: { type: ["string", "null"] }
+        issuedByName: { type: ["string", "null"] }
+        createdAt: { type: string }
+      required:
+        [id, kind, reference, documentDate, dealerCode, dealId,
+         pricedOffCurrentList, exShowroomAmount, taxableAmount, totalAmount, status]
+
+    DocumentCancelInput:
+      type: object
+      properties:
+        reason: { type: string }
+      required: [reason]
+
+    OemClaims:
+      type: object
+      properties:
+        documents:
+          type: array
+          items:
+            type: object
+            properties:
+              reference: { type: string }
+              dealId: { type: string }
+              modelDescription: { type: ["string", "null"] }
+              schemeAmount: { type: number }
+              passedOn: { type: number }
+              retained: { type: number }
+              documentDate: { type: string }
+            required: [reference, dealId, schemeAmount, passedOn, retained, documentDate]
+        totalClaimable:
+          type: number
+          description: The full scheme on every unit, because that is what is owed.
+        totalRetained: { type: number }
+      required: [documents, totalClaimable, totalRetained]
+
+    PriceList:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        source:
+          type: string
+          enum: [OEM, DEALER]
+        effectiveFrom: { type: string }
+        effectiveTo: { type: ["string", "null"] }
+        showroomId:
+          type: ["integer", "null"]
+          description: Null is the whole group's. An outlet's own list outranks it.
+        models: { type: integer }
+      required: [id, name, source, effectiveFrom, models]
+
     IngestPath:
       type: string
       enum: [API, REPORT, DOCUMENT]
@@ -4133,6 +4538,9 @@ components:
         notBefore:
           type: ["string", "null"]
           description: The day an OUTSIDE wait stops being normal and starts being late.
+        tone:
+          type: string
+          enum: [PROBLEM, OPPORTUNITY]
       required: [kind, who, why, todo]
 
     JourneyArrival:

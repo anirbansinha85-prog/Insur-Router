@@ -616,6 +616,65 @@ drop policy if exists ingest_batches_worker on public.ingest_batches;
 create policy ingest_batches_worker on public.ingest_batches
   for all to ddms_worker using (true) with check (true);
 
+/*
+ * Price lists and the document DDMS issues (OBJ-25).
+ *
+ * A price list may belong to one outlet or to the whole group, and the null
+ * case is the group's — a dealer running one list across three branches is the
+ * ordinary situation. So the policy reads *mine, or everybody's* rather than
+ * insisting on an outlet.
+ *
+ * The document is gated on `DEAL`, which is what it is about, and which keeps
+ * it away from the two roles that read job cards and nothing else. What a
+ * customer paid and how the discount was composed is not a technician's
+ * business, and the row policy is what makes that true rather than the sidebar.
+ */
+drop policy if exists price_lists_own on public.price_lists;
+create policy price_lists_own on public.price_lists
+  for all to ddms_app
+  using (
+    owner_id = app.current_owner_id()
+    and (showroom_id is null or showroom_id in (select app.owned_showroom_ids()))
+  )
+  with check (
+    owner_id = app.current_owner_id()
+    and (showroom_id is null or showroom_id in (select app.visible_showroom_ids()))
+  );
+
+drop policy if exists price_lists_worker on public.price_lists;
+create policy price_lists_worker on public.price_lists
+  for select to ddms_worker using (true);
+
+drop policy if exists price_list_items_own on public.price_list_items;
+create policy price_list_items_own on public.price_list_items
+  for all to ddms_app
+  using (owner_id = app.current_owner_id())
+  with check (owner_id = app.current_owner_id());
+
+drop policy if exists price_list_items_worker on public.price_list_items;
+create policy price_list_items_worker on public.price_list_items
+  for select to ddms_worker using (true);
+
+drop policy if exists sale_documents_own on public.sale_documents;
+create policy sale_documents_own on public.sale_documents
+  for all to ddms_app
+  using (
+    showroom_id in (select app.owned_showroom_ids())
+    and app.can_read('DEAL')
+  )
+  with check (
+    showroom_id in (select app.visible_showroom_ids())
+    and app.can_read('DEAL')
+  );
+
+-- The journey runtime reads what has been issued, because *has this deal been
+-- invoiced* is the step it walks. It may never issue one: a priced document in
+-- a customer's hands is a commercial act and `invoice.generate` is withheld
+-- from the agent for the same reason.
+drop policy if exists sale_documents_worker on public.sale_documents;
+create policy sale_documents_worker on public.sale_documents
+  for select to ddms_worker using (true);
+
 drop policy if exists insurer_panel_own on public.insurer_panel_entries;
 create policy insurer_panel_own on public.insurer_panel_entries
   for select to ddms_app
@@ -906,6 +965,13 @@ grant select, insert on public.journey_steps to ddms_app;
 grant select, insert, update on public.ingest_sources to ddms_app;
 grant select, insert, update on public.ingest_mappings to ddms_app;
 grant select, insert, update on public.ingest_batches to ddms_app;
+grant select, insert, update on public.price_lists to ddms_app;
+grant select, insert, update on public.price_list_items to ddms_app;
+-- No delete on documents: a cancelled tax invoice keeps its number and says it
+-- was cancelled. A hole in a sequential series is an audit finding, and
+-- "we chose not to issue this" and "nobody ever issued anything" are different
+-- facts of which only one can be defended later.
+grant select, insert, update on public.sale_documents to ddms_app;
 
 -- `serial` columns draw from a sequence, and a role that may insert but may not
 -- touch the sequence gets "permission denied for sequence" on every insert.
@@ -1018,6 +1084,11 @@ grant select, insert on public.journey_steps to ddms_worker;
 grant select, update on public.ingest_sources to ddms_worker;
 grant select, update on public.ingest_mappings to ddms_worker;
 grant select, insert, update on public.ingest_batches to ddms_worker;
+-- Select only, all three. The runtime prices a deal and reads whether a
+-- document exists; it issues nothing and sets no price.
+grant select on public.price_lists to ddms_worker;
+grant select on public.price_list_items to ddms_worker;
+grant select on public.sale_documents to ddms_worker;
 
 -- Same reason as `ddms_app`: the entity graph is rebuilt wholesale rather than
 -- reconciled, so these two are the only tables the worker may delete from.

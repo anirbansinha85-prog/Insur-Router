@@ -10,6 +10,7 @@ import type { QueueAction } from './queueAction';
 import type { QueueBand } from './queueBand';
 import type { QueueItemAssignAction } from './queueItemAssignAction';
 import type { QueueItemSource } from './queueItemSource';
+import type { QueueItemTone } from './queueItemTone';
 import type { QueueJourney } from './queueJourney';
 import type { QueueModule } from './queueModule';
 
@@ -56,6 +57,8 @@ export interface QueueItem {
      * They sit in one list and are sorted together, because a separate screen for any of them recreates exactly the problem the queue was built to solve. Where a record has a live journey the classifier stands aside, so no record appears twice saying two different things.
      */
   source?: QueueItemSource;
+  /** PROBLEM on everything the queue has ever held. OPPORTUNITY arrived with OBJ-25 and means "everything is in place, this can be done now". It does not change the sort — an opportunity competes on the same three keys, because a dealership that always did the pleasant rows first would have a growing pile of the others. */
+  tone?: QueueItemTone;
   /** Set only on a JOURNEY row. Which step the sale stopped on, how far through it is, and how many times it has been sent backwards. */
   journey?: QueueJourney | null;
   /** Present only on a TASK row — what to close when it is done. */

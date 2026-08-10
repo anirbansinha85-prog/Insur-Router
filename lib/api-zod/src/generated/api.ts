@@ -946,6 +946,291 @@ export const ApproveDmsMessageResponse = zod.object({
 
 
 /**
+ * Every condition is a column test — a chassis against the deal, a price list covering the model, nothing issued already. The answer names the unmet ones rather than returning a bare yes or no, because "not ready" is useless and "no price list covers the Xpulse" is a job somebody can do this morning.
+ * Invoices are not late because typing is hard. They are late because nobody noticed the deal became ready.
+ * @summary What can be invoiced now, and what is stopping the rest
+ */
+export const ListInvoiceReadinessQueryParams = zod.object({
+  "showroomId": zod.coerce.number().int()
+})
+
+export const ListInvoiceReadinessResponse = zod.object({
+  "ready": zod.array(zod.object({
+  "dealerCode": zod.string(),
+  "dealId": zod.string(),
+  "showroomId": zod.number().int(),
+  "ready": zod.boolean(),
+  "conditions": zod.array(zod.object({
+  "id": zod.string(),
+  "what": zod.string(),
+  "met": zod.boolean(),
+  "missing": zod.string().optional()
+})),
+  "preview": zod.union([zod.object({
+  "customerName": zod.string().nullish(),
+  "modelDescription": zod.string().nullish(),
+  "chassisNo": zod.string().nullish(),
+  "exShowroomAmount": zod.number().nullish(),
+  "priceListName": zod.string().nullish(),
+  "priceListEffectiveFrom": zod.string().nullish(),
+  "pricedOffCurrentList": zod.boolean()
+}),zod.null()]).optional()
+})),
+  "blocked": zod.array(zod.object({
+  "dealerCode": zod.string(),
+  "dealId": zod.string(),
+  "showroomId": zod.number().int(),
+  "ready": zod.boolean(),
+  "conditions": zod.array(zod.object({
+  "id": zod.string(),
+  "what": zod.string(),
+  "met": zod.boolean(),
+  "missing": zod.string().optional()
+})),
+  "preview": zod.union([zod.object({
+  "customerName": zod.string().nullish(),
+  "modelDescription": zod.string().nullish(),
+  "chassisNo": zod.string().nullish(),
+  "exShowroomAmount": zod.number().nullish(),
+  "priceListName": zod.string().nullish(),
+  "priceListEffectiveFrom": zod.string().nullish(),
+  "pricedOffCurrentList": zod.boolean()
+}),zod.null()]).optional()
+})),
+  "issued": zod.number().int()
+})
+
+
+/**
+ * DDMS's document is the DMS's facts plus the commercial agreement, and neither system holds both. The dealer may price from an older list, discount ageing stock, or keep the manufacturer's scheme rather than pass it on — all three are lawful decisions and the product's job is to support and record them, not to have an opinion.
+ * Which kind of document comes out depends on who holds the tax-invoice series (R-90). Where DDMS holds it, a TAX_INVOICE with a number from a sequential series. Where the dealer's own system does, a SALE_CONFIRMATION that carries their number for linkage and says on its face that it is not a tax invoice (R-89).
+ * A salesman may send QUOTATION and may not send SALE.
+ * @summary Issue the document
+ */
+export const generateSaleDocumentBodyIntentDefault = `SALE`;
+
+export const GenerateSaleDocumentBody = zod.object({
+  "showroomId": zod.number().int(),
+  "dealerCode": zod.string(),
+  "dealId": zod.string(),
+  "intent": zod.enum(['SALE', 'QUOTATION', 'PROFORMA']).default(generateSaleDocumentBodyIntentDefault),
+  "priceListId": zod.number().int().nullish().describe('The dealer\'s choice of list. Absent means the current one. Naming a list that does not cover the model is refused rather than quietly falling back — he asked for a specific price.\n'),
+  "dealerDiscount": zod.number().optional().describe('The dealer\'s own margin, given away. His decision.'),
+  "oemSchemeAmount": zod.number().optional().describe('The manufacturer\'s scheme on this unit. Claimable in full whatever happens to the next field.\n'),
+  "oemSchemePassedOn": zod.number().optional().describe('How much of the scheme reached the customer. May be zero.'),
+  "otherCharges": zod.array(zod.object({
+  "label": zod.string(),
+  "amount": zod.number()
+})).optional(),
+  "placeOfSupply": zod.string().nullish().describe('Decides CGST+SGST against IGST. Defaults to the outlet\'s own state.')
+})
+
+export const GenerateSaleDocumentResponse = zod.object({
+  "document": zod.object({
+  "id": zod.number().int(),
+  "kind": zod.enum(['QUOTATION', 'PROFORMA', 'TAX_INVOICE', 'SALE_CONFIRMATION']).describe('Load-bearing, not decoration (R-89). A SALE_CONFIRMATION carries the same figures as a tax invoice and is not one, because on that dealership the DMS holds the series. A document that looked like a tax invoice and was not would have somebody claiming input credit against it.\n'),
+  "reference": zod.string(),
+  "taxInvoiceNo": zod.string().nullish(),
+  "dmsInvoiceNo": zod.string().nullish(),
+  "documentDate": zod.string(),
+  "dealerCode": zod.string(),
+  "dealId": zod.string(),
+  "customerName": zod.string().nullish(),
+  "customerMobile": zod.string().nullish(),
+  "modelDescription": zod.string().nullish(),
+  "chassisNo": zod.string().nullish(),
+  "engineNo": zod.string().nullish(),
+  "hsn": zod.string().nullish(),
+  "priceListId": zod.number().int().nullish(),
+  "priceListName": zod.string().nullish(),
+  "priceListEffectiveFrom": zod.string().nullish(),
+  "pricedOffCurrentList": zod.enum(['Y', 'N']).describe('N means the list used was not the current one, which is lawful and printed on the document. Hiding it would be the product concealing the dealer\'s own commercial decision from the customer it was made for.\n'),
+  "exShowroomAmount": zod.string(),
+  "dealerDiscount": zod.string().optional(),
+  "oemSchemeAmount": zod.string().optional(),
+  "oemSchemePassedOn": zod.string().optional(),
+  "taxableAmount": zod.string(),
+  "gstRatePct": zod.string().optional(),
+  "cessRatePct": zod.string().optional(),
+  "cgstAmount": zod.string().optional(),
+  "sgstAmount": zod.string().optional(),
+  "igstAmount": zod.string().optional(),
+  "cessAmount": zod.string().optional(),
+  "otherCharges": zod.union([zod.array(zod.object({
+  "label": zod.string(),
+  "amount": zod.number()
+})),zod.null()]).optional(),
+  "otherChargesTotal": zod.string().optional(),
+  "totalAmount": zod.string(),
+  "sellerLegalName": zod.string().nullish(),
+  "sellerGstin": zod.string().nullish(),
+  "placeOfSupply": zod.string().nullish(),
+  "status": zod.enum(['DRAFT', 'ISSUED', 'CANCELLED']),
+  "cancelledReason": zod.string().nullish(),
+  "issuedByName": zod.string().nullish(),
+  "createdAt": zod.string().optional()
+}),
+  "warnings": zod.array(zod.string()).describe('Priced off a superseded list, or no DMS invoice number to reference. Not refusals — the dealer is entitled to both — but not things to leave unsaid either.\n')
+})
+
+
+/**
+ * @summary What has been issued, newest first
+ */
+export const ListSaleDocumentsQueryParams = zod.object({
+  "showroomId": zod.coerce.number().int()
+})
+
+export const ListSaleDocumentsResponse = zod.object({
+  "documents": zod.array(zod.object({
+  "id": zod.number().int(),
+  "kind": zod.enum(['QUOTATION', 'PROFORMA', 'TAX_INVOICE', 'SALE_CONFIRMATION']).describe('Load-bearing, not decoration (R-89). A SALE_CONFIRMATION carries the same figures as a tax invoice and is not one, because on that dealership the DMS holds the series. A document that looked like a tax invoice and was not would have somebody claiming input credit against it.\n'),
+  "reference": zod.string(),
+  "taxInvoiceNo": zod.string().nullish(),
+  "dmsInvoiceNo": zod.string().nullish(),
+  "documentDate": zod.string(),
+  "dealerCode": zod.string(),
+  "dealId": zod.string(),
+  "customerName": zod.string().nullish(),
+  "customerMobile": zod.string().nullish(),
+  "modelDescription": zod.string().nullish(),
+  "chassisNo": zod.string().nullish(),
+  "engineNo": zod.string().nullish(),
+  "hsn": zod.string().nullish(),
+  "priceListId": zod.number().int().nullish(),
+  "priceListName": zod.string().nullish(),
+  "priceListEffectiveFrom": zod.string().nullish(),
+  "pricedOffCurrentList": zod.enum(['Y', 'N']).describe('N means the list used was not the current one, which is lawful and printed on the document. Hiding it would be the product concealing the dealer\'s own commercial decision from the customer it was made for.\n'),
+  "exShowroomAmount": zod.string(),
+  "dealerDiscount": zod.string().optional(),
+  "oemSchemeAmount": zod.string().optional(),
+  "oemSchemePassedOn": zod.string().optional(),
+  "taxableAmount": zod.string(),
+  "gstRatePct": zod.string().optional(),
+  "cessRatePct": zod.string().optional(),
+  "cgstAmount": zod.string().optional(),
+  "sgstAmount": zod.string().optional(),
+  "igstAmount": zod.string().optional(),
+  "cessAmount": zod.string().optional(),
+  "otherCharges": zod.union([zod.array(zod.object({
+  "label": zod.string(),
+  "amount": zod.number()
+})),zod.null()]).optional(),
+  "otherChargesTotal": zod.string().optional(),
+  "totalAmount": zod.string(),
+  "sellerLegalName": zod.string().nullish(),
+  "sellerGstin": zod.string().nullish(),
+  "placeOfSupply": zod.string().nullish(),
+  "status": zod.enum(['DRAFT', 'ISSUED', 'CANCELLED']),
+  "cancelledReason": zod.string().nullish(),
+  "issuedByName": zod.string().nullish(),
+  "createdAt": zod.string().optional()
+}))
+})
+
+
+/**
+ * A cancelled tax invoice keeps its number and says it was cancelled. A hole in a sequential series is an audit finding, and "we chose not to issue this" and "nobody ever issued anything" are different facts of which only one can be defended later. Same argument as a cancelled outbox message staying a row.
+ * @summary Cancel a document, keeping its number
+ */
+export const CancelSaleDocumentParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const CancelSaleDocumentBody = zod.object({
+  "reason": zod.string()
+})
+
+export const CancelSaleDocumentResponse = zod.object({
+  "document": zod.object({
+  "id": zod.number().int(),
+  "kind": zod.enum(['QUOTATION', 'PROFORMA', 'TAX_INVOICE', 'SALE_CONFIRMATION']).describe('Load-bearing, not decoration (R-89). A SALE_CONFIRMATION carries the same figures as a tax invoice and is not one, because on that dealership the DMS holds the series. A document that looked like a tax invoice and was not would have somebody claiming input credit against it.\n'),
+  "reference": zod.string(),
+  "taxInvoiceNo": zod.string().nullish(),
+  "dmsInvoiceNo": zod.string().nullish(),
+  "documentDate": zod.string(),
+  "dealerCode": zod.string(),
+  "dealId": zod.string(),
+  "customerName": zod.string().nullish(),
+  "customerMobile": zod.string().nullish(),
+  "modelDescription": zod.string().nullish(),
+  "chassisNo": zod.string().nullish(),
+  "engineNo": zod.string().nullish(),
+  "hsn": zod.string().nullish(),
+  "priceListId": zod.number().int().nullish(),
+  "priceListName": zod.string().nullish(),
+  "priceListEffectiveFrom": zod.string().nullish(),
+  "pricedOffCurrentList": zod.enum(['Y', 'N']).describe('N means the list used was not the current one, which is lawful and printed on the document. Hiding it would be the product concealing the dealer\'s own commercial decision from the customer it was made for.\n'),
+  "exShowroomAmount": zod.string(),
+  "dealerDiscount": zod.string().optional(),
+  "oemSchemeAmount": zod.string().optional(),
+  "oemSchemePassedOn": zod.string().optional(),
+  "taxableAmount": zod.string(),
+  "gstRatePct": zod.string().optional(),
+  "cessRatePct": zod.string().optional(),
+  "cgstAmount": zod.string().optional(),
+  "sgstAmount": zod.string().optional(),
+  "igstAmount": zod.string().optional(),
+  "cessAmount": zod.string().optional(),
+  "otherCharges": zod.union([zod.array(zod.object({
+  "label": zod.string(),
+  "amount": zod.number()
+})),zod.null()]).optional(),
+  "otherChargesTotal": zod.string().optional(),
+  "totalAmount": zod.string(),
+  "sellerLegalName": zod.string().nullish(),
+  "sellerGstin": zod.string().nullish(),
+  "placeOfSupply": zod.string().nullish(),
+  "status": zod.enum(['DRAFT', 'ISSUED', 'CANCELLED']),
+  "cancelledReason": zod.string().nullish(),
+  "issuedByName": zod.string().nullish(),
+  "createdAt": zod.string().optional()
+})
+})
+
+
+/**
+ * The number nobody currently has, because it lives in two places at once: the scheme is the manufacturer's and the decision about passing it on is the dealer's, and only DDMS's document holds both.
+ * The claim is owed on the full scheme whatever the customer was told (R-88). A dealer who retained it made a commercial decision and is still owed it; an unclaimed scheme is money given away twice.
+ * @summary What the manufacturer still owes this dealership
+ */
+export const ListOemClaimsResponse = zod.object({
+  "documents": zod.array(zod.object({
+  "reference": zod.string(),
+  "dealId": zod.string(),
+  "modelDescription": zod.string().nullish(),
+  "schemeAmount": zod.number(),
+  "passedOn": zod.number(),
+  "retained": zod.number(),
+  "documentDate": zod.string()
+})),
+  "totalClaimable": zod.number().describe('The full scheme on every unit, because that is what is owed.'),
+  "totalRetained": zod.number()
+})
+
+
+/**
+ * The DMS is a current-state system that forgets yesterday's price. DDMS keeps the history, because a dealer selling at an older rate is lawful and is his decision — and the invoice prints which list it used.
+ * @summary Every list this outlet may price from, current first
+ */
+export const ListPriceListsQueryParams = zod.object({
+  "showroomId": zod.coerce.number().int()
+})
+
+export const ListPriceListsResponse = zod.object({
+  "lists": zod.array(zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "source": zod.enum(['OEM', 'DEALER']),
+  "effectiveFrom": zod.string(),
+  "effectiveTo": zod.string().nullish(),
+  "showroomId": zod.number().int().nullish().describe('Null is the whole group\'s. An outlet\'s own list outranks it.'),
+  "models": zod.number().int()
+}))
+})
+
+
+/**
  * Ingestion varies; completion does not. An outlet may take deals by API, stock by a spreadsheet somebody exports on Fridays, and invoices by scan — enabled per data type per dealer, because an OEM that exposes stock and not deals is the ordinary situation rather than an edge case.
  * The freshness each path can honestly claim is different, and the row says so rather than showing a sync timestamp that means nothing on a report.
  * @summary How this outlet is connected, per kind of data
@@ -1114,7 +1399,8 @@ export const GetRecordJourneyResponse = zod.object({
   "who": zod.string(),
   "why": zod.string(),
   "todo": zod.string(),
-  "notBefore": zod.string().nullish().describe('The day an OUTSIDE wait stops being normal and starts being late.')
+  "notBefore": zod.string().nullish().describe('The day an OUTSIDE wait stops being normal and starts being late.'),
+  "tone": zod.enum(['PROBLEM', 'OPPORTUNITY']).optional()
 }),zod.null()]).optional(),
   "loops": zod.number().int().describe('How many times the outside world sent it backwards.'),
   "arrivals": zod.array(zod.object({
@@ -1703,8 +1989,11 @@ export const GetDmsQueueResponse = zod.object({
   "assignAction": zod.union([zod.literal('ENQUIRY_REASSIGN'),zod.literal('REGISTRATION_ASSIGN_AGENT'),zod.literal(null)]).nullish().describe('The reassignment this row supports, when it has one. Not a button — a picker over staff who still work here, each carrying what they already hold. R-54 asks that work never becomes unroutable, and the screen that shows orphaned work has to be where it can be handed on, or \"reassign to someone still here\" is advice with a trip to another screen attached.\n'),
   "assignRole": zod.string().nullish().describe('Which role the picker offers. Null means everybody at the outlet.'),
   "source": zod.enum(['DERIVED', 'TASK', 'JOURNEY']).optional().describe('DERIVED is everything the queue has ever held — computed from the mirror on every request, never stored, gone the moment the record moves. TASK is a row somebody wrote down. JOURNEY is a process that stopped: the runtime knows which step, how far along, and how many times the outside world sent it back, none of which a classifier can say because a classifier only ever sees one record.\nThey sit in one list and are sorted together, because a separate screen for any of them recreates exactly the problem the queue was built to solve. Where a record has a live journey the classifier stands aside, so no record appears twice saying two different things.\n'),
+  "tone": zod.enum(['PROBLEM', 'OPPORTUNITY']).optional().describe('PROBLEM on everything the queue has ever held. OPPORTUNITY arrived with OBJ-25 and means \"everything is in place, this can be done now\". It does not change the sort — an opportunity competes on the same three keys, because a dealership that always did the pleasant rows first would have a growing pile of the others.\n'),
   "journey": zod.union([zod.object({
   "id": zod.number().int(),
+  "definitionId": zod.string().describe('Which map — VEHICLE_SALE, VEHICLE_DELIVERY.'),
+  "dealerCode": zod.string().nullish().describe('A deal id alone is not unique across two brands at one address.'),
   "stepId": zod.string(),
   "stepTitle": zod.string(),
   "waitKind": zod.enum(['PERSON', 'OUTSIDE', 'JOURNEY', 'TIME']).describe('TIME never reaches the queue. A file lodged on Tuesday is not work on Wednesday, and a queue full of things nobody can act on is one people stop reading.\n'),

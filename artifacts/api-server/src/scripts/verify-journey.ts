@@ -253,6 +253,15 @@ await withWorkerScope(async () => {
     showroomIds: SHOWROOMS,
     policy,
     facts: new Map([[OBJECTED, lastWeek]]),
+    /*
+     * One map, because OBJ-25 added a second one.
+     *
+     * A supplied fact-set belongs to the definition it was gathered for, and
+     * handing registration facts to the sale journey would be handing it a map
+     * of somewhere else. The runtime walks every definition by default; a
+     * caller supplying facts has to say which.
+     */
+    only: VEHICLE_DELIVERY.id,
   });
   check("the file's journey opened", opening.started === 1, JSON.stringify(opening));
 
@@ -261,7 +270,12 @@ await withWorkerScope(async () => {
 
   section("3. the RTO answers, and the file goes backwards carrying why");
 
-  const pass = await advanceJourneys({ ownerId: OWNER, showroomIds: SHOWROOMS, policy });
+  const pass = await advanceJourneys({
+    ownerId: OWNER,
+    showroomIds: SHOWROOMS,
+    policy,
+    only: VEHICLE_DELIVERY.id,
+  });
   console.log(
     `      ${pass.started} opened · ${pass.advanced} moved on · ${pass.looped} sent back · ` +
       `${pass.finished} finished · ${pass.live} still going`,
@@ -301,7 +315,12 @@ await withWorkerScope(async () => {
     `${cold?.standingOn} · started ${cold?.startedAt.slice(0, 10)} · ${cold?.arrivals.length} arrivals`,
   );
 
-  const again = await advanceJourneys({ ownerId: OWNER, showroomIds: SHOWROOMS, policy });
+  const again = await advanceJourneys({
+    ownerId: OWNER,
+    showroomIds: SHOWROOMS,
+    policy,
+    only: VEHICLE_DELIVERY.id,
+  });
   const after = await traceFor("REGISTRATION", OBJECTED, policy);
   check(
     "a second pass changes nothing when the world has not",
@@ -312,7 +331,9 @@ await withWorkerScope(async () => {
 
   section("5. the queue rows come from the runtime, not from a classifier");
 
-  const rows = await journeyQueueRows({ ownerId: OWNER, showroomIds: SHOWROOMS, policy });
+  const rows = (
+    await journeyQueueRows({ ownerId: OWNER, showroomIds: SHOWROOMS, policy })
+  ).filter((r) => r.definitionId === VEHICLE_DELIVERY.id);
   const kinds = new Map<string, number>();
   const steps = new Map<string, number>();
   for (const r of rows) {
@@ -334,6 +355,17 @@ await withWorkerScope(async () => {
 
   const owned = await liveSubjects(OWNER, SHOWROOMS);
   check("the runtime is answering for every live file", owned.size > 0, `${owned.size} subjects`);
+
+  /*
+   * An ordinary pass, walking every map rather than the one this script drives.
+   *
+   * The checks above deliberately narrow to `VEHICLE_DELIVERY` because they
+   * supply their own facts, and a fact-set belongs to the definition it was
+   * gathered for. The queue is the one place that has to hold both at once, so
+   * it is checked after a pass that walks both — which is what the scheduler
+   * does every time.
+   */
+  await advanceJourneys({ ownerId: OWNER, showroomIds: SHOWROOMS, policy });
 
   const queue = await buildQueue({
     ownerId: OWNER,
@@ -361,6 +393,11 @@ await withWorkerScope(async () => {
     "every registration row on the queue is the runtime's",
     fromClassifier.length === 0,
     fromClassifier.map((r) => `${r.recordKey} ${r.state}`).join(", "),
+  );
+  check(
+    "and the sale journey is on the same queue beside it (OBJ-25)",
+    queue.items.some((i) => i.journey?.definitionId === "VEHICLE_SALE"),
+    `${queue.items.filter((i) => i.journey?.definitionId === "VEHICLE_SALE").length} rows from the second map`,
   );
   check("and they are sorted among everything else, not appended", queue.items.some((i, n) => i.source === "JOURNEY" && n < queue.items.length - 1));
 

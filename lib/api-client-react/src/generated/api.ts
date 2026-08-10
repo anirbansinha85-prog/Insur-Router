@@ -29,11 +29,13 @@ import type {
   ApplyDmsAction200,
   BrowserScrapeInput,
   CancelDmsMessage200,
+  CancelSaleDocument200,
   CloseDmsTask200,
   CreateDmsTask201,
   DashboardStats,
   DmsActionInput,
   DmsPullInput,
+  DocumentCancelInput,
   DraftMessageInput,
   DraftMessageResponse,
   DuplicateDealError,
@@ -43,6 +45,8 @@ import type {
   ExecutionResult,
   ExplainInput,
   Explanation,
+  GenerateDocumentInput,
+  GenerateSaleDocument201,
   GetDmsPolicy200,
   GetInventoryWorklist200,
   GetInventoryWorklistParams,
@@ -76,7 +80,13 @@ import type {
   ListIngestBatchesParams,
   ListIngestSources200,
   ListIngestSourcesParams,
+  ListInvoiceReadiness200,
+  ListInvoiceReadinessParams,
+  ListPriceLists200,
+  ListPriceListsParams,
   ListRecordActivities200,
+  ListSaleDocuments200,
+  ListSaleDocumentsParams,
   ListShowroomStaff200,
   ListShowroomStaffParams,
   LoginInput,
@@ -87,6 +97,7 @@ import type {
   MessageWithGate,
   OcrEngineStatus,
   OcrInput,
+  OemClaims,
   Policy,
   PolicyResetInput,
   PolicySetInput,
@@ -2346,6 +2357,487 @@ export const useApproveDmsMessage = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getApproveDmsMessageMutationOptions(options));
     }
+
+export const getListInvoiceReadinessUrl = (params: ListInvoiceReadinessParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/dms/invoice/readiness?${stringifiedParams}` : `/api/dms/invoice/readiness`
+}
+
+/**
+ * Every condition is a column test — a chassis against the deal, a price list covering the model, nothing issued already. The answer names the unmet ones rather than returning a bare yes or no, because "not ready" is useless and "no price list covers the Xpulse" is a job somebody can do this morning.
+ * Invoices are not late because typing is hard. They are late because nobody noticed the deal became ready.
+ * @summary What can be invoiced now, and what is stopping the rest
+ */
+export const listInvoiceReadiness = async (params: ListInvoiceReadinessParams, options?: Parameters<typeof customFetch>[1]): Promise<ListInvoiceReadiness200> => {
+
+  return customFetch<ListInvoiceReadiness200>(getListInvoiceReadinessUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListInvoiceReadinessQueryKey = (params?: ListInvoiceReadinessParams,) => {
+    return [
+    `/api/dms/invoice/readiness`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListInvoiceReadinessQueryOptions = <TData = Awaited<ReturnType<typeof listInvoiceReadiness>>, TError = ErrorType<ErrorResponse>>(params: ListInvoiceReadinessParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listInvoiceReadiness>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListInvoiceReadinessQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listInvoiceReadiness>>> = ({ signal }) => listInvoiceReadiness(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listInvoiceReadiness>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListInvoiceReadinessQueryResult = NonNullable<Awaited<ReturnType<typeof listInvoiceReadiness>>>
+export type ListInvoiceReadinessQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary What can be invoiced now, and what is stopping the rest
+ */
+
+export function useListInvoiceReadiness<TData = Awaited<ReturnType<typeof listInvoiceReadiness>>, TError = ErrorType<ErrorResponse>>(
+ params: ListInvoiceReadinessParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listInvoiceReadiness>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListInvoiceReadinessQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGenerateSaleDocumentUrl = () => {
+
+
+
+
+  return `/api/dms/invoice/generate`
+}
+
+/**
+ * DDMS's document is the DMS's facts plus the commercial agreement, and neither system holds both. The dealer may price from an older list, discount ageing stock, or keep the manufacturer's scheme rather than pass it on — all three are lawful decisions and the product's job is to support and record them, not to have an opinion.
+ * Which kind of document comes out depends on who holds the tax-invoice series (R-90). Where DDMS holds it, a TAX_INVOICE with a number from a sequential series. Where the dealer's own system does, a SALE_CONFIRMATION that carries their number for linkage and says on its face that it is not a tax invoice (R-89).
+ * A salesman may send QUOTATION and may not send SALE.
+ * @summary Issue the document
+ */
+export const generateSaleDocument = async (generateDocumentInput: GenerateDocumentInput, options?: Parameters<typeof customFetch>[1]): Promise<GenerateSaleDocument201> => {
+
+  return customFetch<GenerateSaleDocument201>(getGenerateSaleDocumentUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(generateDocumentInput)
+  }
+);}
+
+
+
+
+
+export const getGenerateSaleDocumentMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateSaleDocument>>, TError,{data: BodyType<GenerateDocumentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generateSaleDocument>>, TError,{data: BodyType<GenerateDocumentInput>}, TContext> => {
+
+const mutationKey = ['generateSaleDocument'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateSaleDocument>>, {data: BodyType<GenerateDocumentInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  generateSaleDocument(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GenerateSaleDocumentMutationResult = NonNullable<Awaited<ReturnType<typeof generateSaleDocument>>>
+    export type GenerateSaleDocumentMutationBody = BodyType<GenerateDocumentInput>
+    export type GenerateSaleDocumentMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Issue the document
+ */
+export const useGenerateSaleDocument = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateSaleDocument>>, TError,{data: BodyType<GenerateDocumentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof generateSaleDocument>>,
+        TError,
+        {data: BodyType<GenerateDocumentInput>},
+        TContext
+      > => {
+      return useMutation(getGenerateSaleDocumentMutationOptions(options));
+    }
+
+export const getListSaleDocumentsUrl = (params: ListSaleDocumentsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/dms/invoice/documents?${stringifiedParams}` : `/api/dms/invoice/documents`
+}
+
+/**
+ * @summary What has been issued, newest first
+ */
+export const listSaleDocuments = async (params: ListSaleDocumentsParams, options?: Parameters<typeof customFetch>[1]): Promise<ListSaleDocuments200> => {
+
+  return customFetch<ListSaleDocuments200>(getListSaleDocumentsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSaleDocumentsQueryKey = (params?: ListSaleDocumentsParams,) => {
+    return [
+    `/api/dms/invoice/documents`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListSaleDocumentsQueryOptions = <TData = Awaited<ReturnType<typeof listSaleDocuments>>, TError = ErrorType<unknown>>(params: ListSaleDocumentsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSaleDocuments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSaleDocumentsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSaleDocuments>>> = ({ signal }) => listSaleDocuments(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSaleDocuments>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSaleDocumentsQueryResult = NonNullable<Awaited<ReturnType<typeof listSaleDocuments>>>
+export type ListSaleDocumentsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary What has been issued, newest first
+ */
+
+export function useListSaleDocuments<TData = Awaited<ReturnType<typeof listSaleDocuments>>, TError = ErrorType<unknown>>(
+ params: ListSaleDocumentsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSaleDocuments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSaleDocumentsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCancelSaleDocumentUrl = (id: number,) => {
+
+
+
+
+  return `/api/dms/invoice/documents/${id}/cancel`
+}
+
+/**
+ * A cancelled tax invoice keeps its number and says it was cancelled. A hole in a sequential series is an audit finding, and "we chose not to issue this" and "nobody ever issued anything" are different facts of which only one can be defended later. Same argument as a cancelled outbox message staying a row.
+ * @summary Cancel a document, keeping its number
+ */
+export const cancelSaleDocument = async (id: number,
+    documentCancelInput: DocumentCancelInput, options?: Parameters<typeof customFetch>[1]): Promise<CancelSaleDocument200> => {
+
+  return customFetch<CancelSaleDocument200>(getCancelSaleDocumentUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(documentCancelInput)
+  }
+);}
+
+
+
+
+
+export const getCancelSaleDocumentMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelSaleDocument>>, TError,{id: number;data: BodyType<DocumentCancelInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof cancelSaleDocument>>, TError,{id: number;data: BodyType<DocumentCancelInput>}, TContext> => {
+
+const mutationKey = ['cancelSaleDocument'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof cancelSaleDocument>>, {id: number;data: BodyType<DocumentCancelInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  cancelSaleDocument(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CancelSaleDocumentMutationResult = NonNullable<Awaited<ReturnType<typeof cancelSaleDocument>>>
+    export type CancelSaleDocumentMutationBody = BodyType<DocumentCancelInput>
+    export type CancelSaleDocumentMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Cancel a document, keeping its number
+ */
+export const useCancelSaleDocument = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelSaleDocument>>, TError,{id: number;data: BodyType<DocumentCancelInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof cancelSaleDocument>>,
+        TError,
+        {id: number;data: BodyType<DocumentCancelInput>},
+        TContext
+      > => {
+      return useMutation(getCancelSaleDocumentMutationOptions(options));
+    }
+
+export const getListOemClaimsUrl = () => {
+
+
+
+
+  return `/api/dms/invoice/claims`
+}
+
+/**
+ * The number nobody currently has, because it lives in two places at once: the scheme is the manufacturer's and the decision about passing it on is the dealer's, and only DDMS's document holds both.
+ * The claim is owed on the full scheme whatever the customer was told (R-88). A dealer who retained it made a commercial decision and is still owed it; an unclaimed scheme is money given away twice.
+ * @summary What the manufacturer still owes this dealership
+ */
+export const listOemClaims = async ( options?: Parameters<typeof customFetch>[1]): Promise<OemClaims> => {
+
+  return customFetch<OemClaims>(getListOemClaimsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListOemClaimsQueryKey = () => {
+    return [
+    `/api/dms/invoice/claims`
+    ] as const;
+    }
+
+
+export const getListOemClaimsQueryOptions = <TData = Awaited<ReturnType<typeof listOemClaims>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listOemClaims>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListOemClaimsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listOemClaims>>> = ({ signal }) => listOemClaims({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listOemClaims>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListOemClaimsQueryResult = NonNullable<Awaited<ReturnType<typeof listOemClaims>>>
+export type ListOemClaimsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary What the manufacturer still owes this dealership
+ */
+
+export function useListOemClaims<TData = Awaited<ReturnType<typeof listOemClaims>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listOemClaims>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListOemClaimsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListPriceListsUrl = (params: ListPriceListsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/dms/invoice/price-lists?${stringifiedParams}` : `/api/dms/invoice/price-lists`
+}
+
+/**
+ * The DMS is a current-state system that forgets yesterday's price. DDMS keeps the history, because a dealer selling at an older rate is lawful and is his decision — and the invoice prints which list it used.
+ * @summary Every list this outlet may price from, current first
+ */
+export const listPriceLists = async (params: ListPriceListsParams, options?: Parameters<typeof customFetch>[1]): Promise<ListPriceLists200> => {
+
+  return customFetch<ListPriceLists200>(getListPriceListsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPriceListsQueryKey = (params?: ListPriceListsParams,) => {
+    return [
+    `/api/dms/invoice/price-lists`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListPriceListsQueryOptions = <TData = Awaited<ReturnType<typeof listPriceLists>>, TError = ErrorType<unknown>>(params: ListPriceListsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPriceLists>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPriceListsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPriceLists>>> = ({ signal }) => listPriceLists(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPriceLists>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListPriceListsQueryResult = NonNullable<Awaited<ReturnType<typeof listPriceLists>>>
+export type ListPriceListsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Every list this outlet may price from, current first
+ */
+
+export function useListPriceLists<TData = Awaited<ReturnType<typeof listPriceLists>>, TError = ErrorType<unknown>>(
+ params: ListPriceListsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPriceLists>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListPriceListsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getListIngestSourcesUrl = (params: ListIngestSourcesParams,) => {
   const normalizedParams = new URLSearchParams();

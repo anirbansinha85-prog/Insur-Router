@@ -201,7 +201,7 @@ pnpm run typecheck:libs                         # before checking leaf packages
 
 ## Data model
 
-Thirty-two tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
+Thirty-five tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
 which of them `ddms_app` may read, and on what terms, is in `lib/db/sql/rls.sql`.
 
 **The owner tier** — who the data belongs to:
@@ -556,6 +556,58 @@ DDMS rather than one that signed up this morning.
 > **Reconciliation is string equality.** A `SIM-` prefix on one side and not the
 > other manufactures a `CONFLICT` per matched deal. Both sides carry it, because
 > every number in that fixture is a policy no insurer issued (R-41).
+
+## The document DDMS issues
+
+`lib/dms/invoice/` and three tables (OBJ-25). **DDMS's document is the DMS's
+facts plus the commercial agreement, and neither system holds both** — the DMS
+does not know what was promised, DDMS does not know the chassis and the tax
+split.
+
+**Price lists keep the history the DMS discards** (R-87). A current-state system
+holds today's price and forgets yesterday's, and a dealer selling at an older
+rate is lawful and his decision. The invoice picks a list, defaults to the
+current one, and **prints which it used**. Tax rates are per price-list item
+because a motorcycle above 350cc attracts a cess the one below it does not.
+
+**Only one system holds the tax series** (R-90) — `SWITCH.DDMS_HOLDS_TAX_SERIES`,
+off by default. Off, DDMS issues a `SALE_CONFIRMATION` carrying the DMS's number
+for linkage and saying on its face that it is not a tax invoice (R-89). On, a
+`TAX_INVOICE` from its own series, financial year April to March, with a unique
+index as the backstop.
+
+**The discount is split by who pays for it** (R-88). The taxable value falls by
+what the customer was *given*; `oemSchemeAmount` stays at full value because the
+claim is owed on the scheme rather than on the part passed on. An unclaimed
+scheme is money given away twice — `GET /dms/invoice/claims`.
+
+**`generateDocument` is the only thing that writes a document** (R-81). When a
+journey wants an invoice raised it calls that, with a person's consent behind
+it. `invoice.generate` is withheld from the agent: it puts a priced document in
+a customer's hands and can spend a number that cannot be un-spent. A salesman
+may quote and may not invoice — enforced in the route, because that is *what
+kind*, not *whether*.
+
+**A second journey, and the runtime did not change to accept it.** `VEHICLE_SALE`
+walks deals: booked → allocated → priceable → invoiced → delivered.
+`loadFacts` moved onto the definition and `severityState` onto `Step`; nothing
+else. `PRICEABLE` is a stall nothing could previously describe — *nobody has
+told us what this model costs*.
+
+**`Wait.tone` and the first row that is not a problem.** `OPPORTUNITY` means
+*everything is in place, this can be done now*. It does not change the sort: an
+opportunity competes on the same three keys, or a dealership does the pleasant
+rows first and accumulates the others.
+
+`pnpm run verify:invoice`; `pnpm run db:seed-pricelists` for two lists, the
+older of which is the point.
+
+> **Three findings worth keeping.** A quotation blocked the sale that followed
+> it — the comment said otherwise and the query filtered on status alone, found
+> only by driving the routes. `whyNot` returned the `policy.set` sentence for
+> every module-less permission, so a service advisor asking about an invoice was
+> told they may not set thresholds. And a correlated subquery through the ORM's
+> SQL template silently returned 1 for a list holding six.
 
 ## Three ways in, one record
 

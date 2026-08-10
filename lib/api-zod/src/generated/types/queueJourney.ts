@@ -9,6 +9,13 @@ import type { QueueJourneyWaitKind } from './queueJourneyWaitKind';
 
 export interface QueueJourney {
   id: number;
+  /** Which map — VEHICLE_SALE, VEHICLE_DELIVERY. */
+  definitionId: string;
+  /**
+     * A deal id alone is not unique across two brands at one address.
+     * @nullable
+     */
+  dealerCode?: string | null;
   stepId: string;
   stepTitle: string;
   /** TIME never reaches the queue. A file lodged on Tuesday is not work on Wednesday, and a queue full of things nobody can act on is one people stop reading. */

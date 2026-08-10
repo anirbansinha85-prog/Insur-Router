@@ -149,6 +149,23 @@ export type Permission =
   /** Who may be offered in a reassignment picker — reads the staff master. */
   | "staff.view"
   /**
+   * The document DDMS issues, and what it may be priced from (OBJ-25).
+   *
+   * **`invoice.generate` is the first grant in this table that puts a number on
+   * a piece of paper a customer keeps.** Everything before it either marked a
+   * field, wrote a note, or drafted a message somebody still had to approve.
+   * This one, on a dealership whose tax series DDMS holds, spends a number from
+   * a sequential GST series — which cannot be un-spent, only cancelled.
+   *
+   * That is why it is narrower than `deal.view`: an accounts clerk reads deals
+   * all day and issuing against one is a different act. And it is why the agent
+   * does not hold it at all — see `WITHHELD`.
+   */
+  | "invoice.view"
+  | "invoice.generate"
+  /** Adding a price list, and therefore deciding what a model costs. */
+  | "pricelist.set"
+  /**
    * The records DDMS owns outright (OBJ-22).
    *
    * `activity.write` is the first grant in this table that lets its holder
@@ -279,6 +296,15 @@ const MODULES_BY_ROLE: Record<DealershipRole, AccessModule[]> = {
  * `PLATFORM_ADMIN` is excluded along with everything else: it reads no
  * dealership module, so there is nothing for it to write a note about.
  */
+/**
+ * Issuing and reading the document (OBJ-25).
+ *
+ * Not given to everybody who reads deals. A technician has no reason to see
+ * what a customer paid, and a service advisor reading a chassis number on a job
+ * card is not the same as reading the discount composition on the sale.
+ */
+const INVOICE_VERBS: Permission[] = ["invoice.view", "invoice.generate"];
+
 const RECORD_VERBS: Permission[] = [
   "activity.view",
   "activity.write",
@@ -290,12 +316,20 @@ const RECORD_VERBS: Permission[] = [
 
 /** Permissions a role holds that are not implied by a module. */
 const EXTRA_BY_ROLE: Partial<Record<DealershipRole, Permission[]>> = {
-  OWNER: ["policy.set", "outlet.view_all", ...RECORD_VERBS],
-  MANAGER: ["policy.set", "outlet.view_all", ...RECORD_VERBS],
-  SALES_EXEC: RECORD_VERBS,
+  OWNER: ["policy.set", "outlet.view_all", "pricelist.set", ...INVOICE_VERBS, ...RECORD_VERBS],
+  MANAGER: ["policy.set", "outlet.view_all", "pricelist.set", ...INVOICE_VERBS, ...RECORD_VERBS],
+  /**
+   * Sales quote and accounts invoice, and both read what has been issued.
+   *
+   * A salesman needs to hand a customer a figure on paper and must not be able
+   * to spend a tax invoice number to do it — which is precisely the distinction
+   * `intent` draws in the generator, and it is enforced in the route rather
+   * than here because it is about *what kind of document*, not *whether*.
+   */
+  SALES_EXEC: [...INVOICE_VERBS, ...RECORD_VERBS],
   SERVICE_ADVISOR: RECORD_VERBS,
   RTO_AGENT: RECORD_VERBS,
-  ACCOUNTS: RECORD_VERBS,
+  ACCOUNTS: [...INVOICE_VERBS, ...RECORD_VERBS],
   TECHNICIAN: RECORD_VERBS,
 };
 
@@ -353,6 +387,29 @@ const AGENT_GRANTS: Permission[] = [
  * A principal with no entry here still gets a refusal; it is just assembled
  * from what they *can* do rather than written by hand. See `whyNot`.
  */
+/**
+ * Why a permission that belongs to no module is refused.
+ *
+ * One sentence each, because the generic assembly below works off *which
+ * modules you read* and these are not about modules at all. A refusal that
+ * names the wrong reason is worse than a terse one: it sends somebody to ask
+ * for the wrong thing.
+ */
+const MODULELESS_REFUSAL: Partial<Record<Permission, string>> = {
+  "policy.set":
+    "Only an owner or a showroom manager sets these. They decide what the whole dealership does first, and your role covers one part of it.",
+  "outlet.view_all":
+    "Only an owner or a showroom manager looks across branches. Yours is the outlet you work at.",
+  "invoice.view":
+    "What a customer paid, and how the discount was composed, is not part of your job here. Owners, managers, sales and accounts see it.",
+  "invoice.generate":
+    "Issuing a priced document is an owner's, a manager's or accounts' — and on some dealerships it spends a number from a tax series that cannot be un-spent.",
+  "pricelist.set":
+    "Deciding what a model costs belongs to whoever runs the business. Ask the owner or your showroom manager to add it.",
+  "staff.view":
+    "Reading the staff master is for whoever hands work out.",
+};
+
 const WITHHELD: Partial<Record<Principal, Partial<Record<Permission, string>>>> = {
   AGENT: {
     "enquiry.log_contact":
@@ -381,6 +438,10 @@ const WITHHELD: Partial<Record<Principal, Partial<Record<Permission, string>>>> 
       "Withdrawing a note is a judgement about whether something was true, and the note is usually somebody else's. The agent may add to a timeline and may not edit one.",
     "task.complete":
       "Closing a task asserts the work was done, which is the one thing only the person who did it knows. The agent may raise a task and may not tick it off.",
+    "invoice.generate":
+      "Puts a priced document in a customer's hands, and on some dealerships spends a number from a sequential tax series that cannot be un-spent. What it costs and what discount was given are commercial decisions belonging to whoever runs the business. The agent may notice a deal is ready and say so; the figure and the button are a person's.",
+    "pricelist.set":
+      "Deciding what a model costs is the same decision as the discount, made once for every sale instead of one. An agent that could write a price list would be setting the prices it then invoices at.",
   },
 };
 
@@ -457,10 +518,22 @@ export function whyNot(principal: string, permission: Permission): string {
   const module = MODULE_OF[permission] ?? moduleOfVerb(permission);
 
   if (!module) {
-    // A permission belonging to no module — `policy.set` is the only one today.
+    /*
+     * A permission belonging to no module, and there are now four.
+     *
+     * This used to return the `policy.set` sentence unconditionally, with a
+     * comment saying that was the only one. OBJ-25 added three more, and a
+     * service advisor asking to read an invoice was told they may not set the
+     * dealership's thresholds — true of them, and not the question they asked.
+     *
+     * It is the same defect OBJ-21 fixed on `POST /dms/actions`, arriving from
+     * the other direction: **defence in depth working is not the same as the
+     * application being honest**, and only one of those two was true. A
+     * catch-all sentence is a lie waiting for the next permission.
+     */
     return (
-      `Only an owner or a showroom manager sets these. They decide what the ` +
-      `whole dealership does first, and your role covers one part of it.`
+      MODULELESS_REFUSAL[permission] ??
+      `${job} does not hold ${permission}. Ask the owner if you need it.`
     );
   }
 

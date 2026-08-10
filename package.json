@@ -9,6 +9,7 @@
     "db:seed": "pnpm --filter @workspace/scripts run seed",
     "db:seed-owners": "pnpm --filter @workspace/scripts run seed-owners",
     "db:seed-applications": "pnpm --filter @workspace/scripts run seed-applications",
+    "db:seed-pricelists": "pnpm --filter @workspace/scripts run seed-pricelists",
     "db:seed-users": "pnpm --filter @workspace/scripts run seed-users",
     "db:rls": "pnpm --filter @workspace/scripts run rls",
     "verify:records": "pnpm --filter @workspace/scripts run records",
@@ -16,6 +17,7 @@
     "verify:agent": "pnpm --filter @workspace/scripts run agent",
     "verify:journey": "pnpm --filter @workspace/scripts run journey",
     "verify:ingest": "pnpm --filter @workspace/scripts run ingest",
+    "verify:invoice": "pnpm --filter @workspace/scripts run invoice",
     "db:probe": "pnpm --filter @workspace/scripts run probe",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
