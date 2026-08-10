@@ -64,6 +64,7 @@ import type {
   IngestPushInput,
   IngestPushResult,
   IngestResult,
+  IngestSourceInput,
   JourneyTrace,
   ListApplicationsParams,
   ListDmsEvents200,
@@ -71,10 +72,16 @@ import type {
   ListDmsMessages200,
   ListDmsMessagesParams,
   ListDmsRules200,
+  ListIngestBatches200,
+  ListIngestBatchesParams,
+  ListIngestSources200,
+  ListIngestSourcesParams,
   ListRecordActivities200,
   ListShowroomStaff200,
   ListShowroomStaffParams,
   LoginInput,
+  MappingConfirmInput,
+  MappingConfirmResult,
   MessageEditInput,
   MessageNoteInput,
   MessageWithGate,
@@ -88,6 +95,8 @@ import type {
   ProviderUpdate,
   QueueResult,
   RecentApplication,
+  ReportDropInput,
+  ReportDropResult,
   ResetDmsPolicy200,
   RetractRecordActivity200,
   SearchEntities200,
@@ -95,6 +104,7 @@ import type {
   SendDmsMessage200,
   SessionUser,
   SetDmsPolicy200,
+  SetIngestSource200,
   ShowroomSummary,
   SubmissionLog,
   SyncShowroomDms200,
@@ -2336,6 +2346,397 @@ export const useApproveDmsMessage = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getApproveDmsMessageMutationOptions(options));
     }
+
+export const getListIngestSourcesUrl = (params: ListIngestSourcesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/dms/ingest/sources?${stringifiedParams}` : `/api/dms/ingest/sources`
+}
+
+/**
+ * Ingestion varies; completion does not. An outlet may take deals by API, stock by a spreadsheet somebody exports on Fridays, and invoices by scan — enabled per data type per dealer, because an OEM that exposes stock and not deals is the ordinary situation rather than an edge case.
+ * The freshness each path can honestly claim is different, and the row says so rather than showing a sync timestamp that means nothing on a report.
+ * @summary How this outlet is connected, per kind of data
+ */
+export const listIngestSources = async (params: ListIngestSourcesParams, options?: Parameters<typeof customFetch>[1]): Promise<ListIngestSources200> => {
+
+  return customFetch<ListIngestSources200>(getListIngestSourcesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListIngestSourcesQueryKey = (params?: ListIngestSourcesParams,) => {
+    return [
+    `/api/dms/ingest/sources`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListIngestSourcesQueryOptions = <TData = Awaited<ReturnType<typeof listIngestSources>>, TError = ErrorType<unknown>>(params: ListIngestSourcesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listIngestSources>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListIngestSourcesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listIngestSources>>> = ({ signal }) => listIngestSources(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listIngestSources>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListIngestSourcesQueryResult = NonNullable<Awaited<ReturnType<typeof listIngestSources>>>
+export type ListIngestSourcesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary How this outlet is connected, per kind of data
+ */
+
+export function useListIngestSources<TData = Awaited<ReturnType<typeof listIngestSources>>, TError = ErrorType<unknown>>(
+ params: ListIngestSourcesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listIngestSources>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListIngestSourcesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSetIngestSourceUrl = () => {
+
+
+
+
+  return `/api/dms/ingest/sources`
+}
+
+/**
+ * Requires policy.set — the same class of decision as the dealership's own thresholds. It changes what the product does with this outlet's data and belongs to whoever runs the business, not to whoever happens to be on the onboarding call.
+ * @summary Change how a kind of data arrives
+ */
+export const setIngestSource = async (ingestSourceInput: IngestSourceInput, options?: Parameters<typeof customFetch>[1]): Promise<SetIngestSource200> => {
+
+  return customFetch<SetIngestSource200>(getSetIngestSourceUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(ingestSourceInput)
+  }
+);}
+
+
+
+
+
+export const getSetIngestSourceMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setIngestSource>>, TError,{data: BodyType<IngestSourceInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setIngestSource>>, TError,{data: BodyType<IngestSourceInput>}, TContext> => {
+
+const mutationKey = ['setIngestSource'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setIngestSource>>, {data: BodyType<IngestSourceInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  setIngestSource(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetIngestSourceMutationResult = NonNullable<Awaited<ReturnType<typeof setIngestSource>>>
+    export type SetIngestSourceMutationBody = BodyType<IngestSourceInput>
+    export type SetIngestSourceMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Change how a kind of data arrives
+ */
+export const useSetIngestSource = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setIngestSource>>, TError,{data: BodyType<IngestSourceInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setIngestSource>>,
+        TError,
+        {data: BodyType<IngestSourceInput>},
+        TContext
+      > => {
+      return useMutation(getSetIngestSourceMutationOptions(options));
+    }
+
+export const getDropIngestReportUrl = () => {
+
+
+
+
+  return `/api/dms/ingest/report`
+}
+
+/**
+ * The commercial argument in one endpoint. If this export's shape has been confirmed before, the file is read by column position and NO MODEL IS CALLED — usedModel in the response says so, and it is the number this objective is measured on. Model cost is per report type per dealer, not per row.
+ * If the shape is new the file is HELD with a proposed mapping, and a person is asked what the headings mean. It is not partly imported: an import that quietly did nothing because it did not understand the file is the worst of the three possible outcomes.
+ * The body is the file as text. Every DMS export worth taking is comma or tab separated, and a parser is not an upload service.
+ * @summary Take in a file the dealer exported from their own system
+ */
+export const dropIngestReport = async (reportDropInput: ReportDropInput, options?: Parameters<typeof customFetch>[1]): Promise<ReportDropResult> => {
+
+  return customFetch<ReportDropResult>(getDropIngestReportUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(reportDropInput)
+  }
+);}
+
+
+
+
+
+export const getDropIngestReportMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dropIngestReport>>, TError,{data: BodyType<ReportDropInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof dropIngestReport>>, TError,{data: BodyType<ReportDropInput>}, TContext> => {
+
+const mutationKey = ['dropIngestReport'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof dropIngestReport>>, {data: BodyType<ReportDropInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  dropIngestReport(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DropIngestReportMutationResult = NonNullable<Awaited<ReturnType<typeof dropIngestReport>>>
+    export type DropIngestReportMutationBody = BodyType<ReportDropInput>
+    export type DropIngestReportMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Take in a file the dealer exported from their own system
+ */
+export const useDropIngestReport = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dropIngestReport>>, TError,{data: BodyType<ReportDropInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof dropIngestReport>>,
+        TError,
+        {data: BodyType<ReportDropInput>},
+        TContext
+      > => {
+      return useMutation(getDropIngestReportMutationOptions(options));
+    }
+
+export const getConfirmIngestMappingUrl = (id: number,) => {
+
+
+
+
+  return `/api/dms/ingest/mappings/${id}/confirm`
+}
+
+/**
+ * The only thing that makes a mapping usable. A model proposed it; nothing is extracted until somebody here agrees — R-49 applied to onboarding, and the reason the scheduler holds select and update on mappings and never insert.
+ * Send the file text back with the confirmation and any batch held on this mapping is released, rather than the dealer being told to go and find their export again.
+ * @summary A person says what the columns mean, once
+ */
+export const confirmIngestMapping = async (id: number,
+    mappingConfirmInput: MappingConfirmInput, options?: Parameters<typeof customFetch>[1]): Promise<MappingConfirmResult> => {
+
+  return customFetch<MappingConfirmResult>(getConfirmIngestMappingUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(mappingConfirmInput)
+  }
+);}
+
+
+
+
+
+export const getConfirmIngestMappingMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmIngestMapping>>, TError,{id: number;data: BodyType<MappingConfirmInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof confirmIngestMapping>>, TError,{id: number;data: BodyType<MappingConfirmInput>}, TContext> => {
+
+const mutationKey = ['confirmIngestMapping'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof confirmIngestMapping>>, {id: number;data: BodyType<MappingConfirmInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  confirmIngestMapping(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ConfirmIngestMappingMutationResult = NonNullable<Awaited<ReturnType<typeof confirmIngestMapping>>>
+    export type ConfirmIngestMappingMutationBody = BodyType<MappingConfirmInput>
+    export type ConfirmIngestMappingMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary A person says what the columns mean, once
+ */
+export const useConfirmIngestMapping = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmIngestMapping>>, TError,{id: number;data: BodyType<MappingConfirmInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof confirmIngestMapping>>,
+        TError,
+        {id: number;data: BodyType<MappingConfirmInput>},
+        TContext
+      > => {
+      return useMutation(getConfirmIngestMappingMutationOptions(options));
+    }
+
+export const getListIngestBatchesUrl = (params: ListIngestBatchesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/dms/ingest/batches?${stringifiedParams}` : `/api/dms/ingest/batches`
+}
+
+/**
+ * The answer to "where did this figure come from", which the API path never had to give — a live integration is simply true continuously. A drop happened at a moment, from a system in a state, and every row it produced inherits that moment.
+ * @summary What has been taken in, newest first
+ */
+export const listIngestBatches = async (params: ListIngestBatchesParams, options?: Parameters<typeof customFetch>[1]): Promise<ListIngestBatches200> => {
+
+  return customFetch<ListIngestBatches200>(getListIngestBatchesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListIngestBatchesQueryKey = (params?: ListIngestBatchesParams,) => {
+    return [
+    `/api/dms/ingest/batches`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListIngestBatchesQueryOptions = <TData = Awaited<ReturnType<typeof listIngestBatches>>, TError = ErrorType<unknown>>(params: ListIngestBatchesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listIngestBatches>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListIngestBatchesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listIngestBatches>>> = ({ signal }) => listIngestBatches(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listIngestBatches>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListIngestBatchesQueryResult = NonNullable<Awaited<ReturnType<typeof listIngestBatches>>>
+export type ListIngestBatchesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary What has been taken in, newest first
+ */
+
+export function useListIngestBatches<TData = Awaited<ReturnType<typeof listIngestBatches>>, TError = ErrorType<unknown>>(
+ params: ListIngestBatchesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listIngestBatches>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListIngestBatchesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetRecordJourneyUrl = (module: 'DEAL' | 'JOB_CARD' | 'ENQUIRY' | 'REGISTRATION' | 'PART' | 'RECEIVABLE' | 'VEHICLE',
     recordKey: string,) => {

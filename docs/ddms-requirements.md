@@ -1828,9 +1828,9 @@ and the one we lack.
 | R-81 | **One door.** Nothing writes to the record except through the same call a person's button makes — not agents, not the process runtime, not any second service. It is what lets every question about roles and visibility be answered later in one place | ○ |
 | R-82 | **Precedent is scoped, and never crosses a dealer group.** One dealership's operating decisions must not inform another's. Within a group the owner sees everything, across groups nothing — which is where the boundary already is | ○ |
 | R-83 | **The intelligence store is read by the agent alone.** Whatever it surfaces leaves through a permission-checked surface, so the store needs partitioning by group and no permission model of its own | ○ |
-| R-84 | **Ingestion varies; completion does not.** Direct fetch, report drop and document scan produce one canonical record, and the readiness check does not know which path a field arrived by | ○ |
-| R-85 | **Every ingested field carries its source and its confidence.** A value read off a mapped column is not the same fact as one an API returned, and nothing downstream may treat them alike | ○ |
-| R-86 | **A mapping is confirmed once by a person, then it is fixed.** The model reads unfamiliar column headings once; a person approves; extraction is deterministic thereafter. Model cost is per report type, not per row — and the same shape as graduation | ○ |
+| R-84 | ✅ **Ingestion varies; completion does not.** Direct fetch, report drop and document scan produce one canonical record, and the readiness check does not know which path a field arrived by  | ✅ |
+| R-85 | ✅ **Every ingested field carries its source and its confidence.** A value read off a mapped column is not the same fact as one an API returned, and nothing downstream may treat them alike  | ✅ |
+| R-86 | ✅ **A mapping is confirmed once by a person, then it is fixed.** The model reads unfamiliar column headings once; a person approves; extraction is deterministic thereafter. Model cost is per report type, not per row — and the same shape as graduation  | ✅ |
 | R-87 | **Price is the dealer's decision, and DDMS records which list was used.** Selling at an older list, discounting ageing stock or retaining an OEM scheme are commercial calls. DDMS holds price lists with effective dates and prints which one an invoice was priced against | ○ |
 | R-88 | **An OEM scheme is claimable whatever the customer was told.** The claim is owed on the scheme amount regardless of how much was passed on, and DDMS is the only system holding both halves | ○ |
 | R-89 | **A document must say what it is.** If it is not a tax invoice it must not look like one. Same instinct as *held — nothing was delivered* and the `SIM-` prefix | ○ |
@@ -1848,7 +1848,7 @@ and the one we lack.
 | 21 | ~~**One permission model**~~ ✅ | no | — | two half-systems exist — module read-gating and the agent's action set. Everything below adds actions and principals to both |
 | 22 | ~~**DDMS owns its own records**~~ ✅ | no | 21 | the unlock. Notes, activities, tasks, quotations, price lists. Nothing an agent can honestly write until this exists |
 | 23 | ~~**The journey model**~~ ✅ | no | 22 | the runtime, proved end to end on one journey |
-| 24 | **Ingestion beyond the API** | at the mapping step only | — | independent of everything, and the thing that decides how many dealers can be sold to at all |
+| 24 | ~~**Ingestion beyond the API**~~ ✅ | at the mapping step only | — | independent of everything, and the thing that decides how many dealers can be sold to at all |
 | 25 | **The invoice DDMS produces** | no | 22, 23, 24 | the first document the product issues, and the first record it holds *before* the DMS knows anything |
 | 26 | **Autonomy: the ladder and graduation** | recall only | 21, 23 | needs journeys running long enough to have history to cite. Absorbs OBJ-19 |
 | 27 | **dm-concierge — messages out, replies in** | no | 22 | the Outbox has no transport at all. Inbound is the larger half: a reply is a fact the DMS will never hold |
@@ -2176,7 +2176,7 @@ which is **OBJ-25**.
 > the deal, the KYC document, the registration file — and the mirror carries none
 > of them on the registration row. A step for it needs data OBJ-24 brings.
 
-### OBJ-24 — Ingestion beyond the API
+### OBJ-24 — Ingestion beyond the API  ✅ **done 10 Aug**
 *Covers R-84, R-85, R-86. No dependencies.*
 
 Report drop and document scan alongside direct fetch, enabled per data type per
@@ -2195,6 +2195,133 @@ consumer after insurance.
 **Done when:** the same dealership can be onboarded three ways, every field
 carries its source and confidence, a second file of the same report type needs
 no model call, and nothing downstream can tell which path a value arrived by.
+
+**The seam is a source, not a format**, and getting that right is most of the
+objective. A source answers two questions:
+
+| | `list()` — cheap | `load(keys)` — expensive | complete? |
+|---|---|---|---|
+| API | the summary endpoint | one call per deal | yes |
+| REPORT | the file, parsed once | rows already in hand | as complete as the export |
+| DOCUMENT | scans waiting to be read | one at a time | **no** |
+
+The split preserves the one optimisation the API path cannot lose — on a busy
+dealership most rows are untouched most of the time, and syncing without it is
+four hundred round trips against an ERP that returns 503 at month end. Every
+path fits the shape honestly, which is the test of whether an abstraction is the
+right one rather than merely a tidy one.
+
+**`sync.ts` no longer knows where its data comes from.** One line resolves a
+source and nothing below it branches on the path. `projectDeal` became
+`columnsOf` and moved into the ingestion layer — the canonical flat shape was
+always there, unnamed, and naming it is what made three paths possible.
+
+**Two things the source is asked rather than assumed, and both would have been
+serious bugs.** `listIsComplete` — a scanned invoice says nothing about the
+other four hundred deals, so treating *not listed* as *gone* would disappear a
+dealership's whole book the first time somebody scanned a sheet of paper. And
+partial records merge rather than replace: an absent field on a document means
+*the document did not say*, never *the value is gone*.
+
+**The graduation, which is OBJ-26's shape arriving early:**
+
+```
+propose   a model reads the headings          once per export shape
+confirm   a person says yes                   once per export shape
+apply     column position, no model at all    every file thereafter
+```
+
+Keyed on a hash of the sorted headings, so the same *shape* matches whatever the
+file is called. Adding a column produces a new fingerprint and one more
+confirmation — correct rather than annoying, because quietly reusing yesterday's
+mapping across a changed export is how a column shifts one place and a month of
+figures lands under the wrong heading.
+
+**The model sees headings only.** Never a cell, never a customer's name, never a
+figure — so it cannot invent a value, because it is never shown one. The worst
+it can do is misname a column, which is exactly the mistake a person catches at
+a glance. Its proposals are then checked against the file the way `checkRewrite`
+checks a draft: a named column that is not in the headings is discarded, and its
+confidence is capped at 0.8 so the confirmation screen can sort a good guess
+below a name match.
+
+**A first pass with no model at all** places most headings on a normalised
+string match. The seeded dealership's own export matched **16 of 16** and never
+called anything — running a model over a file the product can already read is
+paying for nothing.
+
+**Proved by `pnpm run verify:ingest`**, which generates the export **from the
+mirror itself** — which is exactly what the dealer's system would produce — and
+then compares, field by field:
+
+| | |
+|---|---|
+| an unseen shape | **held**, 0 of 79 rows extracted, mapping proposed |
+| a person confirms | the held file comes in, 78 of 79 rows |
+| the same shape again | `usedModel: false`, straight through |
+| a shape name-matching cannot read | proposed once; the second lookup calls nothing |
+| the scheduler proposing one | **refused** — `ddms_worker` has no insert on mappings |
+| the same file twice | 409, one drop |
+| **every projected column of all 78 deals** | **identical to what the API left there** |
+| a scanned invoice | policy and registration it never mentioned both survive |
+| the whole book after that scan | still there — nothing disappeared |
+
+> **A key alone does not make a record, and a footer became a deal.** Every
+> dealer export ends `Total,,,,,,78 deals,,,` and the word *Total* lands in the
+> deal-number column. The first version checked only that a key was present, so
+> the footer arrived in the mirror as a deal called **Total** with an
+> ex-showroom price of 78 — a phantom row on the worklist, in the queue, and in
+> the count an owner reads. The test is now *the key plus at least two other
+> fields*, which separates a deal from a footer without guessing at the word
+> "Total" in whatever abbreviation this dealer's system uses.
+
+> **The scheduler was refused an insert, and the refusal was the design.** The
+> first verifier ran the whole thing as `ddms_worker` and died at
+> `permission denied for table ingest_mappings`. A mapping is what a *person*
+> said the columns mean; an unattended process able to propose **and then use**
+> its own proposal would have quietly removed the person from the only step
+> where R-49 applies to onboarding. `ddms_worker` holds select and update and
+> not insert, and that became check 3b.
+
+> **A verifier that only tidies up on the happy path starts lying.** A run died
+> mid-way with the mock DMS down and left the dealership fed by report; the next
+> run's first assertion then failed for a reason unconnected to the code. It now
+> restores the API path at the *start* as well as the end, and two consecutive
+> runs both exit 0.
+
+> **The model path itself was not exercised end to end.** The free tier returned
+> **429 — quota exhausted**, exactly as it did during OBJ-16's explain panel. So
+> what ran was the fallback: name matches stand alone, the gaps are visible on
+> the confirmation screen, and a person maps them by hand once. That is the more
+> important half and the one that had to hold — but *a model successfully
+> reading an opaque heading* remains attested by design rather than by this run.
+
+**Three tables and three columns.** `ingest_sources` (per outlet, per data
+type), `ingest_mappings` (the graduation), `ingest_batches` (which drop a figure
+came from — the question a live integration never has to answer). On
+`dms_deals`: `ingest_path`, `field_confidence` and `ingest_batch_id`, **beside**
+the projected columns and never inside them, because the worklist reads
+`invoiceNo` and not `invoiceNo.value`. The confidence map is sparse on purpose —
+an API field is certain, and a megabyte of 1.0s asserts nothing.
+
+**VeloDocs gained the tab, beside the API pull rather than beneath it.** A tab
+order that treated the report path as the fallback would be the product agreeing
+with the assumption it exists to correct. The confirmation screen shows every
+field, which column was proposed for it, and whether that was a name match or a
+model reading — and a person's own choice is recorded at certainty, because they
+are looking at the file.
+
+> **Scope, stated plainly.** Three paths are wired for **deals**. The other six
+> modules still call the client directly and resolve to `API`, which is what
+> they always did. Widening is a source function each, not a redesign — the
+> vocabulary, the mapping graduation, the batches and the provenance columns are
+> all data-type agnostic already.
+
+> **The file bodies live in memory, and that is a real gap.** There is no object
+> storage wired up, so a restart loses the bytes of a held drop and the dealer
+> drops the file again. `ingest_batches` keeps the audit trail either way, which
+> is the part that must not be lost. What had to be built here is *whether three
+> paths can produce one record*; a bucket is plumbing that answers nothing.
 
 ### OBJ-25 — The invoice DDMS produces
 *Covers R-87, R-88, R-89, R-90. Needs 22, 23, 24.*

@@ -201,7 +201,7 @@ pnpm run typecheck:libs                         # before checking leaf packages
 
 ## Data model
 
-Twenty-nine tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
+Thirty-two tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
 which of them `ddms_app` may read, and on what terms, is in `lib/db/sql/rls.sql`.
 
 **The owner tier** — who the data belongs to:
@@ -556,6 +556,58 @@ DDMS rather than one that signed up this morning.
 > **Reconciliation is string equality.** A `SIM-` prefix on one side and not the
 > other manufactures a `CONFLICT` per matched deal. Both sides carry it, because
 > every number in that fixture is a policy no insurer issued (R-41).
+
+## Three ways in, one record
+
+`lib/dms/ingest/` — the mirror no longer assumes an OEM API (OBJ-24, R-84). A
+dealership takes deals by `API`, `REPORT` (a spreadsheet they export and drop)
+or `DOCUMENT` (a scan), **per data type per outlet**, defaulting to `API` so an
+unconfigured dealership behaves exactly as it always did.
+
+> **Ingestion varies. Completion does not.**
+
+**The seam is a `Source<T>`, not a format.** `list()` is cheap and answers *what
+can you see*; `load(keys)` is expensive and answers *give me these in full*.
+That split preserves the API path's one essential optimisation — most rows are
+untouched most of the time — and every path fits it honestly. `sync.ts` resolves
+a source and nothing below that line branches on the path.
+
+Two properties the source is asked rather than assumed, and both prevent real
+damage:
+
+- **`listIsComplete`** — false for documents. One scanned invoice says nothing
+  about the other four hundred deals, and treating *not listed* as *gone* would
+  disappear the whole book.
+- **partial records merge** — an absent field on a document means *the document
+  did not say*, never *the value is gone*.
+
+**The mapping graduates**: a model proposes once per export shape, a person
+confirms once, and every file thereafter is read by column position with **no
+model at all**. Keyed on a hash of the sorted headings. The model sees *headings
+only* — never a cell — so it cannot invent a value; its proposals are checked
+against the file the way `checkRewrite` checks a draft. `ddms_worker` holds
+select and update on `ingest_mappings` and **not insert**: a mapping is what a
+person said the columns mean.
+
+**Provenance sits beside the value, never inside it** (R-85). `dms_deals` gained
+`ingest_path`, `field_confidence` and `ingest_batch_id`. The worklist reads
+`invoiceNo`, not `invoiceNo.value`. The confidence map is sparse — an API field
+is certain, and a megabyte of 1.0s asserts nothing.
+
+VeloDocs has the confirmation screen, beside the API pull rather than beneath
+it. `pnpm run verify:ingest` generates the export **from the mirror** and proves
+every projected column identical across paths.
+
+> **A key alone does not make a record.** Every dealer export ends
+> `Total,,,,,,78 deals,,,` and *Total* lands in the deal-number column — the
+> first version imported the footer as a deal priced at 78. A record needs its
+> key **plus two other fields**.
+
+> **Deals only, so far.** The other six modules still call the client directly
+> and resolve to `API`. Widening is a source function each; the vocabulary, the
+> mapping, the batches and the provenance columns are already data-type
+> agnostic. The file bodies live in memory — there is no object storage — so a
+> restart loses a held drop's bytes but never its audit row.
 
 ## Where each sale has got to
 

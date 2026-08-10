@@ -567,6 +567,55 @@ drop policy if exists journey_steps_worker on public.journey_steps;
 create policy journey_steps_worker on public.journey_steps
   for all to ddms_worker using (true) with check (true);
 
+/*
+ * How a dealership's data gets in (OBJ-24).
+ *
+ * Three tables about *ingestion* rather than about a module, so they gate on
+ * the outlet alone — there is no `app.can_read(data_type)` here and putting one
+ * in would be wrong. Whether a dealership is connected to its OEM by an API or
+ * by a spreadsheet somebody exports on Fridays is an operational fact about the
+ * business, not a fact about deals; a service advisor being unable to read the
+ * ledger is no reason to hide from them that the ledger arrives by email.
+ *
+ * Confirming a mapping is a different question and it is answered in the route
+ * by the permission table, because *who may say what a column means* is a
+ * judgement about the dealer's own data.
+ */
+drop policy if exists ingest_sources_own on public.ingest_sources;
+create policy ingest_sources_own on public.ingest_sources
+  for all to ddms_app
+  using (showroom_id in (select app.owned_showroom_ids()))
+  with check (showroom_id in (select app.visible_showroom_ids()));
+
+drop policy if exists ingest_sources_worker on public.ingest_sources;
+create policy ingest_sources_worker on public.ingest_sources
+  for all to ddms_worker using (true) with check (true);
+
+drop policy if exists ingest_mappings_own on public.ingest_mappings;
+create policy ingest_mappings_own on public.ingest_mappings
+  for all to ddms_app
+  using (showroom_id in (select app.owned_showroom_ids()))
+  with check (showroom_id in (select app.visible_showroom_ids()));
+
+-- The scheduler reads a confirmed mapping on every sync of a report-fed outlet
+-- and counts its use. It may never confirm one: a mapping is what a *person*
+-- said the columns mean, and an unattended process promoting its own proposal
+-- would be the model deciding, which is exactly what the confirmation exists to
+-- prevent. The route enforces that; this is the grant that agrees with it.
+drop policy if exists ingest_mappings_worker on public.ingest_mappings;
+create policy ingest_mappings_worker on public.ingest_mappings
+  for all to ddms_worker using (true) with check (true);
+
+drop policy if exists ingest_batches_own on public.ingest_batches;
+create policy ingest_batches_own on public.ingest_batches
+  for all to ddms_app
+  using (showroom_id in (select app.owned_showroom_ids()))
+  with check (showroom_id in (select app.visible_showroom_ids()));
+
+drop policy if exists ingest_batches_worker on public.ingest_batches;
+create policy ingest_batches_worker on public.ingest_batches
+  for all to ddms_worker using (true) with check (true);
+
 drop policy if exists insurer_panel_own on public.insurer_panel_entries;
 create policy insurer_panel_own on public.insurer_panel_entries
   for select to ddms_app
@@ -854,6 +903,9 @@ grant select, insert, update on public.record_activities to ddms_app;
 grant select, insert, update on public.tasks to ddms_app;
 grant select, insert, update on public.journeys to ddms_app;
 grant select, insert on public.journey_steps to ddms_app;
+grant select, insert, update on public.ingest_sources to ddms_app;
+grant select, insert, update on public.ingest_mappings to ddms_app;
+grant select, insert, update on public.ingest_batches to ddms_app;
 
 -- `serial` columns draw from a sequence, and a role that may insert but may not
 -- touch the sequence gets "permission denied for sequence" on every insert.
@@ -959,6 +1011,13 @@ grant select, insert, update on public.tasks to ddms_worker;
 -- not lose history, it would change what the runtime believes is true now.
 grant select, insert, update on public.journeys to ddms_worker;
 grant select, insert on public.journey_steps to ddms_worker;
+-- The scheduler syncs a report-fed outlet, so it reads the source, the mapping
+-- and the batches, and updates the two counters that record a mapping having
+-- been used. No delete anywhere: an import that happened is a fact about the
+-- dealer's data, and the audit trail for a disputed figure is the batch row.
+grant select, update on public.ingest_sources to ddms_worker;
+grant select, update on public.ingest_mappings to ddms_worker;
+grant select, insert, update on public.ingest_batches to ddms_worker;
 
 -- Same reason as `ddms_app`: the entity graph is rebuilt wholesale rather than
 -- reconciled, so these two are the only tables the worker may delete from.

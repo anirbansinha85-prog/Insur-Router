@@ -6,18 +6,38 @@
  * might arrive. What the dealer still has to key back by hand becomes a tracked
  * task rather than a silent gap.
  *
- * The list endpoint returns summaries; the full record needs one call per deal.
- * That is the expensive part, so a sync only fetches the full record when the
- * summary shows something has changed — or when we have never seen the deal.
+ * The list is cheap; the full record needs one call per deal. That is the
+ * expensive part, so a sync only loads the full record when the listing shows
+ * something has changed — or when we have never seen the deal.
+ *
+ * ## Since OBJ-24 this file does not know where the data comes from
+ *
+ * It used to call the OEM's API directly. It now asks `dealSourceFor` for a
+ * source and gets back one of three: the API, a spreadsheet the dealer exported
+ * and dropped, or a scanned invoice. **Nothing below this line branches on
+ * which**, and that is R-84 as code rather than as an intention:
+ *
+ * > **Ingestion varies. Completion does not.**
+ *
+ * The reframing behind it is Anirban's: the dealers with no API are most of the
+ * market and the most underserved. Building for the tidy case and treating the
+ * rest as a fallback serves the smallest part of the market.
+ *
+ * Two things the source is asked rather than assumed, and both would have been
+ * bugs. **Whether its listing is complete** — a scanned invoice says nothing
+ * about the other four hundred deals, and treating *not listed* as *gone* would
+ * disappear a dealership's whole book the first time somebody scanned a sheet
+ * of paper. And **whether a record is whole** — a document carries the invoice
+ * and the customer and nothing about the policy, so an absent field there means
+ * *the document did not say*, never *the value is gone*.
  */
 
 import { createHash } from "node:crypto";
 import { and, eq, isNull, notInArray } from "drizzle-orm";
 import { db, dmsDealsTable, showroomsTable, showroomDmsAccountsTable } from "@workspace/db";
 import { logger } from "../logger";
-import { fetchDeal, dmsList } from "./client";
-import { toIsoDate, toAmount, assembleName } from "./hero-adapter";
-import type { DmsDeal } from "./types";
+import { dealSourceFor } from "./ingest";
+import type { DealRecord, IngestPath, Sourced } from "./ingest";
 
 export interface SyncResult {
   showroomId: number;
@@ -40,28 +60,49 @@ function hashOf(value: unknown): string {
 }
 
 /**
- * Lift the fields the worklist sorts and filters on out of the raw payload.
- * Everything else stays in `raw` — this is a query convenience, not a second
- * source of truth.
+ * A record, minus its key and its raw payload — the columns the mirror keeps.
+ *
+ * This used to be `projectDeal`, lifting fields out of the API's nested
+ * payload. The shape was always the canonical one; naming it and moving it into
+ * `ingest/types.ts` is most of what made three paths possible, because every
+ * path now has one target to produce rather than a nested API payload to
+ * imitate.
  */
-function projectDeal(deal: DmsDeal) {
+function columnsOf(record: DealRecord) {
   return {
-    status: deal.status,
-    bookingDate: toIsoDate(deal.bookingDt) || null,
-    plannedDeliveryDate: toIsoDate(deal.plannedDeliveryDt) || null,
-    actualDeliveryDate: toIsoDate(deal.actualDeliveryDt) || null,
-    customerName: assembleName(deal.customer),
-    customerMobile: deal.customer.mobileNo,
-    modelDescription: deal.vehicle.model.modelDesc,
-    chassisNo: deal.vehicle.chassisNo,
-    engineNo: deal.vehicle.engineNo,
-    exShowroomAmount: toAmount(deal.vehicle.exShowroomAmt),
-    dmsPolicyNo: deal.insurance.policyNo,
-    dmsInsurerCode: deal.insurance.insurerCode,
-    dmsRegNo: deal.registration.regNo,
-    invoiceNo: deal.invoice.invoiceNo,
-    invoiceDate: toIsoDate(deal.invoice.invoiceDt) || null,
+    status: record.status,
+    bookingDate: record.bookingDate,
+    plannedDeliveryDate: record.plannedDeliveryDate,
+    actualDeliveryDate: record.actualDeliveryDate,
+    customerName: record.customerName,
+    customerMobile: record.customerMobile,
+    modelDescription: record.modelDescription,
+    chassisNo: record.chassisNo,
+    engineNo: record.engineNo,
+    exShowroomAmount: record.exShowroomAmount,
+    dmsPolicyNo: record.dmsPolicyNo,
+    dmsInsurerCode: record.dmsInsurerCode,
+    dmsRegNo: record.dmsRegNo,
+    invoiceNo: record.invoiceNo,
+    invoiceDate: record.invoiceDate,
   };
+}
+
+/**
+ * A partial record merged over what is already there.
+ *
+ * Only for a source that says its records are partial — a scanned invoice. An
+ * absent field on a document means *the document did not mention it*, and
+ * writing null over a policy number the API gave us last week because this
+ * week's invoice scan did not repeat it would be the product destroying its own
+ * data with a straight face.
+ */
+function mergeOver<T extends Record<string, unknown>>(fresh: T, existing: T): T {
+  const out = { ...existing };
+  for (const [k, v] of Object.entries(fresh)) {
+    if (v !== null && v !== undefined) (out as Record<string, unknown>)[k] = v;
+  }
+  return out;
 }
 
 /**
@@ -95,7 +136,18 @@ export async function syncShowroom(showroomId: number): Promise<SyncResult[]> {
 
 async function syncDealerCode(showroomId: number, dealerCode: string): Promise<SyncResult> {
   const startedAt = new Date();
-  const summaries = await dmsList(dealerCode);
+
+  /*
+   * The one line that made three paths possible.
+   *
+   * Everything below is written against `Source<DealRecord>` and cannot tell an
+   * OEM API from a spreadsheet somebody exported this morning. A dealership
+   * nobody has configured resolves to `API` and behaves exactly as it did
+   * before this objective, which is the property that made changing this file
+   * safe.
+   */
+  const source = await dealSourceFor(showroomId, dealerCode);
+  const listed = await source.list();
 
   const existing = await db
     .select({
@@ -108,45 +160,65 @@ async function syncDealerCode(showroomId: number, dealerCode: string): Promise<S
 
   const known = new Map(existing.map((r) => [r.dealId, r]));
 
-  let added = 0;
-  let changed = 0;
+  /*
+   * Which ones to load in full.
+   *
+   * The listing carries a fingerprint of whatever the source could see cheaply,
+   * so a deal whose fingerprint has not moved needs no expensive load. On the
+   * API path that is the difference between one round trip and four hundred
+   * against an ERP that returns 503 at month end; on the report path the file
+   * is already in hand and this simply costs nothing.
+   */
   let unchanged = 0;
+  const toLoad: string[] = [];
+  const fingerprintOfKey = new Map(listed.map((l) => [l.key, l.fingerprint]));
 
-  for (const summary of summaries) {
-    // The summary is enough to tell "nothing moved" from "fetch the full
-    // record". On a busy dealership most deals are untouched most of the time,
-    // and this is what keeps a sync from being N full round trips.
-    const summaryHash = hashOf(summary);
-    const prior = known.get(summary.dealId);
-
-    if (prior && prior.rawHash === summaryHash) {
+  for (const item of listed) {
+    const prior = known.get(item.key);
+    if (prior && prior.rawHash === item.fingerprint) {
       await db
         .update(dmsDealsTable)
         .set({ lastSyncedAt: new Date(), disappearedAt: null })
-        .where(
-          and(eq(dmsDealsTable.dealerCode, dealerCode), eq(dmsDealsTable.dealId, summary.dealId)),
-        );
+        .where(and(eq(dmsDealsTable.dealerCode, dealerCode), eq(dmsDealsTable.dealId, item.key)));
       unchanged++;
       continue;
     }
+    toLoad.push(item.key);
+  }
 
-    const deal = await fetchDeal(summary.dealId);
-    if (!deal) {
-      logger.warn({ dealId: summary.dealId }, "DMS listed a deal it then could not return");
-      continue;
-    }
+  const loaded = await source.load(toLoad);
 
-    const projected = projectDeal(deal);
+  let added = 0;
+  let changed = 0;
+
+  for (const item of loaded) {
+    const prior = known.get(item.key);
     const now = new Date();
+    const fingerprint = fingerprintOfKey.get(item.key) ?? "";
+
+    /*
+     * Provenance, written beside the value and never into it (R-85).
+     *
+     * The projected columns are identical whichever path produced them — the
+     * worklist reads `invoiceNo`, not `invoiceNo.value` — and what kind of fact
+     * this row is holding lives in three columns of its own. Same instinct as
+     * the `SIM-` prefix: the record says what it is.
+     */
+    const provenance = {
+      ingestPath: item.path,
+      fieldConfidence: item.confidence ?? null,
+      ingestBatchId: item.batchId ?? null,
+    };
 
     if (!prior) {
       await db.insert(dmsDealsTable).values({
         showroomId,
         dealerCode,
-        dealId: deal.dealId,
-        ...projected,
-        raw: deal as unknown as Record<string, unknown>,
-        rawHash: summaryHash,
+        dealId: item.key,
+        ...columnsOf(item.record),
+        ...provenance,
+        raw: item.record.raw,
+        rawHash: fingerprint,
         firstSeenAt: now,
         statusSince: now,
         lastSyncedAt: now,
@@ -160,53 +232,85 @@ async function syncDealerCode(showroomId: number, dealerCode: string): Promise<S
     // — a corrected phone number, a late invoice — must not reset how long
     // this deal has been sitting where it is, because that number is the
     // whole point of the mirror.
-    const statusMoved = prior.status !== projected.status;
+    const statusMoved = prior.status !== item.record.status;
+
+    /*
+     * A partial source merges; a complete one replaces.
+     *
+     * A scanned invoice carries the deal, the customer, the model and the
+     * price, and says nothing whatever about the policy or the registration.
+     * Writing null over a policy number the API gave us last week because this
+     * week's scan did not repeat it would be the product destroying its own
+     * data with a straight face.
+     */
+    const columns = source.listIsComplete
+      ? columnsOf(item.record)
+      : mergeOver(columnsOf(item.record), {
+          status: prior.status,
+        } as ReturnType<typeof columnsOf>);
 
     await db
       .update(dmsDealsTable)
       .set({
         showroomId,
-        ...projected,
-        raw: deal as unknown as Record<string, unknown>,
-        rawHash: summaryHash,
+        ...columns,
+        ...provenance,
+        raw: item.record.raw,
+        rawHash: fingerprint,
         lastSyncedAt: now,
         lastChangedAt: now,
         disappearedAt: null,
         ...(statusMoved ? { statusSince: now } : {}),
       })
-      .where(and(eq(dmsDealsTable.dealerCode, dealerCode), eq(dmsDealsTable.dealId, deal.dealId)));
+      .where(and(eq(dmsDealsTable.dealerCode, dealerCode), eq(dmsDealsTable.dealId, item.key)));
     changed++;
   }
 
-  // A deal the DMS has stopped listing is marked, not removed. Vanishing is
-  // itself information — cancelled, reassigned, or an integration fault — and
-  // deleting the row would throw away the history that explains it.
-  const seenIds = summaries.map((s) => s.dealId);
-  const disappearedResult = await db
-    .update(dmsDealsTable)
-    .set({ disappearedAt: new Date() })
-    .where(
-      and(
-        eq(dmsDealsTable.dealerCode, dealerCode),
-        isNull(dmsDealsTable.disappearedAt),
-        // An empty list means the DMS returned nothing at all. That is far more
-        // likely to be an integration fault than a dealership with zero deals,
-        // so nothing is marked as gone — a bad sync must not look like a
-        // business event.
-        ...(seenIds.length > 0 ? [notInArray(dmsDealsTable.dealId, seenIds)] : []),
-      ),
-    )
-    .returning({ dealId: dmsDealsTable.dealId });
+  /*
+   * A deal the source has stopped listing is marked, not removed — and only
+   * when the source says its listing was complete.
+   *
+   * Vanishing is itself information: cancelled, reassigned, or an integration
+   * fault. Deleting the row would throw away the history that explains it.
+   *
+   * **`listIsComplete` is what OBJ-24 added, and it prevents the worst bug in
+   * this file.** A document source sees one invoice. Treating everything it did
+   * not mention as gone would mark a dealership's entire book as disappeared
+   * the first time somebody scanned a sheet of paper.
+   */
+  const seenIds = listed.map((l) => l.key);
+  const disappearedResult =
+    source.listIsComplete && seenIds.length > 0
+      ? await db
+          .update(dmsDealsTable)
+          .set({ disappearedAt: new Date() })
+          .where(
+            and(
+              eq(dmsDealsTable.dealerCode, dealerCode),
+              isNull(dmsDealsTable.disappearedAt),
+              notInArray(dmsDealsTable.dealId, seenIds),
+            ),
+          )
+          .returning({ dealId: dmsDealsTable.dealId })
+      : [];
 
+  // An empty list from a source that claims completeness is far more likely to
+  // be a fault than a dealership with zero deals, so nothing is marked as gone
+  // — a bad sync must not look like a business event.
   if (seenIds.length === 0) {
-    logger.warn({ dealerCode }, "DMS returned zero deals — treating as a fault, not an empty yard");
+    logger.warn(
+      { dealerCode, path: source.path },
+      source.listIsComplete
+        ? "Source returned zero deals — treating as a fault, not an empty yard"
+        : "Nothing waiting on this source yet",
+    );
   }
 
   const finishedAt = new Date();
   const result: SyncResult = {
     showroomId,
     dealerCode,
-    seen: summaries.length,
+    seen: listed.length,
     added,
     changed,
     unchanged,

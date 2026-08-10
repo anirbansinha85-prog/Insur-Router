@@ -946,6 +946,142 @@ export const ApproveDmsMessageResponse = zod.object({
 
 
 /**
+ * Ingestion varies; completion does not. An outlet may take deals by API, stock by a spreadsheet somebody exports on Fridays, and invoices by scan — enabled per data type per dealer, because an OEM that exposes stock and not deals is the ordinary situation rather than an edge case.
+ * The freshness each path can honestly claim is different, and the row says so rather than showing a sync timestamp that means nothing on a report.
+ * @summary How this outlet is connected, per kind of data
+ */
+export const ListIngestSourcesQueryParams = zod.object({
+  "showroomId": zod.coerce.number().int()
+})
+
+export const ListIngestSourcesResponse = zod.object({
+  "sources": zod.array(zod.object({
+  "dataType": zod.string(),
+  "path": zod.enum(['API', 'REPORT', 'DOCUMENT']).describe('API is a live integration. REPORT is a file the dealer exports from their own system and drops here. DOCUMENT is a scan, read one record at a time. Not a fallback chain — a dealership picks one per data type and it is theirs.\n'),
+  "enabled": zod.boolean().describe('Off is a real state. A dealership part-way through onboarding has three of the seven on, and the four that are not must read as \"not connected\" rather than as \"nothing to show\".\n'),
+  "lastIngestedAt": zod.string().nullish()
+}))
+})
+
+
+/**
+ * Requires policy.set — the same class of decision as the dealership's own thresholds. It changes what the product does with this outlet's data and belongs to whoever runs the business, not to whoever happens to be on the onboarding call.
+ * @summary Change how a kind of data arrives
+ */
+export const SetIngestSourceBody = zod.object({
+  "showroomId": zod.number().int(),
+  "dataType": zod.string(),
+  "path": zod.enum(['API', 'REPORT', 'DOCUMENT']).describe('API is a live integration. REPORT is a file the dealer exports from their own system and drops here. DOCUMENT is a scan, read one record at a time. Not a fallback chain — a dealership picks one per data type and it is theirs.\n'),
+  "enabled": zod.boolean().optional()
+})
+
+export const SetIngestSourceResponse = zod.object({
+  "sources": zod.array(zod.object({
+  "dataType": zod.string(),
+  "path": zod.enum(['API', 'REPORT', 'DOCUMENT']).describe('API is a live integration. REPORT is a file the dealer exports from their own system and drops here. DOCUMENT is a scan, read one record at a time. Not a fallback chain — a dealership picks one per data type and it is theirs.\n'),
+  "enabled": zod.boolean().describe('Off is a real state. A dealership part-way through onboarding has three of the seven on, and the four that are not must read as \"not connected\" rather than as \"nothing to show\".\n'),
+  "lastIngestedAt": zod.string().nullish()
+}))
+})
+
+
+/**
+ * The commercial argument in one endpoint. If this export's shape has been confirmed before, the file is read by column position and NO MODEL IS CALLED — usedModel in the response says so, and it is the number this objective is measured on. Model cost is per report type per dealer, not per row.
+ * If the shape is new the file is HELD with a proposed mapping, and a person is asked what the headings mean. It is not partly imported: an import that quietly did nothing because it did not understand the file is the worst of the three possible outcomes.
+ * The body is the file as text. Every DMS export worth taking is comma or tab separated, and a parser is not an upload service.
+ * @summary Take in a file the dealer exported from their own system
+ */
+export const dropIngestReportBodyDataTypeDefault = `DEAL`;
+
+export const DropIngestReportBody = zod.object({
+  "showroomId": zod.number().int(),
+  "dataType": zod.string().default(dropIngestReportBodyDataTypeDefault),
+  "filename": zod.string().nullish(),
+  "text": zod.string().describe('The exported file, as text. Comma, tab or semicolon separated.')
+})
+
+export const DropIngestReportResponse = zod.object({
+  "batchId": zod.number().int(),
+  "status": zod.enum(['PENDING_MAPPING', 'ACCEPTED', 'REJECTED']),
+  "mappingId": zod.number().int(),
+  "mappingStatus": zod.enum(['PROPOSED', 'CONFIRMED', 'REJECTED']),
+  "headings": zod.array(zod.string()),
+  "mapping": zod.record(zod.string(), zod.object({
+  "column": zod.string(),
+  "confidence": zod.number().describe('How sure the proposal is. A name match is 0.98; a model reading an unfamiliar heading is capped at 0.8, because a good guess about a heading nobody has seen is not the same kind of fact as \"Chassis No\" meaning the chassis number. The confirmation screen sorts by this.\n')
+})),
+  "wasKnown": zod.boolean().describe('This export\'s shape had been confirmed before.'),
+  "usedModel": zod.boolean().describe('Whether a model was called to read the headings. The number this objective is measured on — false on every file after the first of a given shape.\n'),
+  "gaps": zod.array(zod.string()).describe('Required fields the mapping still cannot fill.'),
+  "rowsSeen": zod.number().int(),
+  "rowsAccepted": zod.number().int(),
+  "rowsRejected": zod.number().int(),
+  "rejections": zod.array(zod.string()).describe('The first few reasons. A mapping that rejects three hundred rows needs three examples and a count, not three hundred sentences.\n')
+})
+
+
+/**
+ * The only thing that makes a mapping usable. A model proposed it; nothing is extracted until somebody here agrees — R-49 applied to onboarding, and the reason the scheduler holds select and update on mappings and never insert.
+ * Send the file text back with the confirmation and any batch held on this mapping is released, rather than the dealer being told to go and find their export again.
+ * @summary A person says what the columns mean, once
+ */
+export const ConfirmIngestMappingParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const ConfirmIngestMappingBody = zod.object({
+  "mapping": zod.record(zod.string(), zod.object({
+  "column": zod.string(),
+  "confidence": zod.number().describe('How sure the proposal is. A name match is 0.98; a model reading an unfamiliar heading is capped at 0.8, because a good guess about a heading nobody has seen is not the same kind of fact as \"Chassis No\" meaning the chassis number. The confirmation screen sorts by this.\n')
+})).optional().describe('Corrections made on the screen, replacing the proposal wholesale.'),
+  "text": zod.string().optional().describe('The file again, so a held batch can be released rather than re-uploaded.')
+})
+
+export const ConfirmIngestMappingResponse = zod.object({
+  "mapping": zod.object({
+  "id": zod.number().int(),
+  "status": zod.string(),
+  "mapping": zod.record(zod.string(), zod.object({
+  "column": zod.string(),
+  "confidence": zod.number().describe('How sure the proposal is. A name match is 0.98; a model reading an unfamiliar heading is capped at 0.8, because a good guess about a heading nobody has seen is not the same kind of fact as \"Chassis No\" meaning the chassis number. The confirmation screen sorts by this.\n')
+})),
+  "confirmedByName": zod.string().nullish(),
+  "usedCount": zod.number().int()
+}),
+  "released": zod.array(zod.object({
+  "id": zod.number().int(),
+  "rowsAccepted": zod.number().int()
+}))
+})
+
+
+/**
+ * The answer to "where did this figure come from", which the API path never had to give — a live integration is simply true continuously. A drop happened at a moment, from a system in a state, and every row it produced inherits that moment.
+ * @summary What has been taken in, newest first
+ */
+export const ListIngestBatchesQueryParams = zod.object({
+  "showroomId": zod.coerce.number().int()
+})
+
+export const ListIngestBatchesResponse = zod.object({
+  "batches": zod.array(zod.object({
+  "id": zod.number().int(),
+  "dataType": zod.string(),
+  "path": zod.enum(['API', 'REPORT', 'DOCUMENT']).describe('API is a live integration. REPORT is a file the dealer exports from their own system and drops here. DOCUMENT is a scan, read one record at a time. Not a fallback chain — a dealership picks one per data type and it is theirs.\n'),
+  "filename": zod.string().nullish(),
+  "status": zod.string(),
+  "rowsSeen": zod.number().int(),
+  "rowsAccepted": zod.number().int(),
+  "rowsRejected": zod.number().int(),
+  "rejections": zod.union([zod.array(zod.string()),zod.null()]).optional(),
+  "mappingId": zod.number().int().nullish(),
+  "uploadedByName": zod.string().nullish(),
+  "createdAt": zod.string()
+}))
+})
+
+
+/**
  * DDMS understands a record. This is the first thing that understands a journey — one sale walking through the building, from the invoice to the certificate in the customer's hands, across four screens that do not know they describe the same vehicle.
  * Read-only, deliberately. A journey moves because the world changed, not because somebody pressed a button on it, and an endpoint that let a caller set a position would be a second way for the record to become untrue. Acting happens on the record through POST /dms/actions and the runtime notices on its next pass.
  * The position and the wait are derived on read, like reconciliation — a stored "waiting on the RTO" goes stale the moment the RTO answers. Only the arrivals come out of the database, because history does not go stale.

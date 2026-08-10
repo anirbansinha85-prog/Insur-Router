@@ -1570,6 +1570,140 @@ export interface MessageNoteInput {
 }
 
 /**
+ * API is a live integration. REPORT is a file the dealer exports from their own system and drops here. DOCUMENT is a scan, read one record at a time. Not a fallback chain — a dealership picks one per data type and it is theirs.
+ */
+export type IngestPath = typeof IngestPath[keyof typeof IngestPath];
+
+
+export const IngestPath = {
+  API: 'API',
+  REPORT: 'REPORT',
+  DOCUMENT: 'DOCUMENT',
+} as const;
+
+export interface IngestSource {
+  dataType: string;
+  path: IngestPath;
+  /** Off is a real state. A dealership part-way through onboarding has three of the seven on, and the four that are not must read as "not connected" rather than as "nothing to show". */
+  enabled: boolean;
+  /** @nullable */
+  lastIngestedAt?: string | null;
+}
+
+export interface IngestSourceInput {
+  showroomId: number;
+  dataType: string;
+  path: IngestPath;
+  enabled?: boolean;
+}
+
+export interface ReportDropInput {
+  showroomId: number;
+  dataType?: string;
+  /** @nullable */
+  filename?: string | null;
+  /** The exported file, as text. Comma, tab or semicolon separated. */
+  text: string;
+}
+
+export interface MappedColumn {
+  column: string;
+  /** How sure the proposal is. A name match is 0.98; a model reading an unfamiliar heading is capped at 0.8, because a good guess about a heading nobody has seen is not the same kind of fact as "Chassis No" meaning the chassis number. The confirmation screen sorts by this. */
+  confidence: number;
+}
+
+export type ReportDropResultStatus = typeof ReportDropResultStatus[keyof typeof ReportDropResultStatus];
+
+
+export const ReportDropResultStatus = {
+  PENDING_MAPPING: 'PENDING_MAPPING',
+  ACCEPTED: 'ACCEPTED',
+  REJECTED: 'REJECTED',
+} as const;
+
+export type ReportDropResultMappingStatus = typeof ReportDropResultMappingStatus[keyof typeof ReportDropResultMappingStatus];
+
+
+export const ReportDropResultMappingStatus = {
+  PROPOSED: 'PROPOSED',
+  CONFIRMED: 'CONFIRMED',
+  REJECTED: 'REJECTED',
+} as const;
+
+export type ReportDropResultMapping = {[key: string]: MappedColumn};
+
+export interface ReportDropResult {
+  batchId: number;
+  status: ReportDropResultStatus;
+  mappingId: number;
+  mappingStatus: ReportDropResultMappingStatus;
+  headings: string[];
+  mapping: ReportDropResultMapping;
+  /** This export's shape had been confirmed before. */
+  wasKnown: boolean;
+  /** Whether a model was called to read the headings. The number this objective is measured on — false on every file after the first of a given shape. */
+  usedModel: boolean;
+  /** Required fields the mapping still cannot fill. */
+  gaps: string[];
+  rowsSeen: number;
+  rowsAccepted: number;
+  rowsRejected: number;
+  /** The first few reasons. A mapping that rejects three hundred rows needs three examples and a count, not three hundred sentences. */
+  rejections: string[];
+}
+
+/**
+ * Corrections made on the screen, replacing the proposal wholesale.
+ */
+export type MappingConfirmInputMapping = {[key: string]: MappedColumn};
+
+export interface MappingConfirmInput {
+  /** Corrections made on the screen, replacing the proposal wholesale. */
+  mapping?: MappingConfirmInputMapping;
+  /** The file again, so a held batch can be released rather than re-uploaded. */
+  text?: string;
+}
+
+export type MappingConfirmResultMappingMapping = {[key: string]: MappedColumn};
+
+export type MappingConfirmResultMapping = {
+  id: number;
+  status: string;
+  mapping: MappingConfirmResultMappingMapping;
+  /** @nullable */
+  confirmedByName?: string | null;
+  usedCount: number;
+};
+
+export type MappingConfirmResultReleasedItem = {
+  id: number;
+  rowsAccepted: number;
+};
+
+export interface MappingConfirmResult {
+  mapping: MappingConfirmResultMapping;
+  released: MappingConfirmResultReleasedItem[];
+}
+
+export interface IngestBatch {
+  id: number;
+  dataType: string;
+  path: IngestPath;
+  /** @nullable */
+  filename?: string | null;
+  status: string;
+  rowsSeen: number;
+  rowsAccepted: number;
+  rowsRejected: number;
+  rejections?: string[] | null;
+  /** @nullable */
+  mappingId?: number | null;
+  /** @nullable */
+  uploadedByName?: string | null;
+  createdAt: string;
+}
+
+/**
  * ABANDONED is not DONE. The thing the journey was about stopped existing, which must never be counted as having finished.
  */
 export type JourneyTraceStatus = typeof JourneyTraceStatus[keyof typeof JourneyTraceStatus];
@@ -2928,6 +3062,26 @@ status?: string;
 export type ListDmsMessages200 = {
   rows: OutboxRow[];
   summary: OutboxSummary;
+};
+
+export type ListIngestSourcesParams = {
+showroomId: number;
+};
+
+export type ListIngestSources200 = {
+  sources: IngestSource[];
+};
+
+export type SetIngestSource200 = {
+  sources: IngestSource[];
+};
+
+export type ListIngestBatchesParams = {
+showroomId: number;
+};
+
+export type ListIngestBatches200 = {
+  batches: IngestBatch[];
 };
 
 export type ListRecordActivities200 = {

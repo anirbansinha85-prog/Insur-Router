@@ -17,6 +17,8 @@ export * from "./record_activities";
 export * from "./tasks";
 // Where each thing in the building has got to (OBJ-23, R-77).
 export * from "./journeys";
+// Three ways in, one record (OBJ-24, R-84).
+export * from "./ingest";
 export * from "./outbound_messages";
 export * from "./providers";
 export * from "./insurer_panel";

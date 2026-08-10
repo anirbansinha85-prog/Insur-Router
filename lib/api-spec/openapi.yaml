@@ -987,6 +987,178 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /dms/ingest/sources:
+    get:
+      operationId: listIngestSources
+      tags: [dms]
+      summary: How this outlet is connected, per kind of data
+      description: >
+        Ingestion varies; completion does not. An outlet may take deals by API,
+        stock by a spreadsheet somebody exports on Fridays, and invoices by scan
+        — enabled per data type per dealer, because an OEM that exposes stock and
+        not deals is the ordinary situation rather than an edge case.
+
+        The freshness each path can honestly claim is different, and the row says
+        so rather than showing a sync timestamp that means nothing on a report.
+      parameters:
+        - name: showroomId
+          in: query
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: All seven kinds, defaulted to API where nobody has chosen
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sources:
+                    type: array
+                    items: { $ref: "#/components/schemas/IngestSource" }
+                required: [sources]
+    put:
+      operationId: setIngestSource
+      tags: [dms]
+      summary: Change how a kind of data arrives
+      description: >
+        Requires policy.set — the same class of decision as the dealership's own
+        thresholds. It changes what the product does with this outlet's data and
+        belongs to whoever runs the business, not to whoever happens to be on the
+        onboarding call.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IngestSourceInput" }
+      responses:
+        "200":
+          description: The outlet, as it now stands
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sources:
+                    type: array
+                    items: { $ref: "#/components/schemas/IngestSource" }
+                required: [sources]
+        "403":
+          description: Not a role that sets what the dealership does
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /dms/ingest/report:
+    post:
+      operationId: dropIngestReport
+      tags: [dms]
+      summary: Take in a file the dealer exported from their own system
+      description: >
+        The commercial argument in one endpoint. If this export's shape has been
+        confirmed before, the file is read by column position and NO MODEL IS
+        CALLED — usedModel in the response says so, and it is the number this
+        objective is measured on. Model cost is per report type per dealer, not
+        per row.
+
+        If the shape is new the file is HELD with a proposed mapping, and a
+        person is asked what the headings mean. It is not partly imported: an
+        import that quietly did nothing because it did not understand the file is
+        the worst of the three possible outcomes.
+
+        The body is the file as text. Every DMS export worth taking is comma or
+        tab separated, and a parser is not an upload service.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReportDropInput" }
+      responses:
+        "201":
+          description: Taken in, or held pending a mapping
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReportDropResult" }
+        "400":
+          description: No headings, or no rows beneath them
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: This exact file has already been taken in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /dms/ingest/mappings/{id}/confirm:
+    post:
+      operationId: confirmIngestMapping
+      tags: [dms]
+      summary: A person says what the columns mean, once
+      description: >
+        The only thing that makes a mapping usable. A model proposed it; nothing
+        is extracted until somebody here agrees — R-49 applied to onboarding, and
+        the reason the scheduler holds select and update on mappings and never
+        insert.
+
+        Send the file text back with the confirmation and any batch held on this
+        mapping is released, rather than the dealer being told to go and find
+        their export again.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MappingConfirmInput" }
+      responses:
+        "200":
+          description: Confirmed, with any held batches released
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MappingConfirmResult" }
+        "403":
+          description: Not a role that sets what the dealership does
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such mapping
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /dms/ingest/batches:
+    get:
+      operationId: listIngestBatches
+      tags: [dms]
+      summary: What has been taken in, newest first
+      description: >
+        The answer to "where did this figure come from", which the API path never
+        had to give — a live integration is simply true continuously. A drop
+        happened at a moment, from a system in a state, and every row it produced
+        inherits that moment.
+      parameters:
+        - name: showroomId
+          in: query
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  batches:
+                    type: array
+                    items: { $ref: "#/components/schemas/IngestBatch" }
+                required: [batches]
+
   /dms/records/{module}/{recordKey}/journey:
     get:
       operationId: getRecordJourney
@@ -3724,6 +3896,163 @@ components:
       description: An optional note recorded against the approval or the cancellation.
       properties:
         note: { type: string }
+
+    IngestPath:
+      type: string
+      enum: [API, REPORT, DOCUMENT]
+      description: >
+        API is a live integration. REPORT is a file the dealer exports from their
+        own system and drops here. DOCUMENT is a scan, read one record at a time.
+        Not a fallback chain — a dealership picks one per data type and it is
+        theirs.
+
+    IngestSource:
+      type: object
+      properties:
+        dataType: { type: string }
+        path: { $ref: "#/components/schemas/IngestPath" }
+        enabled:
+          type: boolean
+          description: >
+            Off is a real state. A dealership part-way through onboarding has
+            three of the seven on, and the four that are not must read as "not
+            connected" rather than as "nothing to show".
+        lastIngestedAt: { type: ["string", "null"] }
+      required: [dataType, path, enabled]
+
+    IngestSourceInput:
+      type: object
+      properties:
+        showroomId: { type: integer }
+        dataType: { type: string }
+        path: { $ref: "#/components/schemas/IngestPath" }
+        enabled: { type: boolean }
+      required: [showroomId, dataType, path]
+
+    ReportDropInput:
+      type: object
+      properties:
+        showroomId: { type: integer }
+        dataType:
+          type: string
+          default: DEAL
+        filename: { type: ["string", "null"] }
+        text:
+          type: string
+          description: The exported file, as text. Comma, tab or semicolon separated.
+      required: [showroomId, text]
+
+    MappedColumn:
+      type: object
+      properties:
+        column: { type: string }
+        confidence:
+          type: number
+          description: >
+            How sure the proposal is. A name match is 0.98; a model reading an
+            unfamiliar heading is capped at 0.8, because a good guess about a
+            heading nobody has seen is not the same kind of fact as "Chassis No"
+            meaning the chassis number. The confirmation screen sorts by this.
+      required: [column, confidence]
+
+    ReportDropResult:
+      type: object
+      properties:
+        batchId: { type: integer }
+        status:
+          type: string
+          enum: [PENDING_MAPPING, ACCEPTED, REJECTED]
+        mappingId: { type: integer }
+        mappingStatus:
+          type: string
+          enum: [PROPOSED, CONFIRMED, REJECTED]
+        headings:
+          type: array
+          items: { type: string }
+        mapping:
+          type: object
+          additionalProperties: { $ref: "#/components/schemas/MappedColumn" }
+        wasKnown:
+          type: boolean
+          description: This export's shape had been confirmed before.
+        usedModel:
+          type: boolean
+          description: >
+            Whether a model was called to read the headings. The number this
+            objective is measured on — false on every file after the first of a
+            given shape.
+        gaps:
+          type: array
+          items: { type: string }
+          description: Required fields the mapping still cannot fill.
+        rowsSeen: { type: integer }
+        rowsAccepted: { type: integer }
+        rowsRejected: { type: integer }
+        rejections:
+          type: array
+          items: { type: string }
+          description: >
+            The first few reasons. A mapping that rejects three hundred rows needs
+            three examples and a count, not three hundred sentences.
+      required:
+        [batchId, status, mappingId, mappingStatus, headings, mapping, wasKnown,
+         usedModel, gaps, rowsSeen, rowsAccepted, rowsRejected, rejections]
+
+    MappingConfirmInput:
+      type: object
+      properties:
+        mapping:
+          type: object
+          additionalProperties: { $ref: "#/components/schemas/MappedColumn" }
+          description: Corrections made on the screen, replacing the proposal wholesale.
+        text:
+          type: string
+          description: The file again, so a held batch can be released rather than re-uploaded.
+
+    MappingConfirmResult:
+      type: object
+      properties:
+        mapping:
+          type: object
+          properties:
+            id: { type: integer }
+            status: { type: string }
+            mapping:
+              type: object
+              additionalProperties: { $ref: "#/components/schemas/MappedColumn" }
+            confirmedByName: { type: ["string", "null"] }
+            usedCount: { type: integer }
+          required: [id, status, mapping, usedCount]
+        released:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              rowsAccepted: { type: integer }
+            required: [id, rowsAccepted]
+      required: [mapping, released]
+
+    IngestBatch:
+      type: object
+      properties:
+        id: { type: integer }
+        dataType: { type: string }
+        path: { $ref: "#/components/schemas/IngestPath" }
+        filename: { type: ["string", "null"] }
+        status: { type: string }
+        rowsSeen: { type: integer }
+        rowsAccepted: { type: integer }
+        rowsRejected: { type: integer }
+        rejections:
+          oneOf:
+            - type: array
+              items: { type: string }
+            - type: "null"
+        mappingId: { type: ["integer", "null"] }
+        uploadedByName: { type: ["string", "null"] }
+        createdAt: { type: string }
+      required: [id, dataType, path, status, rowsSeen, rowsAccepted, rowsRejected, createdAt]
 
     JourneyTrace:
       type: object

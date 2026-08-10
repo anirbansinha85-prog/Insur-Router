@@ -112,6 +112,33 @@ export const dmsDealsTable = pgTable(
      * drop history the owner may need.
      */
     disappearedAt: timestamp("disappeared_at", { withTimezone: true }),
+
+    /**
+     * How this row got here, and how much of it to believe (OBJ-24, R-85).
+     *
+     * A value read off a mapped spreadsheet column is not the same fact as one
+     * an API returned, and a value a model lifted off a scanned invoice is a
+     * third thing again. Nothing downstream may treat them alike — but nothing
+     * downstream should have to *know* about them either, which is why this
+     * sits beside the projected columns rather than inside them. The worklist
+     * reads `invoiceNo`; it does not read `invoiceNo.value`.
+     *
+     * Same instinct as the `SIM-` prefix on a simulated policy number: the
+     * record says what kind of fact it is holding.
+     */
+    ingestPath: text("ingest_path", { enum: ["API", "REPORT", "DOCUMENT"] })
+      .notNull()
+      .default("API"),
+    /**
+     * `field -> confidence`, 0 to 1, only where it is below certainty.
+     *
+     * Sparse on purpose, exactly as `dealer_policy` is: an API field is 1.0 and
+     * writing that against every column on every row would be a megabyte of
+     * JSON saying nothing. An absent entry means *no reason to doubt it*.
+     */
+    fieldConfidence: jsonb("field_confidence").$type<Record<string, number>>(),
+    /** The drop this came from, when it came from one. Null on an API pull. */
+    ingestBatchId: integer("ingest_batch_id"),
   },
   (t) => [
     unique("dms_deals_dealer_deal_unique").on(t.dealerCode, t.dealId),

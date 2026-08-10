@@ -102,6 +102,14 @@ import { buildQueue } from "../lib/dms/queue";
 import { describeRules, MAX_RULES } from "../lib/dms/rules";
 import { describePolicy, loadPolicy, resetAllPolicy, setPolicy } from "../lib/dms/policy";
 import { traceFor } from "../lib/dms/journeys";
+import {
+  confirmMapping,
+  describeSources,
+  dropReport,
+  listBatches,
+  releaseHeld,
+  setPath,
+} from "../lib/dms/ingest";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -805,6 +813,195 @@ router.post("/dms/messages/:id/send", async (req, res): Promise<void> => {
  * the same `app.can_read(module)` that gates the mirror row itself. A service
  * advisor is refused a note on a receivable by Postgres, not by this handler.
  */
+/**
+ * How this outlet is connected, per kind of data (OBJ-24).
+ *
+ * The screen a dealership sees during onboarding, and the honest answer to
+ * *how fresh is this*. An outlet on the API path is live; one on a report is
+ * only as current as the last export, and the row says so rather than showing a
+ * sync timestamp that means nothing.
+ */
+router.get("/dms/ingest/sources", async (req, res): Promise<void> => {
+  const showroomId = Number(req.query.showroomId);
+  if (!Number.isInteger(showroomId) || !(await assertShowroomAccess(req, res, showroomId))) {
+    if (!res.headersSent) res.status(400).json({ error: "showroomId must be a positive integer" });
+    return;
+  }
+  res.json({ sources: await describeSources(showroomId) });
+});
+
+/**
+ * Change how a kind of data arrives.
+ *
+ * `policy.set` rather than a new permission: this is the same class of decision
+ * as the dealership's own thresholds — it changes what the product does with
+ * this outlet's data and belongs to whoever runs the business, not to whoever
+ * happens to be doing the onboarding call.
+ */
+router.put("/dms/ingest/sources", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  if (!may(user.role, "policy.set")) {
+    res.status(403).json({ error: whyNot(user.role, "policy.set") });
+    return;
+  }
+
+  const body = req.body as { showroomId?: unknown; dataType?: unknown; path?: unknown; enabled?: unknown };
+  const showroomId = Number(body.showroomId);
+  if (!Number.isInteger(showroomId) || !(await assertShowroomAccess(req, res, showroomId))) {
+    if (!res.headersSent) res.status(400).json({ error: "showroomId must be a positive integer" });
+    return;
+  }
+  const dataType = String(body.dataType).toUpperCase();
+  const path = String(body.path).toUpperCase();
+  if (!ACTIVITY_MODULES.has(dataType)) {
+    res.status(400).json({ error: `Unknown data type ${body.dataType}` });
+    return;
+  }
+  if (!["API", "REPORT", "DOCUMENT"].includes(path)) {
+    res.status(400).json({ error: "path must be API, REPORT or DOCUMENT" });
+    return;
+  }
+
+  await setPath({
+    ownerId: user.ownerId,
+    showroomId,
+    dataType: dataType as never,
+    path: path as never,
+    enabled: body.enabled === undefined ? true : Boolean(body.enabled),
+  });
+  res.json({ sources: await describeSources(showroomId) });
+});
+
+/**
+ * Take in a file the dealer exported from their own system.
+ *
+ * The whole commercial argument in one endpoint. If this export's shape has
+ * been confirmed before the file is read by column position and **no model is
+ * called** — the response says so in `usedModel`, which is the number OBJ-24 is
+ * measured on. If it has not, the file is held with a proposed mapping and a
+ * person is asked what the headings mean, once.
+ *
+ * The body is the file as text rather than multipart, because every DMS export
+ * worth taking is CSV or tab-separated and a parser is not an upload service.
+ */
+router.post("/dms/ingest/report", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  const body = req.body as {
+    showroomId?: unknown;
+    dataType?: unknown;
+    filename?: unknown;
+    text?: unknown;
+  };
+
+  const showroomId = Number(body.showroomId);
+  if (!Number.isInteger(showroomId) || !(await assertShowroomAccess(req, res, showroomId))) {
+    if (!res.headersSent) res.status(400).json({ error: "showroomId must be a positive integer" });
+    return;
+  }
+  const dataType = String(body.dataType ?? "DEAL").toUpperCase();
+  if (!ACTIVITY_MODULES.has(dataType)) {
+    res.status(400).json({ error: `Unknown data type ${body.dataType}` });
+    return;
+  }
+  if (!(await assertModuleAccess(req, res, dataType as never))) return;
+  if (typeof body.text !== "string" || body.text.trim().length === 0) {
+    res.status(400).json({ error: "Send the exported file as text." });
+    return;
+  }
+
+  const result = await dropReport({
+    ownerId: user.ownerId,
+    showroomId,
+    dataType: dataType as never,
+    filename: typeof body.filename === "string" ? body.filename : null,
+    text: body.text,
+    userId: user.userId,
+    userName: user.name,
+  });
+
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+
+  const r = result.result;
+  res.status(201).json({
+    batchId: r.batch.id,
+    status: r.batch.status,
+    mappingId: r.mapping.id,
+    mappingStatus: r.mapping.status,
+    headings: r.mapping.headings,
+    mapping: r.mapping.mapping,
+    wasKnown: r.wasKnown,
+    usedModel: r.usedModel,
+    gaps: r.gaps,
+    rowsSeen: r.rowsSeen,
+    rowsAccepted: r.rowsAccepted,
+    rowsRejected: r.rowsRejected,
+    rejections: r.rejections,
+  });
+});
+
+/**
+ * A person says what the columns mean, once.
+ *
+ * The step that makes a mapping usable, and the only thing that can. A model
+ * proposed it; nothing is extracted until somebody here agrees — R-49 applied
+ * to onboarding. Held batches on this mapping are released rather than the
+ * dealer being told to find the file again.
+ */
+router.post("/dms/ingest/mappings/:id/confirm", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  if (!may(user.role, "policy.set")) {
+    res.status(403).json({ error: whyNot(user.role, "policy.set") });
+    return;
+  }
+
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: "id must be a positive integer" });
+    return;
+  }
+
+  const body = req.body as { mapping?: unknown; text?: unknown };
+  const row = await confirmMapping({
+    id,
+    userId: user.userId,
+    userName: user.name,
+    mapping: body.mapping as never,
+  });
+  if (!row) {
+    res.status(404).json({ error: "No such mapping." });
+    return;
+  }
+
+  const released =
+    typeof body.text === "string" && body.text.length > 0
+      ? await releaseHeld({ mappingId: id, text: body.text })
+      : [];
+
+  res.json({
+    mapping: {
+      id: row.id,
+      status: row.status,
+      mapping: row.mapping,
+      confirmedByName: row.confirmedByName,
+      usedCount: row.usedCount,
+    },
+    released: released.map((b) => ({ id: b.id, rowsAccepted: b.rowsAccepted })),
+  });
+});
+
+/** What has been taken in, newest first. The audit trail for a disputed figure. */
+router.get("/dms/ingest/batches", async (req, res): Promise<void> => {
+  const showroomId = Number(req.query.showroomId);
+  if (!Number.isInteger(showroomId) || !(await assertShowroomAccess(req, res, showroomId))) {
+    if (!res.headersSent) res.status(400).json({ error: "showroomId must be a positive integer" });
+    return;
+  }
+  res.json({ batches: await listBatches(showroomId) });
+});
+
 /**
  * Where this record's journey has got to (OBJ-23).
  *

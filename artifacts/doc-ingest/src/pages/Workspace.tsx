@@ -3,6 +3,7 @@ import { LogOut } from "lucide-react"
 import { IngestResult, type SessionUser } from "@workspace/api-client-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DmsPull } from "@/components/dms-pull"
+import { DmsReport } from "@/components/dms-report"
 import { BrowserScrape } from "@/components/browser-scrape"
 import { OcrUpload } from "@/components/ocr-upload"
 import { OcrEngineSettings } from "@/components/ocr-engine-settings"
@@ -58,8 +59,9 @@ export function Workspace({
             </div>
 
             <Tabs defaultValue="dms" className="w-full">
-              <TabsList className="grid w-full grid-cols-4 h-12 mb-6">
+              <TabsList className="grid w-full grid-cols-5 h-12 mb-6">
                 <TabsTrigger value="dms" className="text-sm">DMS Pull</TabsTrigger>
+                <TabsTrigger value="report" className="text-sm">DMS Report</TabsTrigger>
                 <TabsTrigger value="browser" className="text-sm">Browser Scrape</TabsTrigger>
                 <TabsTrigger value="ocr" className="text-sm">OCR Upload</TabsTrigger>
                 <TabsTrigger value="engines" className="text-sm">Engines</TabsTrigger>
@@ -68,6 +70,14 @@ export function Workspace({
               <div className="mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
                 <TabsContent value="dms" className="m-0 focus-visible:outline-none">
                   <DmsPull onResult={(res) => setIngestResult({ ...res, sourceName: "DMS Pull" })} />
+                </TabsContent>
+                {/* The path most dealers actually have (OBJ-24). Beside the
+                    API pull rather than beneath it: the dealers with no
+                    integration are the majority, and a tab order that treats
+                    them as the fallback is the product agreeing with the
+                    assumption it exists to correct. */}
+                <TabsContent value="report" className="m-0 focus-visible:outline-none">
+                  <DmsReport />
                 </TabsContent>
                 <TabsContent value="browser" className="m-0 focus-visible:outline-none">
                   <BrowserScrape onResult={(res) => setIngestResult({ ...res, sourceName: "Browser Scrape" })} />

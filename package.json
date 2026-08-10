@@ -15,6 +15,7 @@
     "verify:permissions": "pnpm --filter @workspace/scripts run permissions",
     "verify:agent": "pnpm --filter @workspace/scripts run agent",
     "verify:journey": "pnpm --filter @workspace/scripts run journey",
+    "verify:ingest": "pnpm --filter @workspace/scripts run ingest",
     "db:probe": "pnpm --filter @workspace/scripts run probe",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
