@@ -154,6 +154,19 @@ for (const p of ["OWNER", "SALES_EXEC", "SERVICE_ADVISOR", "RTO_AGENT", "ACCOUNT
 // makes it reviewable.
 console.log(`\n  AGENT holds: ${permissionsFor("AGENT").join(", ")}`);
 
+// ── 7b. The records boundary, at the permission layer ───────────────────────
+//
+// The kind-level rule (an agent may write OBSERVED, never CALL) is checked by
+// `verify:records`, which needs a database. This is the half that does not.
+
+section("7b. the agent may write a record and may not close a task");
+
+check("holds activity.write", may("AGENT", "activity.write"), true);
+check("holds task.create", may("AGENT", "task.create"), true);
+check("does NOT hold task.complete", may("AGENT", "task.complete"), false);
+check("does NOT hold activity.retract", may("AGENT", "activity.retract"), false);
+console.log(`  why not: ${whyNot("AGENT", "task.complete")}`);
+
 // ── 8. Nothing grants what nothing should ───────────────────────────────────
 
 section("8. no principal holds a permission that does not exist");
@@ -167,6 +180,11 @@ const NAMED: Permission[] = [
   "receivable.mark_disputed", "vehicle.mark_offered", "vehicle.propose_transfer",
   "outbox.approve", "outbox.edit", "outbox.cancel", "outbox.send",
   "policy.set", "staff.view", "outlet.view_all",
+  // OBJ-22. Adding these was a table edit and a line here — which is what
+  // OBJ-21 was for. Before it, the same change touched three files and this
+  // check did not exist to catch the one that was forgotten.
+  "activity.view", "activity.write", "activity.retract",
+  "task.view", "task.create", "task.complete",
 ];
 const named = new Set<string>(NAMED);
 let stray = 0;
