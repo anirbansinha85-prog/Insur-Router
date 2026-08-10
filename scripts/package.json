@@ -12,7 +12,8 @@
     "seed-applications": "tsx --env-file-if-exists=../.env ./src/seed-applications.ts",
     "rls": "tsx --env-file-if-exists=../.env ./src/apply-rls.ts",
     "probe": "tsx --env-file-if-exists=../.env ./src/rls-probe.ts",
-    "agent": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-agent.ts"
+    "agent": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-agent.ts",
+    "permissions": "tsx ../artifacts/api-server/src/scripts/verify-permissions.ts"
   },
   "dependencies": {
     "@workspace/db": "workspace:*",

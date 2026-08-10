@@ -167,16 +167,21 @@ function Row({
   )
 }
 
-export default function Numbers({ role }: { role: string }) {
+export default function Numbers({ permissions }: { permissions: string[] }) {
   const { selected } = useShowroom()
   const qc = useQueryClient()
   const { data, isLoading } = useGetDmsPolicy({ query: { queryKey: ["/api/dms/policy"] } })
   const reset = useResetDmsPolicy()
 
-  // The same pair the route and the row policies name. Everybody may read
-  // these — the numbers explain what is on their screen, and hiding them would
-  // make the queue's order look arbitrary.
-  const editable = role === "OWNER" || role === "MANAGER"
+  // Asked of the server's answer rather than worked out here.
+  //
+  // This was `role === "OWNER" || role === "MANAGER"` — a second permission
+  // table, written in a screen, that could disagree with the one the route
+  // uses. Since OBJ-21 there is one table and the session carries its answer.
+  //
+  // Everybody may still *read* these: the numbers explain what is on their
+  // screen, and hiding them would make the queue's order look arbitrary.
+  const editable = permissions.includes("policy.set")
 
   const settings = data?.settings ?? []
   const changed = settings.filter((s) => !s.isDefault).length

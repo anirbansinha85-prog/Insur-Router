@@ -422,6 +422,7 @@ export const LoginResponse = zod.object({
   "empCode": zod.string().nullish().describe('The dealer\'s own employee code, when this login is a member of staff. The same code already sits on the enquiries, registration files and job cards assigned to them — which is what makes \"my work\" mean anything. Null for an owner.\n'),
   "showroomId": zod.number().int().nullish().describe('The outlet they work at. Null means every outlet the owner holds.'),
   "modules": zod.array(zod.string()).optional().describe('What this role may read, so the console can show a sidebar that matches what the database will answer. Cosmetic — the row policies are what actually refuse.\n'),
+  "permissions": zod.array(zod.string()).optional().describe('What this role may do, as `namespace.verb` — `policy.set`, `enquiry.reassign`. Resolved from the one permission table in lib\/dms\/permissions.ts, which also answers for the agent.\nSent rather than derived in the browser: a screen deciding for itself whether somebody is an owner is a second permission table, and the one the user sees would be the one that drifts. Cosmetic in exactly the way modules is — the route refuses and the row policies refuse.\n'),
   "showrooms": zod.array(zod.object({
   "id": zod.number().int(),
   "code": zod.string(),
@@ -449,6 +450,7 @@ export const GetCurrentUserResponse = zod.object({
   "empCode": zod.string().nullish().describe('The dealer\'s own employee code, when this login is a member of staff. The same code already sits on the enquiries, registration files and job cards assigned to them — which is what makes \"my work\" mean anything. Null for an owner.\n'),
   "showroomId": zod.number().int().nullish().describe('The outlet they work at. Null means every outlet the owner holds.'),
   "modules": zod.array(zod.string()).optional().describe('What this role may read, so the console can show a sidebar that matches what the database will answer. Cosmetic — the row policies are what actually refuse.\n'),
+  "permissions": zod.array(zod.string()).optional().describe('What this role may do, as `namespace.verb` — `policy.set`, `enquiry.reassign`. Resolved from the one permission table in lib\/dms\/permissions.ts, which also answers for the agent.\nSent rather than derived in the browser: a screen deciding for itself whether somebody is an owner is a second permission table, and the one the user sees would be the one that drifts. Cosmetic in exactly the way modules is — the route refuses and the row policies refuse.\n'),
   "showrooms": zod.array(zod.object({
   "id": zod.number().int(),
   "code": zod.string(),

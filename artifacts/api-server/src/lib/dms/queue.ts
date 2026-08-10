@@ -51,7 +51,7 @@
 
 import { inArray } from "drizzle-orm";
 import { db, dmsEmployeesTable } from "@workspace/db";
-import { canRead, type AccessModule } from "./access";
+import { canRead, type AccessModule } from "./permissions";
 import { loadPolicy, type ResolvedPolicy } from "./policy";
 import { buildWorklist } from "./worklist";
 import { buildServiceWorklist } from "./service-worklist";

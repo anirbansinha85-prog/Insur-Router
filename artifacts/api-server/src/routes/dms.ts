@@ -84,7 +84,13 @@ import {
   requireUser,
   sessionScope,
 } from "../lib/session";
-import { seesEveryOutlet } from "../lib/dms/access";
+import {
+  may,
+  seesEveryOutlet,
+  whyNot,
+  PERMISSION_FOR_ACTION,
+  type RegistryActionId,
+} from "../lib/dms/permissions";
 import { buildQueue } from "../lib/dms/queue";
 import { describeRules, MAX_RULES } from "../lib/dms/rules";
 import { describePolicy, resetAllPolicy, setPolicy } from "../lib/dms/policy";
@@ -513,6 +519,29 @@ router.post("/dms/actions", async (req, res): Promise<void> => {
     return;
   }
 
+  /*
+   * Who may call this one.
+   *
+   * **This route checked nothing until OBJ-21**, and it was not the hole it
+   * looks like: `app.can_read(module)` sits in the `using` and `with check` of
+   * every mirror table's row policy, so a technician marking a receivable
+   * disputed was already refused — by Postgres.
+   *
+   * What was wrong was the sentence. `applyAction` reads the row before it
+   * writes, row-level security makes that read return nothing, and the caller
+   * got **404 "No receivable REC-0417-5504"** — which is false. The receivable
+   * exists. They may not see it.
+   *
+   * A 404 is the right answer across dealerships, where confirming a record
+   * exists is itself a leak. Inside your own dealership with the wrong role it
+   * is unhelpful, and the table already holds the sentence that helps.
+   */
+  const permission = PERMISSION_FOR_ACTION[action as RegistryActionId];
+  if (!may(req.sessionUser!.role, permission)) {
+    res.status(403).json({ error: whyNot(req.sessionUser!.role, permission) });
+    return;
+  }
+
   const showroomId = Number(body.showroomId);
   const recordKey = String(body.recordKey ?? "");
   if (!Number.isInteger(showroomId) || showroomId <= 0 || !recordKey) {
@@ -833,12 +862,18 @@ router.get("/dms/policy", async (req, res): Promise<void> => {
 
 router.put("/dms/policy", async (req, res): Promise<void> => {
   const user = req.sessionUser!;
-  if (!seesEveryOutlet(user.role)) {
-    res.status(403).json({
-      error:
-        `Only an owner or a showroom manager sets these. They decide what the ` +
-        `whole dealership does first, and your role covers one part of it.`,
-    });
+  /*
+   * `policy.set`, not `seesEveryOutlet`.
+   *
+   * The two have the same holders today and they are not the same question.
+   * One asks whether you can see across branches; the other whether you may
+   * decide what the whole dealership does first. Asking the visibility question
+   * to answer the authority one is the drift OBJ-21 exists to remove — and the
+   * day a dealership wants a branch manager who sets numbers for one outlet,
+   * this line already says which of the two it means.
+   */
+  if (!may(user.role, "policy.set")) {
+    res.status(403).json({ error: whyNot(user.role, "policy.set") });
     return;
   }
 
@@ -867,8 +902,8 @@ router.put("/dms/policy", async (req, res): Promise<void> => {
 
 router.post("/dms/policy/reset", async (req, res): Promise<void> => {
   const user = req.sessionUser!;
-  if (!seesEveryOutlet(user.role)) {
-    res.status(403).json({ error: "Only an owner or a showroom manager sets these." });
+  if (!may(user.role, "policy.set")) {
+    res.status(403).json({ error: whyNot(user.role, "policy.set") });
     return;
   }
   const showroomId = Number((req.body as { showroomId?: unknown }).showroomId);

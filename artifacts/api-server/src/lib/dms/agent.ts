@@ -53,51 +53,53 @@
 
 import { logger } from "../logger";
 import { applyAction, listStaff, type ActionId } from "./actions";
+import {
+  may,
+  whyNot,
+  PERMISSION_FOR_ACTION,
+  type RegistryActionId,
+} from "./permissions";
 import { citationsHold } from "./explain";
 import type { ResolvedPolicy } from "./policy";
 import type { QueueItem } from "./queue";
 import type { Evidence } from "./tools";
 
 /**
- * Everything the agent may call, and it is the whole of it.
+ * Everything the agent may call, derived from the permission table.
  *
- * A closed set stated as data rather than as a condition somewhere in a
- * function, so that adding to it is a diff somebody reviews rather than a
- * branch somebody widens.
+ * This was two constants sitting here — an allow-list and a ten-entry
+ * refusal list — and OBJ-21 moved both into `permissions.ts`, where the agent
+ * is a principal like any role. The set below is now *read* from that table
+ * rather than being a second copy of it.
+ *
+ * Why it matters beyond tidiness: adding an action used to mean editing a list
+ * here **and** hoping nobody had written a role check somewhere else. Now the
+ * same table answers for a service advisor and for the agent, so the two cannot
+ * disagree — and when a second agent arrives (OBJ-29) it is a principal and a
+ * set of grants, and this file does not change at all.
+ *
+ * The ten reasons did not disappear. They are `WITHHELD.AGENT` in that file,
+ * verbatim, and `whyNot()` is what reads them — because *why not* is the part
+ * worth reviewing, and most of those sentences do not lose force with time.
  */
-export const AGENT_ACTIONS = ["ENQUIRY_REASSIGN", "REGISTRATION_ASSIGN_AGENT"] as const;
-export type AgentAction = (typeof AGENT_ACTIONS)[number];
+export const AGENT_ACTIONS = (
+  Object.keys(PERMISSION_FOR_ACTION) as RegistryActionId[]
+).filter((id) => may("AGENT", PERMISSION_FOR_ACTION[id])) as readonly ActionId[];
+
+export type AgentAction = ActionId;
 
 /**
- * The ten it may not call, each with the reason written next to it.
+ * The refusals, still readable and still one sentence each.
  *
- * Kept as a table rather than as an absence, because *why not* is the part
- * worth reviewing. Anybody proposing to move one of these into the set above
- * has to argue with the sentence beside it, and most of these sentences do not
- * lose their force with time — a model will never be able to make a phone call.
+ * Kept as an export because it is the artefact anybody reviewing the agent's
+ * scope should read first, and because the register cites it by name. It is
+ * assembled from the table rather than being the table.
  */
-export const CLOSED_TO_THE_AGENT: Record<Exclude<ActionId, AgentAction>, string> = {
-  ENQUIRY_LOG_CONTACT:
-    "Asserts somebody rang the customer. The agent cannot ring anybody, and the mark removes the row from the calls-to-make count.",
-  JOB_CARD_MARK_INFORMED:
-    "Asserts the customer was told their vehicle is ready. Same objection, and the customer is the one who finds out it was false.",
-  REGISTRATION_MARK_NOTIFIED:
-    "Asserts the customer was told their certificate has arrived. A file marked notified stops being chased.",
-  REGISTRATION_LOG_CHASE:
-    "Asserts somebody rang the RTO. A chase that never happened makes a stalled file look handled for another week.",
-  RECEIVABLE_LOG_CHASE:
-    "Asserts somebody asked a party for money. The dealership's cash position is not a place to record work that did not occur.",
-  VEHICLE_MARK_OFFERED:
-    "Asserts a salesman showed the unit to a named customer. It is also the field whose absence means nobody has asked for this bike.",
-  RECEIVABLE_MARK_DISPUTED:
-    "A judgement about whether a customer's account is in breach. R-49 reserves exactly that from a model, whatever it is confident of.",
-  PART_RAISE_REORDER:
-    "Asserts a purchase order was raised in the dealer's own system, which DDMS never writes to (R-5, R-40).",
-  PART_REQUEST_TRANSFER:
-    "Commits stock to move between outlets. A proposal rather than a claim, but the consequence is physical and it is not the band this agent is pointed at.",
-  VEHICLE_PROPOSE_TRANSFER:
-    "Same. Honest as a proposal, and held back until the two assignments have run for a while in a real dealership.",
-};
+export const CLOSED_TO_THE_AGENT: Record<string, string> = Object.fromEntries(
+  (Object.keys(PERMISSION_FOR_ACTION) as RegistryActionId[])
+    .filter((id) => !may("AGENT", PERMISSION_FOR_ACTION[id]))
+    .map((id) => [id, whyNot("AGENT", PERMISSION_FOR_ACTION[id])]),
+);
 
 /**
  * What the agent would do to one queue item, and why.
@@ -329,8 +331,14 @@ export async function suggestForItems(
   return out;
 }
 
+/**
+ * Asked of the permission table rather than of a list.
+ *
+ * One question, one answer, and the same one a route asks about a person.
+ */
 export function isAgentAction(action: string): action is AgentAction {
-  return (AGENT_ACTIONS as readonly string[]).includes(action);
+  const permission = PERMISSION_FOR_ACTION[action as RegistryActionId];
+  return Boolean(permission) && may("AGENT", permission);
 }
 
 // ── Acting ──────────────────────────────────────────────────────────────────

@@ -106,7 +106,7 @@ function Gate() {
               numbers explain what is on somebody's screen, and hiding them
               would make the queue's order look arbitrary. The refusal to edit
               is on the row policies, not on this route. */}
-          <Route path="/numbers"><Numbers role={u.role} /></Route>
+          <Route path="/numbers"><Numbers permissions={u.permissions ?? []} /></Route>
           <Route path="/enquiries">{guard(u, "/enquiries", <Leads />)}</Route>
           <Route path="/worklist">{guard(u, "/worklist", <Worklist />)}</Route>
           <Route path="/registrations">{guard(u, "/registrations", <Registrations />)}</Route>

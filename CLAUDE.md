@@ -60,7 +60,7 @@ leaves a hole the other two cannot cover.
 |---|---|---|
 | Service key | is this one of our processes? | `lib/auth.ts` |
 | Session | who is signed in? | `lib/session.ts`, `users` + `sessions` |
-| Role | what does that person do here? | `lib/dms/access.ts`, `users.role` |
+| Role | what does that person do here? | `lib/dms/permissions.ts`, `users.role` |
 | Row-level security | what may their connection see? | `lib/db/sql/rls.sql` |
 
 Since OBJ-8 all three apply to **all three products**. InsurRouter and VeloDocs
@@ -557,6 +557,37 @@ DDMS rather than one that signed up this morning.
 > other manufactures a `CONFLICT` per matched deal. Both sides carry it, because
 > every number in that fixture is a policy no insurer issued (R-41).
 
+## One permission table
+
+`lib/dms/permissions.ts` — verb-scoped `namespace.verb`, and it is the only
+place any permission question is answered. `access.ts` is gone.
+
+**The agent is a principal in it**, not a special case beside it. `AGENT_ACTIONS`
+and `CLOSED_TO_THE_AGENT` are derived from the table; the ten written reasons
+live in `WITHHELD.AGENT` and `whyNot()` reads them. A second agent (OBJ-29) is a
+principal plus a set of grants, and `agent.ts` does not change.
+
+`may(principal, permission)` is the one question. `whyNot()` phrases the refusal
+— a hand-written reason where there is one, otherwise assembled from what the
+principal *can* do, because the commonest cause of a refusal is somebody given
+the wrong role on their first day.
+
+The session carries `permissions`, so no screen works out for itself whether
+somebody is an owner. Cosmetic, like `modules` — the route refuses and the row
+policies refuse.
+
+`pnpm run verify:permissions` — thirty checks, no database, no server.
+
+> **This objective changed no grants.** Who may do what is exactly what it was;
+> it is written in one place for the first time. Separating *reading a module*
+> from *acting on it* is a deferred product decision, and the seam now exists
+> for it to land in.
+
+> **`POST /dms/actions` used to check nothing** and was never exploitable —
+> `app.can_read(module)` is in every mirror table's row policy. But the caller
+> got `404 No receivable X`, which is a lie: it exists, they cannot see it. Now
+> a 403 that names their role. 404 stays the right answer across dealerships.
+
 ## The agent operates the registry
 
 `lib/dms/agent.ts`. The agent calls the same `applyAction()` a button calls, with
@@ -662,7 +693,7 @@ and the property bought is the same either way: **the direction of a mistake is
 safe.** A bug in the role layer can hide a row from somebody entitled to it and
 cannot reveal one to somebody who is not.
 
-`lib/dms/access.ts` holds the role-to-module table in TypeScript and
+`lib/dms/permissions.ts` holds the role-to-module table in TypeScript and
 `app.can_read()` holds it in SQL. Two copies on purpose, doing different jobs:
 the first lets a route *explain* a refusal, the second makes it *true*. A
 service advisor's connection reads zero rows from the ledger whatever the

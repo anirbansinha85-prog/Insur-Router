@@ -1838,13 +1838,14 @@ and the one we lack.
 | R-91 | **A person may ask the agent to act, under their name and their permissions.** The third mode, and the safest, because accountability is unambiguous from the start | ○ |
 | R-92 | **An agent run has a cost and a cap.** Per-run cost, a daily ceiling, and attribution. wrrk quotes $0.01–$0.05 a run and caps at 50/org/day **[Documented]**; DDMS meters nothing | ○ |
 | R-93 | **A run is a trace, not a row.** The decision log answers *what happened to this record*. A multi-agent run is a narrative across records and agents, and nothing today can show it as one thing | ○ |
+| R-95 | ✅ **One table answers every permission question, and the agent is a principal in it.** Verb-scoped `namespace.verb`, not tiered roles. The agent holds grants like any role rather than being a special case beside the table, so a second agent is a principal and a set of grants and nothing else changes. Withheld permissions carry a written reason where there is one worth writing — *a model cannot make a phone call* is a fact about the world, not about the grant | ✅ |
 | R-94 | **The agent may stand down.** When its proposals are being rejected it pauses itself rather than continuing to propose. wrrk auto-pauses a campaign on acceptance-rate decay **[Documented]**; DDMS has no version of this | ○ |
 
 ### The revised order
 
 | # | Objective | Model? | Depends on | Why here |
 |---|---|---|---|---|
-| 21 | **One permission model** | no | — | two half-systems exist — module read-gating and the agent's action set. Everything below adds actions and principals to both |
+| 21 | ~~**One permission model**~~ ✅ | no | — | two half-systems exist — module read-gating and the agent's action set. Everything below adds actions and principals to both |
 | 22 | **DDMS owns its own records** | no | 21 | the unlock. Notes, activities, tasks, quotations, price lists. Nothing an agent can honestly write until this exists |
 | 23 | **The journey model** | no | 22 | the runtime, proved end to end on one journey |
 | 24 | **Ingestion beyond the API** | at the mapping step only | — | independent of everything, and the thing that decides how many dealers can be sold to at all |
@@ -1862,6 +1863,226 @@ and the one we lack.
 > research found the failure mode is never bad agents — it is ungoverned
 > accumulation, eighty flows on one object, *"a graveyard of decisions nobody
 > documented"*. N agents that can trigger one another reach that faster.
+
+### OBJ-21 — One permission model  ✅ **done 10 Aug**
+*Covers R-95. Prerequisite for R-81 and R-82, and for objectives 22, 24 and 26.*
+
+DDMS has two permission systems that do not know about each other.
+`lib/dms/access.ts` gates **reading**, by module, by role. `lib/dms/agent.ts`
+gates **writing**, by listing two of the twelve registry actions and naming the
+other ten with a reason each. Both are hand-written tables in different idioms,
+and a third is scattered inline as `role === "OWNER" || role === "MANAGER"`.
+
+Every objective below adds actions, or principals, or both. Adding them to two
+tables guarantees the two drift, and the first drift is a hole.
+
+The shape is verb-scoped rather than tiered — wrrk's 120 permissions across 31
+namespaces, with `view` / `view_all` ownership pairs **[Observed]**. Half of it
+DDMS discovered independently: the queue's *mine · nobody's · my outlet's* bands
+**are** that pair.
+
+**The agent becomes a principal in the same table, not a special case.** That is
+the point of the objective. `CLOSED_TO_THE_AGENT` stops being a constant and
+becomes the absence of a grant — but the ten reasons must survive the move,
+because the reasons are the valuable artefact, not the list.
+
+Stays in code, not database rows: R-52's argument unchanged, and the detail of
+who-sees-what is deliberately deferred. This builds the seam so that decision
+lands in one place whenever it is made.
+
+**Done when:** one function answers every permission question in the product,
+the agent is refused by the same table that refuses a service advisor, the ten
+reasons are still readable, and no screen or route changes behaviour.
+
+`lib/dms/permissions.ts`. `access.ts` is deleted, its four importers repointed,
+`AGENT_ACTIONS` and `CLOSED_TO_THE_AGENT` are now *read from* the table rather
+than being a second copy of it, and the session carries `permissions` so the
+console stops working out for itself whether somebody is an owner.
+
+**Proved by `pnpm run verify:permissions`** — thirty checks, no database and no
+server, which is itself part of the point. Every role reads exactly the eight,
+four, three, two, two and zero modules it read before; the agent still holds two
+of twelve and the other ten still carry their written sentence.
+
+> **The route that checked nothing, and why it was not the hole it looks like.**
+> `POST /dms/actions` performed no permission check at all — any signed-in user
+> could ask for any of the twelve actions. It was never exploitable:
+> `app.can_read(module)` sits in the `using` **and** `with check` of every
+> mirror table's row policy, so Postgres refused it.
+>
+> What was wrong was the **sentence**. `applyAction` reads the row before it
+> writes, row-level security makes that read return nothing, and the caller got
+> `404 — No receivable REC-0417-5504`. Which is false. The receivable exists;
+> they may not see it. A 404 is right *across* dealerships, where confirming a
+> record exists is itself a leak. Inside your own dealership with the wrong role
+> it is unhelpful, and the table already held the sentence that helps:
+>
+> ```
+> 403  A service advisor does not see the ledger.
+>      Yours covers job cards and the parts counter.
+> ```
+>
+> Defence in depth working is not the same as the application being honest, and
+> only one of those two was true.
+
+> **Two questions that shared one implementation.** Policy writes asked
+> `seesEveryOutlet(role)` — *can you see across branches* — to decide *may you
+> set what the whole dealership does first*. Same answer today, different
+> questions, and the day a dealership wants a branch manager who sets numbers
+> for one outlet the old code would have had to be untangled to find out which
+> of the two it meant. They are now `outlet.view_all` and `policy.set`, with the
+> same holders and no shared implementation.
+
+> **The console held a third table.** `role === "OWNER" || role === "MANAGER"`
+> was written into the *Your numbers* screen. The session now carries
+> `permissions`, and the screen asks `permissions.includes("policy.set")` — the
+> same string the route checks. Still cosmetic, exactly as `modules` is: hiding
+> a control is a courtesy, the route and the row policies are the control.
+
+> **The queue moved 221 → 256 between the two runs and none of it is this
+> objective.** Five days passed in the session; job cards go overdue, follow-ups
+> lapse, stock ages. The permission-relevant invariants are the ones that had to
+> hold and did: an owner still sees all eight modules, and a service advisor's
+> queue contains `JOB_CARD` and `PART` and nothing else.
+
+### OBJ-22 — DDMS owns its own records
+*Covers R-76. The unlock for 25, 26 and 27.*
+
+The first records DDMS creates rather than copies: notes, activities, tasks,
+quotations and price lists. Bounded by R-76 — nothing the DMS is the source of
+truth for.
+
+This is the objective that makes agents useful rather than the objective that
+adds agents. Eight of the twelve registry actions are closed to the agent
+because they assert a person telephoned somebody. A note the agent wrote asserts
+only that the agent wrote a note.
+
+Price lists carry effective dates, because the DMS is a current-state system
+that forgets yesterday's price and a dealer may legitimately sell at an older
+one (R-87).
+
+**Done when:** DDMS holds a record the DMS has no field for, an agent writes one
+without asserting human work, and nothing mirror-only has become writable.
+
+### OBJ-23 — The journey model
+*Covers R-77, R-78. Needs 22.*
+
+Steps, forks, and four kinds of waiting. Proved end to end on one journey —
+**invoice raised to RC delivered**, because it spans four screens that today do
+not know they describe one sale, it contains a real loop, and it is weeks long
+so pause-and-resume is exercised rather than asserted.
+
+The mechanic that pays for it: a stalled step *is* the queue row. Seven
+classifiers currently hand-write their own *what to do* sentence.
+
+**Done when:** one journey runs end to end across a simulated month, survives a
+restart mid-flight, an RTO objection sends a file backwards with its reason
+attached, and every queue row for that journey is produced by the runtime rather
+than written by a classifier.
+
+### OBJ-24 — Ingestion beyond the API
+*Covers R-84, R-85, R-86. No dependencies.*
+
+Report drop and document scan alongside direct fetch, enabled per data type per
+dealer. The reframing that matters: the dealers with no API are the majority and
+the most underserved, and a sub-dealer doing five units a month in Tripura feels
+the pain more than a group doing eighty.
+
+The report path graduates — a model maps unfamiliar column headings once, a
+person confirms once, extraction is deterministic thereafter. Model cost is per
+report type per dealer, not per row.
+
+This is what VeloDocs becomes: the generic *unstructured source to our schema,
+with a human confidence gate* pipeline, with DMS ingestion as its second
+consumer after insurance.
+
+**Done when:** the same dealership can be onboarded three ways, every field
+carries its source and confidence, a second file of the same report type needs
+no model call, and nothing downstream can tell which path a value arrived by.
+
+### OBJ-25 — The invoice DDMS produces
+*Covers R-87, R-88, R-89, R-90. Needs 22, 23, 24.*
+
+DDMS's document is the DMS's facts **plus the commercial agreement**, and
+neither system holds both. The dealer may sell at an older list, discount
+ageing stock, or retain the OEM's scheme rather than pass it on — all three are
+his decision and the product's job is to support them, not to have an opinion.
+
+Which system holds the tax-invoice series is a per-dealer setting, because only
+one may (R-90). The document must say what it is (R-89).
+
+The readiness gate produces **the first queue row that is an opportunity rather
+than a problem** — *everything is in place, the invoice can be generated* — and
+that is the automation. Invoices are not late because typing is hard.
+
+**Done when:** a dealer prices an invoice from a list that is no longer current
+and the document says so, the OEM claim is raised for the full scheme amount
+regardless of what was passed on, and the readiness row appears the moment the
+last condition is satisfied rather than when somebody opens a screen.
+
+### OBJ-26 — Autonomy: the ladder and graduation
+*Covers R-79, R-80, and R-66 to R-71. Absorbs OBJ-19. Needs 21 and 23.*
+
+Watching, then recall, then pre-filled, then consent. Per pattern, with
+demotion, and the threshold owned by the dealership.
+
+Needs 23 because precedent needs journeys that have actually run: a ladder with
+no history to cite is a dial with extra steps.
+
+R-69 does not bend. Precedent still authorises nothing — it is the evidence a
+person consents on, and the consent authorises. Below the consent step the model
+**recalls** rather than judges, which is what carries R-49 up the whole ladder.
+
+**Done when:** a pattern is cited with its count and date, accepting it ten
+times produces a consent request rather than an automatic promotion, rejecting
+it demotes, and no amount of precedent moves anything past the floor.
+
+### OBJ-27 — dm-concierge: messages out, replies in
+*Covers R-91 in part. Needs 22.*
+
+The Outbox has drafted messages since OBJ-16 and delivered **nothing** —
+`TRANSPORTS` is empty and every authorised message ends `HELD_NO_TRANSPORT`.
+dm-concierge is the transport.
+
+Inbound is the larger half. A customer replying *"I will come Saturday"* is a
+fact the dealer's system will never hold, and it is ours the moment it arrives —
+a record DDMS owns outright, so an agent may act on it.
+
+The boundary is unchanged: dm-concierge is the pipe, `authoriseSend()` remains
+the gate, and nothing unauthorised reaches the pipe.
+
+**Done when:** an approved message actually arrives on a phone, a reply becomes
+a DDMS record, and a reply clears the queue item that prompted it.
+
+### OBJ-28 — The trace and the stand-down
+*Covers R-92, R-93, R-94. Needs 23 and 26.*
+
+Three things, all about being able to supervise what is running.
+
+`decision_log` answers *what happened to this record*. A run is a **narrative
+across records and agents**, and nothing can show it as one thing. Cost is
+unmetered — wrrk quotes $0.01 to $0.05 a run and caps at 50 per org per day
+**[Documented]**; DDMS counts nothing. And the agent cannot stand down: when its
+proposals are being rejected it goes on proposing.
+
+**Done when:** one screen shows a run as a story, a daily cap stops the
+twenty-first run of an hour, and an agent whose rejection rate crosses the
+dealership's threshold pauses itself and says so.
+
+### OBJ-29 — More agents
+*Needs everything above.*
+
+Last, and most people would do it first. Section 3b's research found the failure
+mode is never bad agents — it is ungoverned accumulation, eighty flows on one
+object, *"a graveyard of decisions nobody documented and behaviours nobody can
+predict"*. N agents that can trigger one another reach that faster.
+
+By this point there is a model that admits new principals, a ladder to place
+them on, records they may legitimately write, and a trace to watch them in.
+Before it, every new agent is one more thing nobody can govern.
+
+**Done when:** a second agent is added by declaring a principal and a set of
+permissions, and nothing else changes.
 
 ### Held, and why
 

@@ -674,6 +674,11 @@ export interface SessionUser {
   showroomId?: number | null;
   /** What this role may read, so the console can show a sidebar that matches what the database will answer. Cosmetic — the row policies are what actually refuse. */
   modules?: string[];
+  /**
+     * What this role may do, as `namespace.verb` — `policy.set`, `enquiry.reassign`. Resolved from the one permission table in lib/dms/permissions.ts, which also answers for the agent.
+     * Sent rather than derived in the browser: a screen deciding for itself whether somebody is an owner is a second permission table, and the one the user sees would be the one that drifts. Cosmetic in exactly the way modules is — the route refuses and the row policies refuse.
+     */
+  permissions?: string[];
   /** The outlets this session may act for, in the order they should be offered. One entry for a member of staff; the owner's whole set for an owner. Here rather than on a DDMS route because it is a fact about the person, not about the console — InsurRouter and VeloDocs both have to ask which outlet a new record belongs to, and neither should have to call the other product to find out. */
   showrooms?: SessionUserShowroomsItem[];
 }

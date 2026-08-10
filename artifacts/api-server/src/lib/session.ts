@@ -41,7 +41,7 @@ import {
 // scripts can create users without reaching into this artifact.
 export { hashPassword, verifyPassword } from "@workspace/db";
 import { logger } from "./logger";
-import { canRead, refusalFor, seesEveryOutlet, type AccessModule } from "./dms/access";
+import { canRead, refusalFor, seesEveryOutlet, type AccessModule } from "./dms/permissions";
 
 const SESSION_COOKIE = "ddms_session";
 /** A working day, then sign in again. */

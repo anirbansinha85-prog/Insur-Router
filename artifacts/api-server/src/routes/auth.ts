@@ -21,7 +21,7 @@ import {
   departedPerTheDms,
 } from "../lib/session";
 import { logger } from "../lib/logger";
-import { modulesFor } from "../lib/dms/access";
+import { modulesFor, permissionsFor } from "../lib/dms/permissions";
 
 const router: IRouter = Router();
 
@@ -86,6 +86,17 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     // the frontend: two copies of the table would drift, and the one the user
     // sees would be the wrong one.
     modules: modulesFor(user.role),
+    // And what they may *do*, which the sidebar cannot express.
+    //
+    // Sent for the same reason `modules` is: the console was deciding whether
+    // to show the policy controls with `role === "OWNER" || role === "MANAGER"`
+    // written into a screen, which is a second permission table that can
+    // disagree with the first. Now there is one table, it lives on the server,
+    // and the client is told the answer rather than working it out.
+    //
+    // Still cosmetic — the route refuses and the row policies refuse. Hiding a
+    // control is a courtesy, not a control.
+    permissions: permissionsFor(user.role),
   });
 });
 
@@ -126,7 +137,12 @@ router.get("/auth/me", async (req, res): Promise<void> => {
 
   const showrooms = user.showroomId === null ? rows : rows.filter((s) => s.id === user.showroomId);
 
-  res.json({ ...user, modules: modulesFor(user.role), showrooms });
+  res.json({
+    ...user,
+    modules: modulesFor(user.role),
+    permissions: permissionsFor(user.role),
+    showrooms,
+  });
 });
 
 export default router;
