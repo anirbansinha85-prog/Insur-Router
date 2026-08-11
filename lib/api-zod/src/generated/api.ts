@@ -1214,6 +1214,7 @@ export const GetSaleDocumentResponse = zod.object({
   "issuedByName": zod.string().nullish(),
   "createdAt": zod.string().optional()
 }),
+  "notice": zod.string().nullish().describe('What the customer is told the document is (R-89), computed from this row rather than fixed per kind. It names a linked tax invoice number only when there is one — the first version said \"its number is shown above\" on documents that had none, which is a false statement on the face of a document. The input-credit sentence appears only for a buyer with a GST number, who is the only reader it can happen to. Null on a tax invoice: it is one, and small print at the top of a genuine tax invoice invites doubt.\n'),
   "seller": zod.object({
   "legalName": zod.string().nullish(),
   "gstin": zod.string().nullish(),

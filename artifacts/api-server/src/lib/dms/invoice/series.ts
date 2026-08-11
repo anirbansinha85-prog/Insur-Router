@@ -35,9 +35,93 @@ export interface SeriesDecision {
   kind: DocumentKind;
   /** What the document calls itself, on the page. Never decoration (R-89). */
   title: string;
-  /** Printed under the title when the document is not a tax invoice. */
+  /**
+   * The generic form, for a caller deciding before anything is issued.
+   *
+   * **What actually prints is `noticeFor(row)`**, because the truthful sentence
+   * depends on facts this function has not got — whether there is a number to
+   * point at, and whether the buyer is a business. Same vocabulary, one file.
+   */
   disclaimer: string | null;
   ddmsHoldsSeries: boolean;
+}
+
+export const TITLE_FOR: Record<DocumentKind, string> = {
+  TAX_INVOICE: "Tax Invoice",
+  SALE_CONFIRMATION: "Sale Confirmation",
+  PROFORMA: "Proforma Invoice",
+  QUOTATION: "Quotation",
+};
+
+/**
+ * What the **customer** is told the document is (R-89, R-104).
+ *
+ * Two things went wrong with the first version of this and only one of them was
+ * a matter of tone.
+ *
+ * > *"This is not a tax invoice. The tax invoice for this sale is issued by the
+ * > dealership's own system, and its number is shown above."*
+ *
+ * **It could be false.** A sale confirmation raised before the other system has
+ * invoiced the deal carries no number, and that sentence then points at a
+ * number which is not on the page — a document asserting on its own face
+ * something that is not there. That is the exact failure R-89 exists to prevent,
+ * arriving from inside the rule meant to prevent it, and it is the reason this
+ * is now computed from the row rather than fixed per kind.
+ *
+ * **And it was written for us.** *The dealership's own system* is our
+ * vocabulary about our integration; the customer holding the paper does not
+ * know we exist and should not be able to tell. What they need is the plain
+ * fact and, where there is one, the number to keep.
+ *
+ * The input-credit sentence appears **only for a buyer with a GST number**,
+ * because they are the only reader who could try to claim it. A retail customer
+ * being warned about input tax credit is a document explaining a risk that
+ * cannot happen to them, in words they did not ask for.
+ */
+export function noticeFor(row: {
+  kind: DocumentKind;
+  dmsInvoiceNo?: string | null;
+  customerGstin?: string | null;
+}): string | null {
+  const business = Boolean(row.customerGstin?.trim());
+
+  switch (row.kind) {
+    case "TAX_INVOICE":
+      // It is one. Saying so twice adds nothing, and a box of small print at
+      // the top of a genuine tax invoice invites the reader to doubt it.
+      return null;
+
+    case "QUOTATION":
+      return "This is a quotation. It is not a tax invoice and no payment is due against it.";
+
+    case "PROFORMA":
+      return (
+        "This is a proforma invoice. It is issued for payment and it is not a tax invoice." +
+        (business ? " Input tax credit cannot be claimed against it." : "")
+      );
+
+    case "SALE_CONFIRMATION": {
+      const linked = row.dmsInvoiceNo?.trim();
+      if (linked) {
+        return (
+          `This is a sale confirmation. It is not a tax invoice — the tax invoice for this sale is No. ${linked}.` +
+          (business ? " Please claim input tax credit against that number." : "")
+        );
+      }
+      /*
+       * No number, so nothing is claimed about one.
+       *
+       * Silence is the honest answer here. The alternative — *"the tax invoice
+       * will follow"* — is a promise the product cannot keep, because whether
+       * one is ever raised happens in a system DDMS only reads.
+       */
+      return (
+        "This is a sale confirmation. It is not a tax invoice." +
+        (business ? " Input tax credit cannot be claimed against it." : "")
+      );
+    }
+  }
 }
 
 /**
@@ -51,40 +135,20 @@ export function decideKind(
   requested: "SALE" | "QUOTATION" | "PROFORMA",
   policy: ResolvedPolicy,
 ): SeriesDecision {
-  if (requested === "QUOTATION") {
-    return {
-      kind: "QUOTATION",
-      title: "Quotation",
-      disclaimer: "This is a quotation. It is not a tax invoice and no tax is payable on it.",
-      ddmsHoldsSeries: false,
-    };
-  }
-  if (requested === "PROFORMA") {
-    return {
-      kind: "PROFORMA",
-      title: "Proforma Invoice",
-      disclaimer:
-        "This is a proforma invoice, issued for payment. It is not a tax invoice and no input credit may be claimed against it.",
-      ddmsHoldsSeries: false,
-    };
-  }
+  const of = (kind: DocumentKind, ddmsHoldsSeries: boolean): SeriesDecision => ({
+    kind,
+    title: TITLE_FOR[kind],
+    // The generic form. Nothing is known here about a linked number or a
+    // business buyer, so `noticeFor` is asked with neither and returns the
+    // sentence that is true whatever they turn out to be.
+    disclaimer: noticeFor({ kind }),
+    ddmsHoldsSeries,
+  });
 
-  if (policy.on(SERIES_SWITCH)) {
-    return {
-      kind: "TAX_INVOICE",
-      title: "Tax Invoice",
-      disclaimer: null,
-      ddmsHoldsSeries: true,
-    };
-  }
-
-  return {
-    kind: "SALE_CONFIRMATION",
-    title: "Sale Confirmation",
-    disclaimer:
-      "This is not a tax invoice. The tax invoice for this sale is issued by the dealership's own system and its number is shown above.",
-    ddmsHoldsSeries: false,
-  };
+  if (requested === "QUOTATION") return of("QUOTATION", false);
+  if (requested === "PROFORMA") return of("PROFORMA", false);
+  if (policy.on(SERIES_SWITCH)) return of("TAX_INVOICE", true);
+  return of("SALE_CONFIRMATION", false);
 }
 
 /**

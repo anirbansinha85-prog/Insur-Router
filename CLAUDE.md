@@ -656,7 +656,25 @@ printer, and there is one layout to be wrong rather than two. Every row of the
 Issued list opens it, and both "issued" confirmations link straight to it.
 
 R-89 is the whole design of the header: a sale confirmation says on its face
-that it is not a tax invoice, above the figures, and the disclaimer prints.
+that it is not a tax invoice, above the figures, and the notice prints. That
+notice is **computed from the row** by `noticeFor()` in `series.ts`, not fixed
+per kind — it names a linked tax invoice number only when there is one, and the
+input-credit sentence appears only for a buyer with a GST number, who is the
+only reader it can happen to.
+
+> **A document must not assert something that is not on it.** The first notice
+> read *"the tax invoice for this sale is issued by the dealership's own system,
+> and its number is shown above"* — on a sale confirmation raised before that
+> system had invoiced the deal, there is no number above. A false statement on
+> the face of a document, produced by the rule written to prevent exactly that.
+
+> **A document has two readers, and only one can act on the provenance** (R-104).
+> *Priced per Hero list July 2026 — not the current list* is true and it is the
+> dealer's: it answers *why did the product charge this*, which only the person
+> who chose the list can act on. To the customer it is an unexplained admission.
+> R-87 asked that the product not hide a dealer's decision **from the dealer**;
+> it never asked for it to be printed. The provenance block is `print:hidden`
+> and labelled *for your records — this is not printed*.
 R-88 too — the customer's page shows what *he* was given, and the scheme the
 dealer retained is not on his invoice; it is on the claims screen, which is
 ours. The amount in words is written out rather than pulled from a library,
@@ -688,6 +706,16 @@ rows first and accumulates the others.
 
 `pnpm run verify:invoice`; `pnpm run db:seed-pricelists` for two lists, the
 older of which is the point.
+
+> **A verifier that tidies by owner deletes the dealership's own work.** This
+> one reset with `delete from sale_documents where owner_id = 1`, which is right
+> for a fixture-only table and wrong here: by the time anybody uses the product
+> that table holds *their* invoices. It destroyed two a person had raised, twice,
+> because a verifier that passes is one nobody reads the output of. Every
+> document it issues is now signed `verify:invoice` in `issuedByName` and reset
+> takes back only those; it picks deals nothing has been issued against, and
+> **it says how many it worked around**. A verifier that only passes on an empty
+> table has never seen the dealership it verifies.
 
 > **Three findings worth keeping.** A quotation blocked the sale that followed
 > it — the comment said otherwise and the query filtered on status alone, found

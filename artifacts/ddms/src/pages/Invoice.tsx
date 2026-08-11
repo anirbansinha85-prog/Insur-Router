@@ -25,10 +25,31 @@ import { ArrowLeft, Loader2, Printer } from "lucide-react"
  *
  * A `SALE_CONFIRMATION` carries the same figures as a tax invoice and **is not
  * one**, because on that dealership the other system holds the series. The
- * title says which, the disclaimer sits under it, and the disclaimer prints —
- * a document that looked like a tax invoice and was not would have somebody
+ * title says which, the notice sits under it, and the notice prints — a
+ * document that looked like a tax invoice and was not would have somebody
  * claiming input credit against it. Same instinct as `SIM-` on a simulated
  * policy number.
+ *
+ * **The notice comes from the server** (`noticeFor`), not from a constant here.
+ * The truthful sentence depends on the row: whether there is a linked invoice
+ * number to point at, and whether the buyer is a business. A per-kind constant
+ * could not know either, and the first one claimed *"its number is shown
+ * above"* on documents that had none.
+ *
+ * ## Two readers, and only one of them can act on the provenance (R-104)
+ *
+ * > *"These are internal vocabulary. If the customer reads that next day I will
+ * > be behind bars."*
+ *
+ * *Priced per Hero list July 2026 — not the current list* is true, and it is
+ * for the dealer. It answers *why did the product charge this*, which is a
+ * question only the person who chose the list can act on; to the customer it is
+ * an unexplained admission that they were priced off something superseded.
+ *
+ * R-87 asked that the product not hide a dealer's commercial decision **from
+ * the dealer**. It never asked for it to be printed. So the provenance block is
+ * `print:hidden` and labelled on screen as what it is: for their records, not
+ * for the paper.
  */
 
 const KIND_TITLE: Record<string, string> = {
@@ -36,16 +57,6 @@ const KIND_TITLE: Record<string, string> = {
   SALE_CONFIRMATION: "Sale Confirmation",
   PROFORMA: "Proforma Invoice",
   QUOTATION: "Quotation",
-}
-
-/** R-89 on the page, in the largest type the disclaimer will ever be set in. */
-const KIND_DISCLAIMER: Record<string, string | null> = {
-  TAX_INVOICE: null,
-  SALE_CONFIRMATION:
-    "This is not a tax invoice. The tax invoice for this sale is issued by the dealership's own system, and its number is shown above.",
-  PROFORMA:
-    "This is a proforma invoice, issued for payment. It is not a tax invoice and no input credit may be claimed against it.",
-  QUOTATION: "This is a quotation. It is not a tax invoice and no tax is payable on it.",
 }
 
 const n = (v: string | number | null | undefined) => Number(v ?? 0)
@@ -221,10 +232,13 @@ export default function Invoice() {
           </div>
         </div>
 
-        {/* R-89. It prints, and it prints before the figures. */}
-        {KIND_DISCLAIMER[d.kind] && (
+        {/* R-89. It prints, and it prints before the figures — a customer who
+            reads the total first and the small print second has already been
+            told the wrong thing. Written by the server from this row, so it can
+            name a linked number only when there is one. */}
+        {data.notice && (
           <p className="mt-3 border border-slate-400 bg-slate-50 print:bg-white px-3 py-2 text-[12px] font-medium text-slate-900">
-            {KIND_DISCLAIMER[d.kind]}
+            {data.notice}
           </p>
         )}
 
@@ -248,8 +262,12 @@ export default function Invoice() {
               Place of supply
             </p>
             <p>{d.placeOfSupply ?? "—"}</p>
-            <p className="text-slate-500 text-[12px] mt-0.5">
-              {interState ? "Inter-state — IGST" : "Intra-state — CGST and SGST"}
+            {/* Which heads apply is already on the page in the tax lines
+                themselves, and *intra-state — CGST and SGST* is a sentence
+                about our arithmetic rather than about the customer's purchase.
+                On screen for whoever is checking it, off the paper. */}
+            <p className="text-slate-500 text-[12px] mt-0.5 print:hidden">
+              {interState ? "Inter-state — IGST applies" : "Intra-state — CGST and SGST apply"}
             </p>
           </div>
         </div>
@@ -336,18 +354,9 @@ export default function Invoice() {
             the decision was made for. */}
         <div className="mt-6 pt-3 border-t border-slate-200 flex items-end justify-between gap-8">
           <div className="text-[11px] text-slate-500 space-y-0.5">
-            {d.priceOrigin === "STATED" ? (
-              <p>Priced as entered on this document.</p>
-            ) : d.priceListName ? (
-              <p>
-                Priced per {d.priceListName}
-                {d.priceListEffectiveFrom && <>, effective {onDate(d.priceListEffectiveFrom)}</>}
-                {d.pricedOffCurrentList === "N" && (
-                  <span className="text-amber-700"> — not the current list</span>
-                )}
-                .
-              </p>
-            ) : null}
+            {/* Who raised it belongs on the paper — a customer with a question
+                about their own invoice should be able to ask for somebody by
+                name rather than for "whoever did this". */}
             {d.issuedByName && <p>Issued by {d.issuedByName}.</p>}
           </div>
           <div className="text-center shrink-0">
@@ -356,6 +365,41 @@ export default function Invoice() {
               For {s.legalName ?? "the dealership"}
             </p>
           </div>
+        </div>
+      </div>
+
+      {/* Outside the printed page entirely, not merely hidden within it.
+          R-87 asked that the product not hide a dealer's commercial decision
+          from the dealer. It never asked for it to be printed, and printing it
+          hands the customer an admission they cannot act on and were never
+          owed. */}
+      <div className="mx-auto w-full max-w-[794px] print:hidden">
+        <div className="border border-slate-200 rounded-lg bg-slate-50 px-4 py-3 text-[11px] text-slate-600 space-y-0.5">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+            For your records — this is not printed
+          </p>
+          {d.priceOrigin === "STATED" ? (
+            <p>The price on this document was typed in rather than taken from a list.</p>
+          ) : d.priceListName ? (
+            <p>
+              Priced from {d.priceListName}
+              {d.priceListEffectiveFrom && <>, effective {onDate(d.priceListEffectiveFrom)}</>}
+              {d.pricedOffCurrentList === "N" && (
+                <span className="text-amber-700"> — which is not your current list</span>
+              )}
+              .
+            </p>
+          ) : null}
+          <p>
+            {d.factsOrigin === "FORM"
+              ? "The sale was entered by hand."
+              : "The sale came from the manufacturer's system."}
+            {d.dmsInvoiceNo
+              ? ` Linked to their invoice ${d.dmsInvoiceNo}.`
+              : d.kind === "SALE_CONFIRMATION"
+                ? " Their system has not invoiced it yet, so this document names no tax invoice number."
+                : ""}
+          </p>
         </div>
       </div>
     </div>

@@ -76,9 +76,32 @@ function section(t: string): void {
 
 const rupees = (n: number) => `₹${n.toLocaleString("en-IN")}`;
 
-/** Tidy on the CLI credential, exactly as OBJ-22 to OBJ-24 do. */
+/**
+ * Everything this run issues, marked so it can be found again — **and nothing
+ * else**.
+ *
+ * > **A verifier that tidies by owner deletes the dealership's own work.**
+ *
+ * The first version was `delete from sale_documents where owner_id = 1`, which
+ * is exactly what a fixture-only table would want and exactly wrong here: this
+ * verifier runs against the seeded dealership, and by the time anybody is using
+ * the product that table holds *their* invoices. It destroyed two documents a
+ * person had raised by hand, and it did so twice before anybody noticed,
+ * because a verifier that passes is a verifier nobody reads the output of.
+ *
+ * So the run signs its own documents. `issuedByName` is free text and already
+ * on every row for exactly this kind of question — *who is answerable for this*
+ * — and a document issued by a verification run should say so rather than
+ * borrow a person's name. Same fix as `verify:autonomy`'s marker, and the same
+ * reason: a crashed run has to be cleanable by the next one, which rules out
+ * remembering ids in memory.
+ */
+const RUN_BY = "verify:invoice";
+
 async function reset(): Promise<void> {
-  await ownerDb.delete(saleDocumentsTable).where(eq(saleDocumentsTable.ownerId, OWNER));
+  await ownerDb
+    .delete(saleDocumentsTable)
+    .where(and(eq(saleDocumentsTable.ownerId, OWNER), eq(saleDocumentsTable.issuedByName, RUN_BY)));
   const sale = await ownerDb
     .select({ id: journeysTable.id })
     .from(journeysTable)
@@ -110,14 +133,60 @@ const august = lists.find((l) => l.effectiveFrom >= "2026-08-01");
 if (!july || !august) throw new Error("Expected a July and an August list. Run pnpm run db:seed-pricelists.");
 console.log(`      ${july.name} (${july.effectiveFrom}) · ${august.name} (${august.effectiveFrom})`);
 
-const deal = (
-  await ownerDb
-    .select()
-    .from(dmsDealsTable)
-    .where(and(eq(dmsDealsTable.showroomId, SHOWROOM), eq(dmsDealsTable.status, "BOOKED")))
-    .limit(1)
-)[0];
-if (!deal) throw new Error("No BOOKED deal at showroom 1 to invoice.");
+/*
+ * A deal nobody has already invoiced.
+ *
+ * The first version took the first `BOOKED` deal and assumed it was free, which
+ * was true only because `reset` had just emptied the table of everything. Once
+ * reset stopped doing that — because it was deleting a dealership's own
+ * documents — the very first `generateDocument` in this file was refused with
+ * *already issued for this sale*, which is the sold-this-twice check working
+ * exactly as designed.
+ *
+ * So the verifier now does what the product asks of a person: it looks for work
+ * that has not been done. **A verifier that only passes on an empty table is a
+ * verifier that has never seen the dealership it is verifying.**
+ */
+const taken = new Set(
+  (
+    await ownerDb
+      .select({ dealId: saleDocumentsTable.dealId })
+      .from(saleDocumentsTable)
+      .where(
+        and(
+          eq(saleDocumentsTable.ownerId, OWNER),
+          eq(saleDocumentsTable.status, "ISSUED"),
+          inArray(saleDocumentsTable.kind, ["TAX_INVOICE", "SALE_CONFIRMATION"]),
+        ),
+      )
+  ).map((r) => r.dealId),
+);
+
+const booked = await ownerDb
+  .select()
+  .from(dmsDealsTable)
+  .where(and(eq(dmsDealsTable.showroomId, SHOWROOM), eq(dmsDealsTable.status, "BOOKED")));
+
+/**
+ * The deals this run may use, in order, and every section takes from here.
+ *
+ * Three sections used to reach for the first, second and third `BOOKED` deal
+ * independently, which was three copies of the same wrong assumption — that
+ * nothing else in the world has invoiced any of them. One list, indexed, so a
+ * dealership that has raised eleven invoices simply pushes the run further
+ * down it.
+ */
+const free = booked.filter((d) => !taken.has(d.dealId));
+if (free.length < 4) {
+  throw new Error(
+    `Need 4 booked deals at showroom 1 with nothing issued against them; ${free.length} free of ${booked.length}. ` +
+      "Cancel some documents, or reseed.",
+  );
+}
+const deal = free[0]!;
+if (taken.size > 0) {
+  console.log(`      ${taken.size} deal(s) already invoiced by somebody — worked around, not over`);
+}
 
 const onDate = "2026-08-10";
 const currentPrice = await priceFor({
@@ -170,7 +239,7 @@ const off = await generateDocument({
   otherCharges: [{ label: "Insurance", amount: 4_200 }, { label: "Registration", amount: 1_800 }],
   onDate,
   userId: ANIRBAN.id,
-  userName: ANIRBAN.name,
+  userName: RUN_BY,
   principal: "OWNER",
   policy,
 });
@@ -276,13 +345,7 @@ const withSeries = await loadPolicy(OWNER);
 const onKind = decideKind("SALE", withSeries);
 check("switched on, ours is the tax invoice", onKind.kind === "TAX_INVOICE" && onKind.disclaimer === null);
 
-const second = (
-  await ownerDb
-    .select()
-    .from(dmsDealsTable)
-    .where(and(eq(dmsDealsTable.showroomId, SHOWROOM), eq(dmsDealsTable.status, "BOOKED")))
-    .limit(3)
-)[1];
+const second = free[1];
 if (second) {
   const taxDoc = await generateDocument({
     ownerId: OWNER,
@@ -292,7 +355,7 @@ if (second) {
     intent: "SALE",
     onDate,
     userId: ANIRBAN.id,
-    userName: ANIRBAN.name,
+    userName: RUN_BY,
     principal: "OWNER",
     policy: withSeries,
   });
@@ -318,7 +381,7 @@ const again = await generateDocument({
   intent: "SALE",
   onDate,
   userId: ANIRBAN.id,
-  userName: ANIRBAN.name,
+  userName: RUN_BY,
   principal: "OWNER",
   policy: withSeries,
 });
@@ -332,7 +395,7 @@ const quote = await generateDocument({
   intent: "QUOTATION",
   onDate,
   userId: ANIRBAN.id,
-  userName: ANIRBAN.name,
+  userName: RUN_BY,
   principal: "OWNER",
   policy: withSeries,
 });
@@ -350,21 +413,15 @@ check(
  * morning made the deal un-invoiceable for the rest of the day. Found by doing
  * exactly that through the API.
  */
-const thirdDeal = (
-  await ownerDb
-    .select()
-    .from(dmsDealsTable)
-    .where(and(eq(dmsDealsTable.showroomId, SHOWROOM), eq(dmsDealsTable.status, "BOOKED")))
-    .limit(4)
-)[2];
+const thirdDeal = free[2];
 if (thirdDeal) {
   const q = await generateDocument({
     ownerId: OWNER, showroomId: SHOWROOM, dealerCode: thirdDeal.dealerCode, dealId: thirdDeal.dealId,
-    intent: "QUOTATION", onDate, userId: ANIRBAN.id, userName: ANIRBAN.name, principal: "OWNER", policy: withSeries,
+    intent: "QUOTATION", onDate, userId: ANIRBAN.id, userName: RUN_BY, principal: "OWNER", policy: withSeries,
   });
   const sale = await generateDocument({
     ownerId: OWNER, showroomId: SHOWROOM, dealerCode: thirdDeal.dealerCode, dealId: thirdDeal.dealId,
-    intent: "SALE", onDate, userId: ANIRBAN.id, userName: ANIRBAN.name, principal: "OWNER", policy: withSeries,
+    intent: "SALE", onDate, userId: ANIRBAN.id, userName: RUN_BY, principal: "OWNER", policy: withSeries,
   });
   check(
     "a quotation does not block the sale that follows it",
@@ -532,14 +589,27 @@ if (first) {
 
 section("10. what has been issued");
 
-const documents = await listDocuments(OWNER, SHOWROOM);
+// The whole outlet's, deliberately — including anything a person raised. If a
+// real document ever appears in this list the check below fails, which is the
+// alarm that used to be a silent delete.
+const documents = (await listDocuments(OWNER, SHOWROOM)).filter((d) => d.issuedByName === RUN_BY);
+const notOurs = (await listDocuments(OWNER, SHOWROOM)).filter((d) => d.issuedByName !== RUN_BY);
+if (notOurs.length > 0) {
+  console.log(
+    `      ${notOurs.length} document(s) here were raised by somebody, not by this run — left alone`,
+  );
+}
 for (const d of documents) {
   console.log(
     `      ${d.reference.padEnd(16)} ${d.kind.padEnd(18)} ${(d.taxInvoiceNo ?? "—").padEnd(18)} ` +
       `${rupees(money(d.totalAmount)).padStart(12)}  ${d.status}`,
   );
 }
-check("each is answerable for", documents.every((d) => d.issuedByName === ANIRBAN.name));
+check(
+  "each is answerable for, and each is identifiably this run's",
+  documents.every((d) => d.issuedByName === RUN_BY),
+  "so `reset` can take back exactly what it made, and nothing a dealership raised",
+);
 
 section("11. the same sale, twice, from two different doors (OBJ-30, R-96)");
 
@@ -605,7 +675,7 @@ if (subject) {
       ...AGREED,
       onDate: onDate,
       userId: ANIRBAN.id,
-      userName: ANIRBAN.name,
+      userName: RUN_BY,
       principal: "OWNER",
       policy: await loadPolicy(OWNER),
     });
@@ -634,7 +704,7 @@ if (subject) {
       ...AGREED,
       onDate: onDate,
       userId: ANIRBAN.id,
-      userName: ANIRBAN.name,
+      userName: RUN_BY,
       principal: "OWNER",
       policy: await loadPolicy(OWNER),
     });
@@ -701,7 +771,7 @@ if (subject) {
         intent: "SALE",
         onDate: onDate,
         userId: ANIRBAN.id,
-        userName: ANIRBAN.name,
+        userName: RUN_BY,
         principal: "OWNER",
         policy: await loadPolicy(OWNER),
       });
@@ -738,7 +808,7 @@ const refused = await generateDocument({
   intent: "SALE",
   onDate: onDate,
   userId: ANIRBAN.id,
-  userName: ANIRBAN.name,
+  userName: RUN_BY,
   principal: "OWNER",
   policy: await loadPolicy(OWNER),
 });
@@ -768,7 +838,7 @@ const stated = await generateDocument({
   ],
   onDate: onDate,
   userId: ANIRBAN.id,
-  userName: ANIRBAN.name,
+  userName: RUN_BY,
   principal: "OWNER",
   policy: await loadPolicy(OWNER),
 });
@@ -827,7 +897,7 @@ const blocked = await generateDocument({
   intent: "SALE",
   onDate: onDate,
   userId: ANIRBAN.id,
-  userName: ANIRBAN.name,
+  userName: RUN_BY,
   principal: "OWNER",
   policy: await loadPolicy(OWNER),
 });
@@ -854,7 +924,7 @@ const quoted = await generateDocument({
   intent: "QUOTATION",
   onDate: onDate,
   userId: ANIRBAN.id,
-  userName: ANIRBAN.name,
+  userName: RUN_BY,
   principal: "OWNER",
   policy: await loadPolicy(OWNER),
 });
@@ -876,7 +946,7 @@ const both = await generateDocument({
   intent: "SALE",
   onDate: onDate,
   userId: ANIRBAN.id,
-  userName: ANIRBAN.name,
+  userName: RUN_BY,
   principal: "OWNER",
   policy: await loadPolicy(OWNER),
 });
@@ -888,7 +958,7 @@ const neither = await generateDocument({
   intent: "SALE",
   onDate: onDate,
   userId: ANIRBAN.id,
-  userName: ANIRBAN.name,
+  userName: RUN_BY,
   principal: "OWNER",
   policy: await loadPolicy(OWNER),
 });

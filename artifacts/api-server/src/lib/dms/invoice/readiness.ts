@@ -34,6 +34,7 @@ import {
   type SaleDocumentRow,
 } from "@workspace/db";
 import { priceFor, money } from "./pricing";
+import { noticeFor } from "./series";
 
 export interface ReadinessCondition {
   id: string;
@@ -262,6 +263,16 @@ export async function documentFor(
   id: number,
 ): Promise<{
   document: SaleDocumentRow;
+  /**
+   * What the customer is told the document is (R-89), computed from this row.
+   *
+   * Sent from here rather than written into the page, because the page is not
+   * the only thing that will ever print one and two copies of a legal notice
+   * is one copy that will eventually be wrong. It is also the half that depends
+   * on the row — whether there is a number to point at, and whether the buyer
+   * is a business — which a per-kind constant cannot know.
+   */
+  notice: string | null;
   seller: {
     legalName: string | null;
     gstin: string | null;
@@ -286,6 +297,7 @@ export async function documentFor(
 
   return {
     document: row,
+    notice: noticeFor(row),
     seller: {
       /*
        * The document's own copies win where it has them.
