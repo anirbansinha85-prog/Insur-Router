@@ -118,6 +118,7 @@ import {
   cancelDocument,
   generateDocument,
   listDocuments,
+  documentFor,
   listPriceLists,
   readinessFor,
   unclaimedSchemes,
@@ -1001,6 +1002,43 @@ router.get("/dms/invoice/documents", async (req, res): Promise<void> => {
     return;
   }
   res.json({ documents: await listDocuments(user.ownerId, showroomId) });
+});
+
+/**
+ * One document, with everything needed to print it.
+ *
+ * The generator issued documents from the first day of OBJ-25 and there was no
+ * way to look at one. That is not a missing nicety — an invoice a dealership
+ * cannot open is an invoice they cannot hand to the customer it was raised
+ * for, which makes the whole feature a row in a list.
+ *
+ * Carries the seller's registered address, which the list deliberately does
+ * not: it is legally required on the face of a tax invoice and it is one
+ * dealership's address repeated a hundred times on a list of a hundred.
+ */
+router.get("/dms/invoice/documents/:id", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  if (!may(user.role, "invoice.view")) {
+    res.status(403).json({ error: whyNot(user.role, "invoice.view") });
+    return;
+  }
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: "id must be a positive integer" });
+    return;
+  }
+
+  const found = await documentFor(user.ownerId, id);
+  // 404 across owners as well as for a missing row: a 403 would confirm that
+  // somebody else's invoice exists, which is the same reasoning
+  // `assertShowroomAccess` uses about showrooms.
+  if (!found) {
+    res.status(404).json({ error: "No such document." });
+    return;
+  }
+  if (!(await assertShowroomAccess(req, res, found.document.showroomId))) return;
+
+  res.json(found);
 });
 
 /** Cancelled, never deleted. The number stays spent. */

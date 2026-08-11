@@ -1855,6 +1855,24 @@ export interface GenerateDocumentInput {
 }
 
 /**
+ * Who issued it. The legal name and GSTIN come off the document itself where it has them — a document reprinted next year must show the identity that issued it, not whatever the outlet is called today, the same instinct as storing the tax amounts rather than the tax rule.
+ */
+export interface InvoiceSeller {
+  /** @nullable */
+  legalName?: string | null;
+  /** @nullable */
+  gstin?: string | null;
+  /** @nullable */
+  addressLine?: string | null;
+  /** @nullable */
+  city?: string | null;
+  /** @nullable */
+  state?: string | null;
+  /** @nullable */
+  pincode?: string | null;
+}
+
+/**
  * Load-bearing, not decoration (R-89). A SALE_CONFIRMATION carries the same figures as a tax invoice and is not one, because on that dealership the DMS holds the series. A document that looked like a tax invoice and was not would have somebody claiming input credit against it.
  */
 export type SaleDocumentKind = typeof SaleDocumentKind[keyof typeof SaleDocumentKind];
@@ -3601,6 +3619,11 @@ showroomId: number;
 
 export type ListSaleDocuments200 = {
   documents: SaleDocument[];
+};
+
+export type GetSaleDocument200 = {
+  document: SaleDocument;
+  seller: InvoiceSeller;
 };
 
 export type CancelSaleDocument200 = {

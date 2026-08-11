@@ -1156,6 +1156,76 @@ export const ListSaleDocumentsResponse = zod.object({
 
 
 /**
+ * The generator issued documents from OBJ-25 and there was no way to look at one. An invoice a dealership cannot open is an invoice they cannot hand to the customer it was raised for, which makes the whole feature a row in a list.
+ * Carries the seller's registered address, which the list deliberately does not: it is legally required on the face of a tax invoice, and on a list of a hundred it is one dealership's address a hundred times.
+ * 404 rather than 403 across owners — a 403 confirms that somebody else's invoice exists.
+ * @summary One document, with everything needed to print it
+ */
+export const GetSaleDocumentParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const GetSaleDocumentResponse = zod.object({
+  "document": zod.object({
+  "id": zod.number().int(),
+  "kind": zod.enum(['QUOTATION', 'PROFORMA', 'TAX_INVOICE', 'SALE_CONFIRMATION']).describe('Load-bearing, not decoration (R-89). A SALE_CONFIRMATION carries the same figures as a tax invoice and is not one, because on that dealership the DMS holds the series. A document that looked like a tax invoice and was not would have somebody claiming input credit against it.\n'),
+  "reference": zod.string(),
+  "taxInvoiceNo": zod.string().nullish(),
+  "dmsInvoiceNo": zod.string().nullish(),
+  "documentDate": zod.string(),
+  "factsOrigin": zod.enum(['MIRROR', 'FORM']).describe('Where the facts came from (R-96). MIRROR is a deal row, however it arrived - API, exported report or scan, all of which are the same kind of thing by the time they are a row, and the row itself carries which. FORM is somebody typing the sale in. Nothing downstream reads this: it is here so the document can say where its facts came from, not so anything behaves differently because of it.\n'),
+  "dealerCode": zod.string().nullish().describe('Null for a dealership with no manufacturer\'s system. A dealer code is the OEM\'s name for an outlet and a sub-dealer has never been given one.\n'),
+  "dealId": zod.string(),
+  "customerName": zod.string().nullish(),
+  "customerMobile": zod.string().nullish(),
+  "customerAddress": zod.string().nullish(),
+  "customerGstin": zod.string().nullish(),
+  "modelDescription": zod.string().nullish(),
+  "chassisNo": zod.string().nullish(),
+  "engineNo": zod.string().nullish(),
+  "hsn": zod.string().nullish(),
+  "priceOrigin": zod.enum(['LIST', 'STATED']).describe('STATED means the figures were typed onto this document rather than looked up, which is what a dealership has before it has a price list. Said out loud in the same voice as pricedOffCurrentList.\n'),
+  "priceListId": zod.number().int().nullish(),
+  "priceListName": zod.string().nullish(),
+  "priceListEffectiveFrom": zod.string().nullish(),
+  "pricedOffCurrentList": zod.enum(['Y', 'N']).describe('N means the list used was not the current one, which is lawful and printed on the document. Hiding it would be the product concealing the dealer\'s own commercial decision from the customer it was made for.\n'),
+  "exShowroomAmount": zod.string(),
+  "dealerDiscount": zod.string().optional(),
+  "oemSchemeAmount": zod.string().optional(),
+  "oemSchemePassedOn": zod.string().optional(),
+  "taxableAmount": zod.string(),
+  "gstRatePct": zod.string().optional(),
+  "cessRatePct": zod.string().optional(),
+  "cgstAmount": zod.string().optional(),
+  "sgstAmount": zod.string().optional(),
+  "igstAmount": zod.string().optional(),
+  "cessAmount": zod.string().optional(),
+  "otherCharges": zod.union([zod.array(zod.object({
+  "label": zod.string(),
+  "amount": zod.number()
+})),zod.null()]).optional(),
+  "otherChargesTotal": zod.string().optional(),
+  "totalAmount": zod.string(),
+  "sellerLegalName": zod.string().nullish(),
+  "sellerGstin": zod.string().nullish(),
+  "placeOfSupply": zod.string().nullish(),
+  "status": zod.enum(['DRAFT', 'ISSUED', 'CANCELLED']),
+  "cancelledReason": zod.string().nullish(),
+  "issuedByName": zod.string().nullish(),
+  "createdAt": zod.string().optional()
+}),
+  "seller": zod.object({
+  "legalName": zod.string().nullish(),
+  "gstin": zod.string().nullish(),
+  "addressLine": zod.string().nullish(),
+  "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
+  "pincode": zod.string().nullish()
+}).describe('Who issued it. The legal name and GSTIN come off the document itself where it has them — a document reprinted next year must show the identity that issued it, not whatever the outlet is called today, the same instinct as storing the tax amounts rather than the tax rule.\n')
+})
+
+
+/**
  * A cancelled tax invoice keeps its number and says it was cancelled. A hole in a sequential series is an audit finding, and "we chose not to issue this" and "nobody ever issued anything" are different facts of which only one can be defended later. Same argument as a cancelled outbox message staying a row.
  * @summary Cancel a document, keeping its number
  */

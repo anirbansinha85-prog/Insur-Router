@@ -648,6 +648,26 @@ annotates.
 twice, once from a mirrored deal and once from a typed form, produces the same
 money** — all thirteen money and tax columns compared.
 
+**The document is a page, and the page is the printed thing.** `/invoices/:id`
+— no PDF library, no server-side render, no second layout that can drift from
+the first: browser print, A4, and a `@media print` block that removes the shell
+and nothing else. What somebody checks on screen is what comes out of the
+printer, and there is one layout to be wrong rather than two. Every row of the
+Issued list opens it, and both "issued" confirmations link straight to it.
+
+R-89 is the whole design of the header: a sale confirmation says on its face
+that it is not a tax invoice, above the figures, and the disclaimer prints.
+R-88 too — the customer's page shows what *he* was given, and the scheme the
+dealer retained is not on his invoice; it is on the claims screen, which is
+ours. The amount in words is written out rather than pulled from a library,
+because it is what a bank reads when the figures are disputed and there is
+nothing to go wrong at install time on a dealer's laptop.
+
+> **An invoice a dealership cannot open is an invoice they cannot hand to the
+> customer it was raised for.** The generator issued documents from OBJ-25 and
+> there was nowhere to look at one, which made the whole feature a row in a
+> list. Found by somebody issuing an invoice and asking where it went.
+
 **`generateDocument` is the only thing that writes a document** (R-81). When a
 journey wants an invoice raised it calls that, with a person's consent behind
 it. `invoice.generate` is withheld from the agent: it puts a priced document in

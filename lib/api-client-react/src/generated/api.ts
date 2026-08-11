@@ -59,6 +59,7 @@ import type {
   GetReceivablesWorklistParams,
   GetRegistrationWorklist200,
   GetRegistrationWorklistParams,
+  GetSaleDocument200,
   GetServiceWorklist200,
   GetServiceWorklistParams,
   GetShowroomPanel200,
@@ -2599,6 +2600,86 @@ export function useListSaleDocuments<TData = Awaited<ReturnType<typeof listSaleD
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListSaleDocumentsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetSaleDocumentUrl = (id: number,) => {
+
+
+
+
+  return `/api/dms/invoice/documents/${id}`
+}
+
+/**
+ * The generator issued documents from OBJ-25 and there was no way to look at one. An invoice a dealership cannot open is an invoice they cannot hand to the customer it was raised for, which makes the whole feature a row in a list.
+ * Carries the seller's registered address, which the list deliberately does not: it is legally required on the face of a tax invoice, and on a list of a hundred it is one dealership's address a hundred times.
+ * 404 rather than 403 across owners — a 403 confirms that somebody else's invoice exists.
+ * @summary One document, with everything needed to print it
+ */
+export const getSaleDocument = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<GetSaleDocument200> => {
+
+  return customFetch<GetSaleDocument200>(getGetSaleDocumentUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSaleDocumentQueryKey = (id: number,) => {
+    return [
+    `/api/dms/invoice/documents/${id}`
+    ] as const;
+    }
+
+
+export const getGetSaleDocumentQueryOptions = <TData = Awaited<ReturnType<typeof getSaleDocument>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSaleDocument>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSaleDocumentQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSaleDocument>>> = ({ signal }) => getSaleDocument(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSaleDocument>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSaleDocumentQueryResult = NonNullable<Awaited<ReturnType<typeof getSaleDocument>>>
+export type GetSaleDocumentQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary One document, with everything needed to print it
+ */
+
+export function useGetSaleDocument<TData = Awaited<ReturnType<typeof getSaleDocument>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSaleDocument>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSaleDocumentQueryOptions(id,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

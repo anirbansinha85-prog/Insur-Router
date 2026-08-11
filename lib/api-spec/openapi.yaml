@@ -1121,6 +1121,50 @@ paths:
                     items: { $ref: "#/components/schemas/SaleDocument" }
                 required: [documents]
 
+  /dms/invoice/documents/{id}:
+    get:
+      operationId: getSaleDocument
+      tags: [dms]
+      summary: One document, with everything needed to print it
+      description: >
+        The generator issued documents from OBJ-25 and there was no way to look
+        at one. An invoice a dealership cannot open is an invoice they cannot
+        hand to the customer it was raised for, which makes the whole feature a
+        row in a list.
+
+        Carries the seller's registered address, which the list deliberately
+        does not: it is legally required on the face of a tax invoice, and on a
+        list of a hundred it is one dealership's address a hundred times.
+
+        404 rather than 403 across owners — a 403 confirms that somebody else's
+        invoice exists.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: The document and the identity that issued it
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  document: { $ref: "#/components/schemas/SaleDocument" }
+                  seller: { $ref: "#/components/schemas/InvoiceSeller" }
+                required: [document, seller]
+        "403":
+          description: Not a role that reads invoices
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such document
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
   /dms/invoice/documents/{id}/cancel:
     post:
       operationId: cancelSaleDocument
@@ -4584,6 +4628,21 @@ components:
           type: ["string", "null"]
           description: Decides CGST+SGST against IGST. Defaults to the outlet's own state.
       required: [showroomId]
+
+    InvoiceSeller:
+      type: object
+      description: >
+        Who issued it. The legal name and GSTIN come off the document itself
+        where it has them — a document reprinted next year must show the
+        identity that issued it, not whatever the outlet is called today, the
+        same instinct as storing the tax amounts rather than the tax rule.
+      properties:
+        legalName: { type: ["string", "null"] }
+        gstin: { type: ["string", "null"] }
+        addressLine: { type: ["string", "null"] }
+        city: { type: ["string", "null"] }
+        state: { type: ["string", "null"] }
+        pincode: { type: ["string", "null"] }
 
     SaleDocument:
       type: object

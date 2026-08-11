@@ -224,6 +224,16 @@ export function SaleForm({
                   ? `Tax invoice ${issued.taxInvoiceNo}.`
                   : "Sale confirmation — not a tax invoice."}
               </p>
+              {/* The link, at the moment somebody has just made the thing.
+                  Telling them it was issued and leaving them to find it is
+                  how a feature gets used once. */}
+              <a
+                href={`invoices/${issued.id}`}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-800
+                           underline underline-offset-2 hover:text-emerald-950"
+              >
+                View and print it
+              </a>
               {warnings.map((w, i) => (
                 <p key={i} className="text-xs text-amber-800 flex items-start gap-1.5">
                   <Info className="w-3 h-3 mt-0.5 shrink-0" />

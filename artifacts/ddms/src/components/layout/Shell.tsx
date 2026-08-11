@@ -127,8 +127,11 @@ export function Shell({ children, user, onSignOut }: ShellProps) {
   })).filter((g) => g.items.length > 0)
 
   return (
-    <div className="flex h-screen w-full bg-slate-100 text-slate-900 font-sans">
-      <aside className="w-60 bg-[#111a2b] text-slate-300 flex flex-col shrink-0">
+    /* `print:block` and `print:h-auto` because a flex row of fixed height is a
+       one-page printer: the browser prints the viewport rather than the
+       document, and an invoice with a long address quietly loses its footer. */
+    <div className="flex h-screen w-full bg-slate-100 text-slate-900 font-sans print:block print:h-auto print:bg-white">
+      <aside className="w-60 bg-[#111a2b] text-slate-300 flex flex-col shrink-0 print:hidden">
         <div className="px-5 py-4 border-b border-white/10">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded bg-emerald-500 flex items-center justify-center shrink-0">
@@ -201,8 +204,8 @@ export function Shell({ children, user, onSignOut }: ShellProps) {
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between gap-4 shrink-0">
+      <main className="flex-1 flex flex-col min-w-0 overflow-hidden print:overflow-visible print:block">
+        <header className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between gap-4 shrink-0 print:hidden">
           <div className="min-w-0">
             <h2 className="font-bold text-slate-900 truncate">
               {selected?.name ?? "No showroom"}

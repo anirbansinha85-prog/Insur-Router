@@ -30,6 +30,7 @@ import {
   priceListsTable,
   priceListItemsTable,
   saleDocumentsTable,
+  showroomsTable,
   type SaleDocumentRow,
 } from "@workspace/db";
 import { priceFor, money } from "./pricing";
@@ -245,4 +246,63 @@ export async function listDocuments(ownerId: number, showroomId: number, limit =
     .where(and(eq(saleDocumentsTable.ownerId, ownerId), eq(saleDocumentsTable.showroomId, showroomId)))
     .orderBy(desc(saleDocumentsTable.id))
     .limit(limit);
+}
+
+/**
+ * One document, with everything needed to print it.
+ *
+ * A separate call rather than a filter over `listDocuments`, because the thing
+ * that gets printed needs what the list does not: the seller's registered
+ * address, which lives on the outlet and is legally required on the face of a
+ * tax invoice. Sending it on every row of a list of a hundred would be a
+ * hundred copies of one dealership's address.
+ */
+export async function documentFor(
+  ownerId: number,
+  id: number,
+): Promise<{
+  document: SaleDocumentRow;
+  seller: {
+    legalName: string | null;
+    gstin: string | null;
+    addressLine: string | null;
+    city: string | null;
+    state: string | null;
+    pincode: string | null;
+  };
+} | null> {
+  const [row] = await db
+    .select()
+    .from(saleDocumentsTable)
+    .where(and(eq(saleDocumentsTable.id, id), eq(saleDocumentsTable.ownerId, ownerId)))
+    .limit(1);
+  if (!row) return null;
+
+  const [outlet] = await db
+    .select()
+    .from(showroomsTable)
+    .where(eq(showroomsTable.id, row.showroomId))
+    .limit(1);
+
+  return {
+    document: row,
+    seller: {
+      /*
+       * The document's own copies win where it has them.
+       *
+       * `sellerLegalName` and `sellerGstin` were stamped onto the row when it
+       * was issued, and a document reprinted next year has to show the identity
+       * that issued it rather than whatever the outlet is called today — the
+       * same instinct as storing the tax amounts rather than the tax rule. The
+       * address is not on the row, so it comes from the outlet and is the one
+       * field here that can drift. Worth fixing when a group next moves premises.
+       */
+      legalName: row.sellerLegalName ?? outlet?.legalName ?? outlet?.name ?? null,
+      gstin: row.sellerGstin ?? outlet?.gstin ?? null,
+      addressLine: outlet?.addressLine ?? null,
+      city: outlet?.city ?? null,
+      state: outlet?.state ?? null,
+      pincode: outlet?.pincode ?? null,
+    },
+  };
 }

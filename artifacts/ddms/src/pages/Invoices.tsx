@@ -237,8 +237,16 @@ export default function Invoices() {
 
           {tab === "ISSUED" && (
             <div className="border border-slate-200 rounded-lg bg-white divide-y divide-slate-100">
+              {/* Every row opens the document. It was a list you could read and
+                  not a list you could use — a dealership could raise an invoice
+                  and had nowhere to go to hand it to the customer. */}
               {(shown as unknown as typeof issued).map((d) => (
-                <div key={d.id} className="px-4 py-2.5 flex items-center gap-3 flex-wrap text-sm">
+                <a
+                  key={d.id}
+                  href={`invoices/${d.id}`}
+                  className="px-4 py-2.5 flex items-center gap-3 flex-wrap text-sm hover:bg-slate-50
+                             focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-300"
+                >
                   <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                   <span className="font-medium text-slate-800 w-36 shrink-0">{d.reference}</span>
                   {/* R-89 on the list as well as the document: if it is not a
@@ -264,7 +272,8 @@ export default function Invoices() {
                       cancelled
                     </span>
                   )}
-                </div>
+                  <FileText className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+                </a>
               ))}
             </div>
           )}

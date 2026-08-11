@@ -13,6 +13,7 @@ import SignIn from '@/pages/SignIn';
 import Queue from '@/pages/Queue';
 import Numbers from '@/pages/Numbers';
 import Learned from '@/pages/Learned';
+import Invoice from '@/pages/Invoice';
 import Leads from '@/pages/Leads';
 import Worklist from '@/pages/Worklist';
 import ServiceWorklist from '@/pages/ServiceWorklist';
@@ -123,6 +124,10 @@ function Gate() {
           {/* The only screen where DDMS proposes to speak for the dealership,
               which is why it is its own place rather than a panel on a row. */}
           <Route path="/invoices">{guard(u, "/invoices", <Invoices />)}</Route>
+          {/* The document itself, printable. Gated on DEAL like the list it is
+              reached from — a technician closing job cards has no business
+              seeing what a customer paid. */}
+          <Route path="/invoices/:id">{guard(u, "/invoices", <Invoice />)}</Route>
           <Route path="/outbox">{guard(u, "/outbox", <Outbox />)}</Route>
           {/* Not in the sidebar: you arrive here from the search box or from a
               row, never by browsing. It is a lens on one record, not a screen. */}
