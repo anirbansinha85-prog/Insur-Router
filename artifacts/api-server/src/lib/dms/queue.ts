@@ -62,6 +62,8 @@ import { buildReceivablesWorklist } from "./receivables-worklist";
 import { buildInventoryWorklist } from "./inventory-worklist";
 import type { ActionId } from "./actions";
 import { suggestForItems, type AgentSuggestion } from "./agent";
+import { standingFor, type Rung } from "./autonomy";
+import { patternKey } from "./precedent";
 import { openTasks, daysLate } from "./records";
 import { journeyQueueRows, liveSubjects } from "./journeys";
 
@@ -187,6 +189,32 @@ export interface QueueItem {
    * and the item will have moved bands. Null when nobody is left to hand it to.
    */
   agentSuggestion: AgentSuggestion | null;
+  /**
+   * What this outlet did the last few times, and how far the product has
+   * earned the right to help (OBJ-26, R-68, R-79).
+   *
+   * Null when there is no settled habit, and null rather than a hedge: *"this
+   * dealership has no pattern here"* occupies a row and tells nobody anything,
+   * and a queue that says something about every item teaches people to stop
+   * reading it.
+   *
+   * **`sentence` and `prefill` can disagree, and both are shown.** The sentence
+   * is what people here did; the prefill is what the agent proposes, chosen by
+   * a rule on today's workload. *The last seven went to Jaswinder; Ramesh is
+   * carrying the least today* are two true things, and which wins is the
+   * person's call. Collapsing them would be the product having an opinion it
+   * has not earned — and R-69 in one line: precedent informs, it never decides.
+   */
+  learned: {
+    patternKey: string;
+    rung: Rung;
+    /** What people here did, with a count and a date. R-68 or nothing. */
+    sentence: string | null;
+    /** The value to arrive already selected, at rung 2 and above. */
+    prefill: string | null;
+    /** Why the product is at this rung on this pattern. Arguable, on purpose. */
+    because: string;
+  } | null;
   /** The screen this row lives on, for anyone who wants the full picture. */
   href: string;
 }
@@ -379,6 +407,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         source: "DERIVED",
         tone: "PROBLEM",
         agentSuggestion: null,
+        learned: null,
         href: "/worklist",
       });
     }
@@ -421,6 +450,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         source: "DERIVED",
         tone: "PROBLEM",
         agentSuggestion: null,
+        learned: null,
         href: "/service",
       });
     }
@@ -474,6 +504,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         source: "DERIVED",
         tone: "PROBLEM",
         agentSuggestion: null,
+        learned: null,
         href: "/enquiries",
       });
     }
@@ -527,6 +558,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         source: "DERIVED",
         tone: "PROBLEM",
         agentSuggestion: null,
+        learned: null,
         href: "/registrations",
       });
     }
@@ -582,6 +614,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         source: "DERIVED",
         tone: "PROBLEM",
         agentSuggestion: null,
+        learned: null,
         href: "/spares",
       });
     }
@@ -630,6 +663,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         source: "DERIVED",
         tone: "PROBLEM",
         agentSuggestion: null,
+        learned: null,
         href: "/receivables",
       });
     }
@@ -671,6 +705,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         source: "DERIVED",
         tone: "PROBLEM",
         agentSuggestion: null,
+        learned: null,
         href: "/inventory",
       });
     }
@@ -778,6 +813,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
       assignAction: j.subjectModule === "REGISTRATION" ? "REGISTRATION_ASSIGN_AGENT" : null,
       assignRole: j.subjectModule === "REGISTRATION" ? (j.role ?? "RTO_AGENT") : null,
       agentSuggestion: null,
+        learned: null,
       href: hrefFor(j.subjectModule as QueueModule),
     });
   }
@@ -838,6 +874,7 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         assignAction: null,
         assignRole: null,
         agentSuggestion: null,
+        learned: null,
         href: task.module && task.recordKey ? hrefFor(task.module as QueueModule) : "/",
       });
     }
@@ -875,6 +912,50 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
   for (const item of items) {
     const s = suggestions.get(`${item.module}:${item.showroomId}:${item.recordKey}`);
     if (s) item.agentSuggestion = s;
+  }
+
+  /*
+   * What this outlet has done before, and how far that has earned (OBJ-26).
+   *
+   * One pass over the decision log and the proposal ledger for the whole
+   * queue, then a map lookup per row — thirty answers to thirty questions
+   * rather than three hundred round trips.
+   *
+   * Like the agent's suggestion, it is attached **after the sort and does not
+   * touch it**. A habit is not urgency, and letting *we usually do this one
+   * first* move a row up the list would be precedent reordering the queue,
+   * which R-69 refuses in as many words.
+   */
+  const standing = await standingFor({
+    ownerId: input.ownerId,
+    showroomIds: visibleShowroomIds,
+    policy,
+    label: (code) => staff.get(code)?.name ?? null,
+  });
+
+  for (const item of items) {
+    if (!item.assignAction) continue;
+    const key = patternKey(item.module, item.state, item.assignAction);
+    const p = standing.get(key);
+    if (!p || p.rung === "WATCHING") continue;
+
+    const prefill =
+      p.rung === "PREFILLED" || p.rung === "AUTOMATIC"
+        ? item.agentSuggestion?.empCode ?? null
+        : null;
+
+    // A rung with nothing to say is not worth a block on the row. That happens
+    // when a pattern has acceptances but its habit has since gone quiet — the
+    // demotion is real and belongs on the learning screen, not on every row.
+    if (!p.sentence && !prefill) continue;
+
+    item.learned = {
+      patternKey: key,
+      rung: p.rung,
+      sentence: p.sentence,
+      prefill,
+      because: p.because,
+    };
   }
 
   const counts = new Map<QueueModule, number>();

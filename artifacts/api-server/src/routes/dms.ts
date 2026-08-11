@@ -101,6 +101,16 @@ import {
 import { showroomIdsForOwner } from "../lib/dms/events";
 import { buildQueue } from "../lib/dms/queue";
 import { describeRules, MAX_RULES } from "../lib/dms/rules";
+import {
+  standingFor,
+  grantConsent,
+  revokeConsent,
+  rungIndex,
+  RUNG_LABEL,
+  RUNG_MEANING,
+  AUTONOMY_KEYS,
+} from "../lib/dms/autonomy";
+import { recentProposals } from "../lib/dms/proposals";
 import { describePolicy, loadPolicy, resetAllPolicy, setPolicy } from "../lib/dms/policy";
 import { caseFor } from "../lib/dms/case";
 import { traceFor } from "../lib/dms/journeys";
@@ -1606,6 +1616,167 @@ router.post("/dms/policy/reset", async (req, res): Promise<void> => {
  */
 router.get("/dms/rules", (_req, res): void => {
   res.json({ rules: describeRules(), max: MAX_RULES });
+});
+
+/**
+ * What the product has learned, and how far that has earned it (OBJ-26).
+ *
+ * The screen that makes the ladder legible. An automation layer nobody can see
+ * is where an automation layer nobody can predict begins — the same argument
+ * that put the rule set on a screen — and a ladder is worse than a dial if
+ * nobody can find out which rung anything is on.
+ *
+ * Readable by anybody signed in, because it explains what is on their queue.
+ * Only an owner or a manager may consent, which is the same test that gates the
+ * dealership's own numbers and the same reason: this is a decision about how
+ * the business runs rather than about one record.
+ */
+router.get("/dms/autonomy", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  const showroomIds = user.showroomId
+    ? [user.showroomId]
+    : await showroomIdsForOwner(user.ownerId);
+
+  const policy = await loadPolicy(user.ownerId);
+  const staff = new Map<string, string>();
+  for (const id of showroomIds) {
+    for (const p of await listStaff(id)) staff.set(p.empCode, p.empName);
+  }
+
+  const standing = await standingFor({
+    ownerId: user.ownerId,
+    showroomIds,
+    policy,
+    label: (code) => staff.get(code) ?? null,
+  });
+
+  const patterns = [...standing.values()]
+    // Loudest first: the ones asking for a decision, then by how far up they
+    // are, then by how much has happened. An owner opening this screen wants
+    // the question before the inventory.
+    .sort(
+      (a, b) =>
+        Number(b.consentDue) - Number(a.consentDue) ||
+        rungIndex(b.rung) - rungIndex(a.rung) ||
+        (b.precedent?.total ?? 0) - (a.precedent?.total ?? 0),
+    )
+    .map((p) => ({
+      patternKey: p.patternKey,
+      module: p.module,
+      state: p.state,
+      action: p.action,
+      rung: p.rung,
+      rungLabel: RUNG_LABEL[p.rung],
+      rungMeaning: RUNG_MEANING[p.rung],
+      ceiling: p.ceiling,
+      ceilingReason: p.ceilingReason,
+      sentence: p.sentence,
+      because: p.because,
+      decisions: p.precedent?.total ?? 0,
+      windowDays: p.precedent?.windowDays ?? policy.number(AUTONOMY_KEYS.window),
+      offered: p.offered,
+      accepted: p.accepted,
+      overridden: p.overridden,
+      acted: p.acted,
+      overrideRatePct: p.overrideRatePct,
+      consentDue: p.consentDue,
+      consentedBy: p.consent?.grantedByName ?? null,
+      consentedAt: p.consent?.grantedAt?.toISOString() ?? null,
+    }));
+
+  res.json({
+    patterns,
+    // On the response rather than fetched separately: every count on this
+    // screen is only meaningful against the thresholds it is measured by, and
+    // a screen that shows "12 accepted" without saying 10 is the bar has said
+    // nothing.
+    numbers: {
+      windowDays: policy.number(AUTONOMY_KEYS.window),
+      recallAfter: policy.number(AUTONOMY_KEYS.recallAfter),
+      prefillAfter: policy.number(AUTONOMY_KEYS.prefillAfter),
+      consentAfter: policy.number(AUTONOMY_KEYS.consentAfter),
+      overrideCeilingPct: policy.number(AUTONOMY_KEYS.overrideCeiling),
+    },
+    agentSwitchedOn: policy.on("AGENT.ASSIGN_ORPHANS"),
+  });
+});
+
+/**
+ * A person allowing one pattern to run unattended.
+ *
+ * The pattern travels in the body rather than the path because it carries
+ * colons, and a key that has to be URL-encoded to be named is a key somebody
+ * will one day encode wrongly in a log line.
+ *
+ * This is the only place in the product where a person grants standing
+ * permission for something to act without them. It is gated here, in
+ * `grantConsent`, and in the row policy — three times, because the route can
+ * explain a refusal, the function can refuse a pattern that may never run
+ * unattended whoever asks, and only the database can make it true.
+ */
+router.post("/dms/autonomy/consent", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  const body = req.body as { patternKey?: unknown; onCount?: unknown };
+  const patternKey = typeof body.patternKey === "string" ? body.patternKey : "";
+  if (!patternKey) {
+    res.status(400).json({ error: "Say which pattern." });
+    return;
+  }
+
+  const result = await grantConsent({
+    ownerId: user.ownerId,
+    patternKey,
+    userId: user.userId,
+    userName: user.name,
+    onCount: Number(body.onCount) || 0,
+    principal: user.role,
+  });
+
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+  res.status(201).json({ consent: result.consent });
+});
+
+/** Taken back, never deleted. The row keeps who gave it and who took it back. */
+router.post("/dms/autonomy/revoke", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  const body = req.body as { patternKey?: unknown; reason?: unknown };
+  const result = await revokeConsent({
+    ownerId: user.ownerId,
+    patternKey: typeof body.patternKey === "string" ? body.patternKey : "",
+    userId: user.userId,
+    reason: String(body.reason ?? ""),
+    principal: user.role,
+  });
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+  res.json({ revoked: true });
+});
+
+/**
+ * What was offered lately, and what became of each one.
+ *
+ * The evidence behind a rung, shown rather than summarised. A count somebody
+ * cannot open is a count they have to take on trust, and this screen exists
+ * precisely to be the place trust is decided.
+ */
+router.get("/dms/autonomy/proposals", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  const showroomIds = user.showroomId
+    ? [user.showroomId]
+    : await showroomIdsForOwner(user.ownerId);
+  res.json({
+    proposals: await recentProposals({
+      ownerId: user.ownerId,
+      showroomIds,
+      patternKey: typeof req.query.patternKey === "string" ? req.query.patternKey : undefined,
+      limit: 50,
+    }),
+  });
 });
 
 /**

@@ -39,6 +39,24 @@
  * Nothing switches on under a dealership's feet, and acting unattended from the
  * first deploy would have been the version where the dealership never chose it.
  *
+ * ## Since OBJ-26, the switch is the master and the ladder is the gate
+ *
+ * `AGENT.ASSIGN_ORPHANS` used to be the whole answer: on, and the agent acted
+ * on everything in the Nobody's band from the first pass. That is a dial
+ * somebody sets — a guess made on the first afternoon about work nobody has
+ * watched it do.
+ *
+ * Now **both have to hold**. The switch says whether anything may run
+ * unattended at all; the pattern's rung says whether *this* one has earned it,
+ * and reaching rung 3 needs a person's consent on evidence they can read. A
+ * dealership that switches the agent on and has no history gets suggestions,
+ * not actions, which is a strict narrowing of what the switch used to mean and
+ * is the safer direction of the two.
+ *
+ * The loop closes through people rather than through the agent: acceptances at
+ * rungs 1 and 2 are what earn rung 3, and every one of them is somebody
+ * clicking. There is no path by which the agent's own work promotes it.
+ *
  * ## The rule chooses; the model may only phrase
  *
  * The assignee is picked deterministically — the lightest-loaded person in the
@@ -63,6 +81,9 @@ import { citationsHold } from "./explain";
 import type { ResolvedPolicy } from "./policy";
 import type { QueueItem } from "./queue";
 import type { Evidence } from "./tools";
+import { standingFor, type PatternStanding } from "./autonomy";
+import { patternKey } from "./precedent";
+import { markActed, recordProposals, type ProposalToRecord } from "./proposals";
 
 /**
  * Everything the agent may call, derived from the permission table.
@@ -120,6 +141,8 @@ export interface AgentSuggestion {
   reason: string;
   /** Present when a model wrote a sentence and it was refused. */
   narrationRejected?: string | null;
+  /** The pattern this proposal belongs to, so it can be counted (OBJ-26). */
+  patternKey?: string;
 }
 
 // ── Choosing ────────────────────────────────────────────────────────────────
@@ -319,6 +342,7 @@ export async function suggestForItems(
     if (!pick) continue;
 
     out.set(`${item.module}:${item.showroomId}:${item.recordKey}`, {
+      patternKey: patternKey(item.module, item.state, item.assignAction),
       action: item.assignAction,
       empCode: pick.empCode,
       empName: pick.empName,
@@ -345,20 +369,28 @@ export function isAgentAction(action: string): action is AgentAction {
 
 export interface AgentRunResult {
   showroomId: number;
-  /** False when this dealership has not switched the agent on. */
+  /** False when this dealership has not switched the agent on at all. */
   enabled: boolean;
   considered: number;
+  /** Written down as offered, whatever the switch says. The ladder's substrate. */
+  proposed: number;
   assigned: number;
+  /**
+   * Patterns that had a suggestion and were not allowed to act on it, with the
+   * reason. Not an error — it is the ladder working — but it is the sentence
+   * that answers *why did nothing happen*, which is otherwise unanswerable.
+   */
+  held: Array<{ patternKey: string; rung: string; because: string }>;
   /** Refusals, kept rather than counted — each one is why a record is still stuck. */
   refused: Array<{ recordKey: string; reason: string }>;
 }
 
 /**
- * Assign what nobody is on, unattended, if this dealership has asked for it.
+ * Offer what nobody is on, and act only where that has been earned.
  *
- * Runs in the scheduler on `ddms_worker`, after detection and after the rules —
- * after, because the queue it reads is built from derived state and reading it
- * before the pass that computes that state would act on yesterday's picture.
+ * Runs in the scheduler on `ddms_worker`, after detection, after the rules and
+ * after the proposal ledger has been settled — after, because the rung this
+ * pass acts on has to reflect what people did with yesterday's suggestions.
  *
  * **Every write goes through `applyAction`**, the same function the button
  * calls, with `userId` null. Nothing here re-implements a check, which is the
@@ -371,25 +403,91 @@ export async function runAgentForShowroom(
   showroomId: number,
   items: QueueItem[],
   policy: ResolvedPolicy,
+  /** Precomputed by the caller when it already has it. One pass per owner. */
+  standing?: Map<string, PatternStanding>,
 ): Promise<AgentRunResult> {
   const result: AgentRunResult = {
     showroomId,
     enabled: policy.on("AGENT.ASSIGN_ORPHANS"),
     considered: 0,
+    proposed: 0,
     assigned: 0,
+    held: [],
     refused: [],
   };
+
+  const mine = items.filter((i) => i.showroomId === showroomId);
+  const suggestions = await suggestForItems(mine);
+  if (suggestions.size === 0) return result;
+
+  const ladder =
+    standing ?? (await standingFor({ ownerId, showroomIds: [showroomId], policy }));
+
+  /*
+   * Write down what is on offer, **before** deciding whether to act on it and
+   * whatever the switch says.
+   *
+   * A dealership with the agent switched off is still being made suggestions on
+   * the queue, and a person accepting one of those is exactly the evidence the
+   * ladder runs on. Recording only when the agent acts would mean the only way
+   * to earn autonomy was to already have it.
+   */
+  const toRecord: ProposalToRecord[] = [];
+  for (const [key, sug] of suggestions) {
+    const recordKey = key.split(":").slice(2).join(":");
+    const item = mine.find((i) => i.recordKey === recordKey);
+    if (!item || !sug.patternKey) continue;
+    const rung = ladder.get(sug.patternKey)?.rung ?? "WATCHING";
+    toRecord.push({
+      ownerId,
+      showroomId,
+      patternKey: sug.patternKey,
+      module: item.module,
+      recordKey: item.recordKey,
+      action: sug.action,
+      // The same shape the decision log records, so *accepted* is a comparison
+      // rather than a string match on prose.
+      proposedValue:
+        sug.action === "ENQUIRY_REASSIGN"
+          ? { reassignedToEmpCode: sug.empCode }
+          : { assignedAgentEmpCode: sug.empCode },
+      reason: sug.reason,
+      rung: ["WATCHING", "RECALL", "PREFILLED", "AUTOMATIC"].indexOf(rung),
+    });
+  }
+  result.proposed = await recordProposals(toRecord);
+
+  // The master switch. Off, the dealership gets suggestions and nothing acts.
   if (!result.enabled) return result;
 
-  const suggestions = await suggestForItems(items.filter((i) => i.showroomId === showroomId));
+  const heldOnce = new Set<string>();
 
   for (const [key, s] of suggestions) {
     result.considered++;
     const recordKey = key.split(":").slice(2).join(":");
-    const item = items.find(
-      (i) => i.recordKey === recordKey && i.showroomId === showroomId,
-    );
-    if (!item) continue;
+    const item = mine.find((i) => i.recordKey === recordKey);
+    if (!item || !s.patternKey) continue;
+
+    /*
+     * The ladder, and it is the whole of R-79 in four lines.
+     *
+     * Rung 3 or nothing. A pattern at rung 2 has a person's click behind every
+     * instance of it and that click is what is being counted; acting on it
+     * unattended would both skip the consent and destroy the evidence that
+     * consent was going to be asked for.
+     */
+    const p = ladder.get(s.patternKey);
+    if (!p || p.rung !== "AUTOMATIC") {
+      if (!heldOnce.has(s.patternKey)) {
+        heldOnce.add(s.patternKey);
+        result.held.push({
+          patternKey: s.patternKey,
+          rung: p?.rung ?? "WATCHING",
+          because: p?.because ?? "Nothing has happened here yet for it to have learned from.",
+        });
+      }
+      continue;
+    }
 
     const detail = await phrase(item, s, s.reason);
 
@@ -418,10 +516,31 @@ export async function runAgentForShowroom(
       continue;
     }
 
+    /*
+     * `ACTED`, not `ACCEPTED`. Nobody accepted anything.
+     *
+     * Keeping them apart is what stops a pattern running unattended from
+     * re-earning the consent that lets it run unattended — the self-reinforcing
+     * loop R-66 closes on the precedent side, closed here on the ladder side.
+     */
+    await markActed({
+      ownerId,
+      showroomId,
+      module: item.module,
+      recordKey: item.recordKey,
+      action: s.action,
+    });
+
     result.assigned++;
     logger.info(
-      { action: s.action, recordKey: item.recordKey, empCode: s.empCode, carrying: s.carrying },
-      "Agent assigned orphaned work",
+      {
+        action: s.action,
+        recordKey: item.recordKey,
+        empCode: s.empCode,
+        patternKey: s.patternKey,
+        consentedBy: p.consent?.grantedByName,
+      },
+      "Agent assigned orphaned work under a standing consent",
     );
   }
 

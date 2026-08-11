@@ -14,6 +14,7 @@ import {
   PhoneCall,
   RotateCw,
   SkipForward,
+  Sparkles,
   UserX,
 } from "lucide-react"
 import { ActionButton, AgentSuggestionCard, AssignPicker, ContactButtons } from "@/lib/actions"
@@ -342,6 +343,31 @@ export default function Queue() {
                 suggestion={current.agentSuggestion}
                 target={{ showroomId: current.showroomId, recordKey: current.recordKey }}
               />
+            )}
+
+            {/* What this outlet did last time, beside the suggestion and not
+                inside it (OBJ-26, R-68).
+                
+                The two can disagree and both are shown. *Ramesh is carrying the
+                least today* is the agent's rule; *the last seven went to
+                Jaswinder* is what people here actually do. Merging them would
+                be the product having an opinion it has not earned — precedent
+                informs and never decides (R-69) — and separating them is what
+                lets somebody overrule either one on the evidence. */}
+            {current.learned?.sentence && (
+              <div className="border border-sky-200 bg-sky-50/50 rounded-md px-3 py-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-sky-700 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" />
+                  What you did last time
+                </div>
+                <p className="text-sm text-sky-900 mt-0.5">{current.learned.sentence}</p>
+                <a
+                  href="learned"
+                  className="text-[11px] text-sky-700 underline underline-offset-2 hover:text-sky-900"
+                >
+                  {current.learned.because}
+                </a>
+              </div>
             )}
 
             {/* The controls. Which ones apply was decided by the rules that own

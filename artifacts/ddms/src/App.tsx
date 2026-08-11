@@ -12,6 +12,7 @@ import { NotYours, ROUTE_MODULE, mayOpen } from '@/lib/permitted';
 import SignIn from '@/pages/SignIn';
 import Queue from '@/pages/Queue';
 import Numbers from '@/pages/Numbers';
+import Learned from '@/pages/Learned';
 import Leads from '@/pages/Leads';
 import Worklist from '@/pages/Worklist';
 import ServiceWorklist from '@/pages/ServiceWorklist';
@@ -108,6 +109,10 @@ function Gate() {
               would make the queue's order look arbitrary. The refusal to edit
               is on the row policies, not on this route. */}
           <Route path="/numbers"><Numbers permissions={u.permissions ?? []} /></Route>
+          {/* Same reasoning as the numbers: readable by everybody, because it
+              explains what is on their queue, and only an owner or a manager
+              may answer the one question it asks. */}
+          <Route path="/learned"><Learned permissions={u.permissions ?? []} /></Route>
           <Route path="/enquiries">{guard(u, "/enquiries", <Leads />)}</Route>
           <Route path="/worklist">{guard(u, "/worklist", <Worklist />)}</Route>
           <Route path="/registrations">{guard(u, "/registrations", <Registrations />)}</Route>

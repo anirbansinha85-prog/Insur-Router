@@ -12,6 +12,7 @@ import type { QueueItemAssignAction } from './queueItemAssignAction';
 import type { QueueItemSource } from './queueItemSource';
 import type { QueueItemTone } from './queueItemTone';
 import type { QueueJourney } from './queueJourney';
+import type { QueueLearned } from './queueLearned';
 import type { QueueModule } from './queueModule';
 
 export interface QueueItem {
@@ -65,6 +66,8 @@ export interface QueueItem {
   taskId?: number;
   /** Who the agent would hand this to, and why. Only ever on an item in the Nobody's band that supports an assignment. Present whether or not the dealership has switched the agent on: off it is a suggestion with a person's click behind it, on the scheduler will already have applied it and the item will have changed band. Null when there is nobody left to hand it to. */
   agentSuggestion?: AgentSuggestion | null;
+  /** What this outlet did the last few times, and how far the product has earned the right to help (R-68, R-79). Null when there is no settled habit — null rather than a hedge, because a queue that says something about every item teaches people to stop reading it. */
+  learned?: QueueLearned | null;
   /** The module screen, for anyone who wants the full picture. */
   href: string;
 }

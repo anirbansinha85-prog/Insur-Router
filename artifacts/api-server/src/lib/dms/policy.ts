@@ -46,7 +46,15 @@ export interface PolicyKey {
   default: number;
   min: number;
   max: number;
-  unit: "rank" | "days" | "switch";
+  /**
+   * What the number is, so the screen can render it and a reader can weigh it.
+   *
+   * `count` and `percent` arrived with OBJ-26. The registry began as thresholds
+   * measured in days and the vocabulary followed; a ladder counts acceptances
+   * and measures an override rate, and calling either of those "days" on a
+   * screen a dealership reads would be worse than adding two words here.
+   */
+  unit: "rank" | "days" | "switch" | "count" | "percent";
 }
 
 /**
@@ -103,6 +111,91 @@ const SWITCH_KEYS: PolicyKey[] = [
     min: 0,
     max: 1,
     unit: "switch",
+  },
+];
+
+/**
+ * How much the product has to have watched before it starts helping (OBJ-26).
+ *
+ * The whole of R-79's third property. Autonomy earned by evidence needs a
+ * number saying *how much evidence*, and that number is not a product opinion:
+ * a cautious owner sets the consent threshold at 25, a confident one at 5, and
+ * both are right about their own dealership. Putting it in the registry means
+ * it is theirs, it is visible on the *Your numbers* screen beside every other
+ * number that decides their day, and it can never become a rule builder —
+ * five numbers cannot turn into eighty flows nobody can predict (R-52).
+ *
+ * The override ceiling is the one borrowed number here. wrrk.ai's cruder
+ * version of the same instinct reached 20% independently: above it the agent is
+ * not ready and more autonomy is the wrong answer.
+ */
+const AUTONOMY_KEYS_REGISTRY: PolicyKey[] = [
+  {
+    key: "AUTONOMY.WINDOW_DAYS",
+    group: "THRESHOLD",
+    section: "What the product has learned",
+    label: "How far back it looks",
+    help:
+      "A habit is counted over this many days. Anything older stops counting, so a way of "
+      + "working you drop leaves the product by itself rather than by somebody remembering "
+      + "to switch it off.",
+    default: 60,
+    min: 7,
+    max: 365,
+    unit: "days",
+  },
+  {
+    key: "AUTONOMY.RECALL_AFTER",
+    group: "THRESHOLD",
+    section: "What the product has learned",
+    label: "Decisions before it says anything",
+    help:
+      "How many times somebody here has to have handled a situation before the product "
+      + "starts telling you what you did last time. Below this it watches and says nothing.",
+    default: 3,
+    min: 2,
+    max: 50,
+    unit: "count",
+  },
+  {
+    key: "AUTONOMY.PREFILL_AFTER",
+    group: "THRESHOLD",
+    section: "What the product has learned",
+    label: "Accepted before it fills the answer in",
+    help:
+      "How many of its suggestions you have to accept before the answer arrives already "
+      + "selected. You still press the button and you can still change it.",
+    default: 5,
+    min: 2,
+    max: 100,
+    unit: "count",
+  },
+  {
+    key: "AUTONOMY.CONSENT_AFTER",
+    group: "THRESHOLD",
+    section: "What the product has learned",
+    label: "Accepted before it asks to do it on its own",
+    help:
+      "At this many, the product asks whether it should just do this one from now on. It "
+      + "asks — it never promotes itself, and you can take the answer back at any time.",
+    default: 10,
+    min: 3,
+    max: 200,
+    unit: "count",
+  },
+  {
+    key: "AUTONOMY.OVERRIDE_CEILING_PCT",
+    group: "THRESHOLD",
+    section: "What the product has learned",
+    label: "Corrections that mean it is not ready",
+    help:
+      "If you change more than this share of its answers, it stops filling them in and goes "
+      + "back to just telling you what you did last time. Items nobody got to do not count "
+      + "against it — a busy week is not a rejection.",
+    default: 20,
+    min: 1,
+    max: 90,
+    unit: "percent",
   },
 ];
 
@@ -308,6 +401,7 @@ export const POLICY_KEYS: PolicyKey[] = [
   })),
   ...THRESHOLD_KEYS,
   ...SWITCH_KEYS,
+  ...AUTONOMY_KEYS_REGISTRY,
 ];
 
 const BY_KEY = new Map(POLICY_KEYS.map((k) => [k.key, k]));
@@ -317,6 +411,16 @@ export interface ResolvedPolicy {
   /** `SEVERITY.MODULE.STATE` → 1..3 */
   severity(module: string, state: string): number | undefined;
   /** A named threshold, always a number because every key has a default. */
+  number(key: string): number;
+  /**
+   * The same lookup, kept because most callers are asking about days.
+   *
+   * The registry was thresholds measured in days when it was written and every
+   * call site says `days`. OBJ-26 added counts and a percentage, and
+   * `policy.days("AUTONOMY.CONSENT_AFTER")` would read as a claim about time
+   * that the value is not. Renaming every existing caller would have churned a
+   * hundred lines to no benefit; an alias costs one.
+   */
   days(key: string): number;
   /**
    * A switch, as a boolean.
@@ -339,6 +443,13 @@ function resolve(overrides: Map<string, number>): ResolvedPolicy {
       // quietly put work on somebody's screen that nothing decided belongs
       // there.
       if (!meta) return undefined;
+      return overrides.get(key) ?? meta.default;
+    },
+    number(key) {
+      const meta = BY_KEY.get(key);
+      if (!meta) {
+        throw new Error(`Unknown policy key ${key}. The registry is in lib/dms/policy.ts.`);
+      }
       return overrides.get(key) ?? meta.default;
     },
     days(key) {

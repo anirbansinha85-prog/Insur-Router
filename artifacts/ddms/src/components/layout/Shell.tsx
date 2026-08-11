@@ -2,7 +2,7 @@ import { Link, useLocation } from "wouter"
 import {
   Users, ListChecks, Wrench, LayoutDashboard, ShieldCheck, Bell,
   ExternalLink, LogOut, IdCard, Boxes, Send, Wallet, Bike, ListTodo, SlidersHorizontal,
-  ReceiptText,
+  ReceiptText, Sparkles,
 } from "lucide-react"
 import type { SessionUser } from "@workspace/api-client-react"
 import { cn } from "@/lib/utils"
@@ -86,7 +86,14 @@ const GROUPS: NavGroup[] = [
     // No module gate: the numbers explain every other screen, so everybody may
     // read them. Whether they may be *changed* is the row policies' answer.
     label: "The dealership",
-    items: [{ href: "/numbers", label: "Your numbers", icon: SlidersHorizontal }],
+    items: [
+      { href: "/numbers", label: "Your numbers", icon: SlidersHorizontal },
+      // Beside the numbers rather than under Outbound, and deliberately. This
+      // is not the product speaking for the dealership — it is the dealership
+      // reading what the product has picked up from watching them, and the
+      // thresholds that decide it live on the screen next door.
+      { href: "/learned", label: "What it has learned", icon: Sparkles },
+    ],
   },
 ]
 

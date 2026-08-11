@@ -201,7 +201,7 @@ pnpm run typecheck:libs                         # before checking leaf packages
 
 ## Data model
 
-Thirty-five tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
+Thirty-seven tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
 which of them `ddms_app` may read, and on what terms, is in `lib/db/sql/rls.sql`.
 
 **The owner tier** — who the data belongs to:
@@ -898,6 +898,86 @@ cancelled the draft and picked up the phone, and the Outbox stopped being used.
 
 Rules run in the scheduler after detection, on `ddms_worker` — which is why that
 role now holds the outbox and the decision log.
+
+## Autonomy is earned, not set
+
+`lib/dms/precedent.ts`, `lib/dms/autonomy.ts`, `lib/dms/proposals.ts` and two
+tables (OBJ-26, R-66 to R-71, R-79, R-80). Everyone builds autonomy as a dial
+somebody sets — a guess made on the first afternoon about work nobody has
+watched the product do. This is a count.
+
+| | what the product does | who decides |
+|---|---|---|
+| **0 · watching** | notices a pattern, says nothing | nobody |
+| **1 · recall** | *"the last 7 times, you gave it to Jaswinder"* | a person, every time |
+| **2 · pre-filled** | the answer is already selected; press go | a person, faster |
+| **3 · automatic** | *"10 out of 10 — shall I just do it?"* → consent, once | a person, once, revocably |
+
+**Why it is safer than a dial, and it is not obvious.** At rungs 0 to 2 the
+model does **recall, never judgement** — *what happened before* is a question
+with an answer, where *what should happen* is not. R-49 survives intact the
+whole way up, and the graduation **is** the safety mechanism rather than
+something bolted beside it. R-69 does not bend either: precedent is the
+**evidence a person consents on**, and the consent is what authorises.
+
+**Precedent is a query, not a store** (R-67). Derived on read from
+`decision_log` and `record_events`, both append-only and both writable only
+through `applyAction`. Nothing is written, so there is no ingestion surface to
+poison — and the commonest poisoning payload in the literature is a
+plausible-looking *preference*, which this design has nowhere to put.
+
+**Only people count** (R-66). One predicate, `userId is not null`. An agent that
+re-reads its own output as evidence turns one early mistake into a settled
+belief, and the loop is invisible from inside.
+
+**A count and a date, or nothing** (R-68). Null rather than a hedge: a queue
+that says something about every item teaches people to stop reading it.
+
+**The pattern is `MODULE:STATE:ACTION`**, and the state comes from the newest
+`record_events` row **at or before the decision** — the state the person was
+looking at. Using the record's current state would re-file every past decision
+under whatever happened to it afterwards.
+
+**Rungs 0 to 2 are derived; only rung 3 is stored.**
+
+> **Consent raises the ceiling. Evidence sets what has been earned. Both have to
+> hold.**
+
+A consent standing while acceptance falls does not keep a pattern automatic —
+the rung drops, the consent row stays untouched and still true, and recovery
+needs nobody to re-grant anything. Demotion floors at `RECALL`, not silence:
+people overriding the *choice* have not stopped having a habit.
+
+**The floor is `may("AGENT", …)`** (R-80) — the same table that answers for a
+service advisor, so it cannot drift, with `whyNot()` supplying the sentence.
+Eight of the twelve registry actions assert a *person* did something; those
+patterns reach pre-filled and stop. An owner cannot consent past it either.
+
+**`agent_proposals` is the substrate and the agent writes only half of it.**
+It records what was offered; **nothing writes an acceptance**.
+`resolveProposals` compares what a person actually did against what was on
+offer, deterministically, no model. `EXPIRED` — nobody got to it — counts
+neither way, because a busy week is not a rejection.
+
+**`AGENT.ASSIGN_ORPHANS` narrowed.** It used to mean *act on the whole Nobody's
+band*; it now means *anything may run unattended at all*, and the rung decides
+which. A dealership that switches the agent on with no history gets suggestions,
+not actions.
+
+Five thresholds in the policy registry, all theirs. `/learned` is the screen —
+an automation layer nobody can see is where an automation layer nobody can
+predict begins. `pnpm run verify:autonomy`, ten sections on the worker
+credential.
+
+> **The verifier tried to grant consent as the scheduler and was refused.**
+> `ddms_worker` holds select and no insert on `autonomy_consents`, because an
+> unattended process that could grant itself standing permission to act
+> unattended is the whole failure the ladder prevents. The accident became a
+> check. Same shape as OBJ-24 on `ingest_mappings`.
+
+> **A rung the product cannot honour is worse than no rung.** `MESSAGE_EDITED`
+> has no button to pre-fill, so its ceiling is `RECALL` rather than `PREFILLED`
+> — otherwise the screen reports a rung it reached while nothing ever changed.
 
 ## One queue, worked one at a time
 

@@ -27,6 +27,8 @@ import type {
   ApplicationInput,
   ApplicationUpdate,
   ApplyDmsAction200,
+  AutonomyConsentInput,
+  AutonomyRevokeInput,
   BrowserScrapeInput,
   CancelDmsMessage200,
   CancelSaleDocument200,
@@ -64,6 +66,7 @@ import type {
   GetShowroomWorklistParams,
   GetSparesWorklist200,
   GetSparesWorklistParams,
+  GrantAutonomyConsent201,
   HealthStatus,
   IncompleteDealError,
   IngestPushInput,
@@ -72,6 +75,9 @@ import type {
   IngestSourceInput,
   JourneyTrace,
   ListApplicationsParams,
+  ListAutonomy200,
+  ListAutonomyProposals200,
+  ListAutonomyProposalsParams,
   ListDmsEvents200,
   ListDmsEventsParams,
   ListDmsMessages200,
@@ -111,6 +117,7 @@ import type {
   ReportDropResult,
   ResetDmsPolicy200,
   RetractRecordActivity200,
+  RevokeAutonomyConsent200,
   SearchEntities200,
   SearchEntitiesParams,
   SendDmsMessage200,
@@ -4643,6 +4650,315 @@ export const useResetDmsPolicy = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getResetDmsPolicyMutationOptions(options));
     }
+
+export const getListAutonomyUrl = () => {
+
+
+
+
+  return `/api/dms/autonomy`
+}
+
+/**
+ * Everyone builds autonomy as a dial somebody sets. This is a count. Watching, then recall, then pre-filled, then — only with a person's consent on evidence they can read — automatic. Per pattern, with demotion, and every threshold belongs to the dealership.
+ * Readable by anybody signed in, because it explains what is on their queue. An automation layer nobody can see is where an automation layer nobody can predict begins.
+ * @summary What the product has learned, and how far that has earned it
+ */
+export const listAutonomy = async ( options?: Parameters<typeof customFetch>[1]): Promise<ListAutonomy200> => {
+
+  return customFetch<ListAutonomy200>(getListAutonomyUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAutonomyQueryKey = () => {
+    return [
+    `/api/dms/autonomy`
+    ] as const;
+    }
+
+
+export const getListAutonomyQueryOptions = <TData = Awaited<ReturnType<typeof listAutonomy>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAutonomy>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAutonomyQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAutonomy>>> = ({ signal }) => listAutonomy({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAutonomy>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAutonomyQueryResult = NonNullable<Awaited<ReturnType<typeof listAutonomy>>>
+export type ListAutonomyQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary What the product has learned, and how far that has earned it
+ */
+
+export function useListAutonomy<TData = Awaited<ReturnType<typeof listAutonomy>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAutonomy>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAutonomyQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGrantAutonomyConsentUrl = () => {
+
+
+
+
+  return `/api/dms/autonomy/consent`
+}
+
+/**
+ * The only place a person grants standing permission for something to act without them. Owner or manager only, and refused outright for any action that asserts a person did something — no amount of precedent promotes past the floor (R-80).
+ * The pattern travels in the body rather than the path because it carries colons, and a key that has to be URL-encoded to be named is one somebody will eventually encode wrongly.
+ * @summary Allow one pattern to run unattended
+ */
+export const grantAutonomyConsent = async (autonomyConsentInput: AutonomyConsentInput, options?: Parameters<typeof customFetch>[1]): Promise<GrantAutonomyConsent201> => {
+
+  return customFetch<GrantAutonomyConsent201>(getGrantAutonomyConsentUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(autonomyConsentInput)
+  }
+);}
+
+
+
+
+
+export const getGrantAutonomyConsentMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof grantAutonomyConsent>>, TError,{data: BodyType<AutonomyConsentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof grantAutonomyConsent>>, TError,{data: BodyType<AutonomyConsentInput>}, TContext> => {
+
+const mutationKey = ['grantAutonomyConsent'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof grantAutonomyConsent>>, {data: BodyType<AutonomyConsentInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  grantAutonomyConsent(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GrantAutonomyConsentMutationResult = NonNullable<Awaited<ReturnType<typeof grantAutonomyConsent>>>
+    export type GrantAutonomyConsentMutationBody = BodyType<AutonomyConsentInput>
+    export type GrantAutonomyConsentMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Allow one pattern to run unattended
+ */
+export const useGrantAutonomyConsent = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof grantAutonomyConsent>>, TError,{data: BodyType<AutonomyConsentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof grantAutonomyConsent>>,
+        TError,
+        {data: BodyType<AutonomyConsentInput>},
+        TContext
+      > => {
+      return useMutation(getGrantAutonomyConsentMutationOptions(options));
+    }
+
+export const getRevokeAutonomyConsentUrl = () => {
+
+
+
+
+  return `/api/dms/autonomy/revoke`
+}
+
+/**
+ * Revoked, never deleted — the row keeps who granted it and who took it back, the same argument as a cancelled message staying a row.
+ * @summary Take it back
+ */
+export const revokeAutonomyConsent = async (autonomyRevokeInput: AutonomyRevokeInput, options?: Parameters<typeof customFetch>[1]): Promise<RevokeAutonomyConsent200> => {
+
+  return customFetch<RevokeAutonomyConsent200>(getRevokeAutonomyConsentUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(autonomyRevokeInput)
+  }
+);}
+
+
+
+
+
+export const getRevokeAutonomyConsentMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revokeAutonomyConsent>>, TError,{data: BodyType<AutonomyRevokeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof revokeAutonomyConsent>>, TError,{data: BodyType<AutonomyRevokeInput>}, TContext> => {
+
+const mutationKey = ['revokeAutonomyConsent'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof revokeAutonomyConsent>>, {data: BodyType<AutonomyRevokeInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  revokeAutonomyConsent(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RevokeAutonomyConsentMutationResult = NonNullable<Awaited<ReturnType<typeof revokeAutonomyConsent>>>
+    export type RevokeAutonomyConsentMutationBody = BodyType<AutonomyRevokeInput>
+    export type RevokeAutonomyConsentMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Take it back
+ */
+export const useRevokeAutonomyConsent = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revokeAutonomyConsent>>, TError,{data: BodyType<AutonomyRevokeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof revokeAutonomyConsent>>,
+        TError,
+        {data: BodyType<AutonomyRevokeInput>},
+        TContext
+      > => {
+      return useMutation(getRevokeAutonomyConsentMutationOptions(options));
+    }
+
+export const getListAutonomyProposalsUrl = (params?: ListAutonomyProposalsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/dms/autonomy/proposals?${stringifiedParams}` : `/api/dms/autonomy/proposals`
+}
+
+/**
+ * The evidence behind a rung, shown rather than summarised. A count somebody cannot open is a count they have to take on trust, and this is the screen where trust is decided.
+ * @summary What was offered lately, and what became of each one
+ */
+export const listAutonomyProposals = async (params?: ListAutonomyProposalsParams, options?: Parameters<typeof customFetch>[1]): Promise<ListAutonomyProposals200> => {
+
+  return customFetch<ListAutonomyProposals200>(getListAutonomyProposalsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAutonomyProposalsQueryKey = (params?: ListAutonomyProposalsParams,) => {
+    return [
+    `/api/dms/autonomy/proposals`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListAutonomyProposalsQueryOptions = <TData = Awaited<ReturnType<typeof listAutonomyProposals>>, TError = ErrorType<unknown>>(params?: ListAutonomyProposalsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAutonomyProposals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAutonomyProposalsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAutonomyProposals>>> = ({ signal }) => listAutonomyProposals(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAutonomyProposals>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAutonomyProposalsQueryResult = NonNullable<Awaited<ReturnType<typeof listAutonomyProposals>>>
+export type ListAutonomyProposalsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary What was offered lately, and what became of each one
+ */
+
+export function useListAutonomyProposals<TData = Awaited<ReturnType<typeof listAutonomyProposals>>, TError = ErrorType<unknown>>(
+ params?: ListAutonomyProposalsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAutonomyProposals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAutonomyProposalsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getListDmsRulesUrl = () => {
 

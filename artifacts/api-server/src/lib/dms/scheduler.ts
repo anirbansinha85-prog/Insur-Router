@@ -29,6 +29,8 @@ import { detectStateChanges, showroomIdsForOwner } from "./events";
 import { runRules } from "./rules";
 import { advanceJourneys } from "./journeys";
 import { runAgentForShowroom } from "./agent";
+import { standingFor, AUTONOMY_KEYS } from "./autonomy";
+import { expireStale, resolveProposals } from "./proposals";
 import { buildQueue } from "./queue";
 import { loadPolicy } from "./policy";
 
@@ -225,7 +227,7 @@ async function runPass(): Promise<void> {
         );
       }
 
-      // And last, the agent — if this dealership has switched it on.
+      // And last, the agent — offering always, acting only where earned.
       //
       // Last because it reads the queue, the queue is built from derived state,
       // and building it before detection would hand out work on the picture
@@ -233,10 +235,12 @@ async function runPass(): Promise<void> {
       // have one: the agent failing must not lose the detection and the drafts
       // that preceded it.
       //
-      // Default off. A dealership that has not set `AGENT.ASSIGN_ORPHANS`
-      // reaches `runAgentForShowroom`, is told no, and nothing is written —
-      // which is a cheaper way to be sure the switch works than a branch here
-      // that skips the call.
+      // Default off, and since OBJ-26 the switch is only half the gate: a
+      // dealership that has set `AGENT.ASSIGN_ORPHANS` still gets nothing
+      // unattended on a pattern that has not reached rung 3. What runs
+      // regardless is the **offering** — that is what earns the rung, and
+      // recording only what the agent acts on would mean the only way to earn
+      // autonomy was to already have it.
       try {
         await runAgentPass(ownerId, owned, showroomIds);
       } catch (err) {
@@ -282,7 +286,34 @@ async function runAgentPass(
   if (visible.length === 0) return;
 
   const policy = await loadPolicy(ownerId);
-  if (!policy.on("AGENT.ASSIGN_ORPHANS")) return;
+  const windowDays = policy.number(AUTONOMY_KEYS.window);
+
+  /*
+   * Settle yesterday's offers before making today's, and before reading the
+   * rung they are made at.
+   *
+   * Order is load-bearing twice. A proposal a person accepted this morning has
+   * to be `ACCEPTED` before `standingFor` counts it, or the pattern is judged
+   * on a stale denominator and a dealership that has been agreeing all week
+   * looks like one that has been ignoring the product. And it has to happen
+   * before the offering, or a record somebody has already dealt with collects
+   * another proposal.
+   *
+   * **No model anywhere near it.** Whether somebody accepted a suggestion is a
+   * comparison between two stored objects; a model asked to judge it would be a
+   * model deciding how much autonomy the agent has earned, which is R-49's
+   * refusal in its purest form.
+   */
+  const settled = await resolveProposals({
+    ownerId,
+    showroomIds: visible,
+    // Half the window. A suggestion nobody reached in a month is not a
+    // rejection and should stop dragging on a denominator it never entered.
+    expireAfterDays: Math.max(3, Math.round(windowDays / 2)),
+  });
+  // Anything past the window can no longer count either way, so it stops
+  // occupying the unique index and blocking a fresh offer on the same record.
+  await expireStale({ ownerId, beforeDays: windowDays });
 
   const queue = await buildQueue({
     ownerId,
@@ -293,17 +324,46 @@ async function runAgentPass(
     policy,
   });
 
+  // One pass for the owner rather than one per outlet: the ladder is a property
+  // of the pattern, and computing it per showroom inside the loop would ask the
+  // decision log the same question three times.
+  const standing = await standingFor({ ownerId, showroomIds: visible, policy });
+
+  let proposed = 0;
   let assigned = 0;
+  const held: Array<{ patternKey: string; rung: string; because: string }> = [];
   const refused: Array<{ recordKey: string; reason: string }> = [];
   for (const showroomId of visible) {
-    const r = await runAgentForShowroom(ownerId, showroomId, queue.items, policy);
+    const r = await runAgentForShowroom(ownerId, showroomId, queue.items, policy, standing);
+    proposed += r.proposed;
     assigned += r.assigned;
+    held.push(...r.held);
     refused.push(...r.refused);
   }
 
-  if (assigned > 0 || refused.length > 0) {
+  const due = [...standing.values()].filter((p) => p.consentDue);
+  if (due.length > 0) {
+    // Logged rather than acted on, and that is the objective's whole point: at
+    // the threshold the product **asks**. Nothing promotes itself.
     logger.info(
-      { ownerId, assigned, refused: refused.length, orphaned: queue.unassigned },
+      { ownerId, patterns: due.map((p) => p.patternKey) },
+      "A pattern has enough behind it to be worth asking about",
+    );
+  }
+
+  if (proposed > 0 || assigned > 0 || refused.length > 0 || settled.accepted > 0) {
+    logger.info(
+      {
+        ownerId,
+        proposed,
+        assigned,
+        held: held.length,
+        refused: refused.length,
+        accepted: settled.accepted,
+        overridden: settled.overridden,
+        reversed: settled.reversed,
+        orphaned: queue.unassigned,
+      },
       "The agent worked the orphaned band with nobody signed in",
     );
   }

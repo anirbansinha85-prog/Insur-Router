@@ -2073,6 +2073,13 @@ export const GetDmsQueueResponse = zod.object({
   "reason": zod.string().describe('One sentence, deterministic unless a model improved it and the check held.'),
   "narrationRejected": zod.string().nullish()
 }).describe('What the agent would do to one queue item, and why. The same object whether it is about to be applied or is only being shown, so what the agent proposed and what the agent did cannot describe the work differently.\nThe choice is made by a rule — the lightest-loaded person in the role the queue asks for, from staff who still work here — because a rule that is right every time beats a model that is right most of the time (R-49). A model may only phrase the reason, and only if every figure in it appears in the evidence.\n'),zod.null()]).optional().describe('Who the agent would hand this to, and why. Only ever on an item in the Nobody\'s band that supports an assignment. Present whether or not the dealership has switched the agent on: off it is a suggestion with a person\'s click behind it, on the scheduler will already have applied it and the item will have changed band. Null when there is nobody left to hand it to.\n'),
+  "learned": zod.union([zod.object({
+  "patternKey": zod.string().describe('MODULE:STATE:ACTION. The unit that graduates, per R-79.'),
+  "rung": zod.enum(['WATCHING', 'RECALL', 'PREFILLED', 'AUTOMATIC']),
+  "sentence": zod.string().nullish().describe('A count and a date, or nothing at all (R-68).'),
+  "prefill": zod.string().nullish().describe('The value to arrive already selected, at rung 2 and above.'),
+  "because": zod.string().describe('Why the product is at this rung here. Arguable, on purpose.')
+}).describe('sentence and prefill can disagree, and both are shown. The sentence is what people here did; the prefill is what the agent proposes, chosen by a rule on today\'s workload. \"The last seven went to Jaswinder\" and \"Ramesh is carrying the least today\" are two true things and which wins is the person\'s call — precedent informs, it never decides (R-69).\n'),zod.null()]).optional().describe('What this outlet did the last few times, and how far the product has earned the right to help (R-68, R-79). Null when there is no settled habit — null rather than a hedge, because a queue that says something about every item teaches people to stop reading it.\n'),
   "href": zod.string().describe('The module screen, for anyone who wants the full picture.')
 })),
   "total": zod.number().int().describe('The leading number — everything waiting on a person, across every module this role may read.\n'),
@@ -2139,6 +2146,99 @@ export const ResetDmsPolicyBody = zod.object({
 
 export const ResetDmsPolicyResponse = zod.object({
   "cleared": zod.number().int().describe('How many settings were being overridden.')
+})
+
+
+/**
+ * Everyone builds autonomy as a dial somebody sets. This is a count. Watching, then recall, then pre-filled, then — only with a person's consent on evidence they can read — automatic. Per pattern, with demotion, and every threshold belongs to the dealership.
+ * Readable by anybody signed in, because it explains what is on their queue. An automation layer nobody can see is where an automation layer nobody can predict begins.
+ * @summary What the product has learned, and how far that has earned it
+ */
+export const ListAutonomyResponse = zod.object({
+  "patterns": zod.array(zod.object({
+  "patternKey": zod.string(),
+  "module": zod.string(),
+  "state": zod.string(),
+  "action": zod.string(),
+  "rung": zod.enum(['WATCHING', 'RECALL', 'PREFILLED', 'AUTOMATIC']),
+  "rungLabel": zod.string(),
+  "rungMeaning": zod.string(),
+  "ceiling": zod.enum(['WATCHING', 'RECALL', 'PREFILLED', 'AUTOMATIC']).describe('The highest this pattern may ever reach. PREFILLED where the action asserts that a person did something — no amount of precedent promotes past it (R-80), and the ceiling is may(\"AGENT\", …) rather than a second list that could drift out of step.\n'),
+  "ceilingReason": zod.string().nullish(),
+  "sentence": zod.string().nullish(),
+  "because": zod.string(),
+  "decisions": zod.number().int().describe('Decisions a \*\*person\*\* made in the window. Never the agent\'s (R-66).'),
+  "windowDays": zod.number().int(),
+  "offered": zod.number().int(),
+  "accepted": zod.number().int(),
+  "overridden": zod.number().int(),
+  "acted": zod.number().int().describe('Done by the agent under standing consent. Not an acceptance.'),
+  "overrideRatePct": zod.number().int().nullish().describe('Of the ones somebody actually answered. Items nobody reached count neither way — a busy week is not a rejection.\n'),
+  "consentDue": zod.boolean().describe('The evidence is there, the floor allows it, and nobody has been asked. \*\*The product asks; it never promotes itself.\*\*\n'),
+  "consentedBy": zod.string().nullish(),
+  "consentedAt": zod.string().nullish()
+})),
+  "numbers": zod.object({
+  "windowDays": zod.number().int(),
+  "recallAfter": zod.number().int(),
+  "prefillAfter": zod.number().int(),
+  "consentAfter": zod.number().int(),
+  "overrideCeilingPct": zod.number().int()
+}).describe('The dealership\'s own thresholds, on the same response as the counts they judge. \"12 accepted\" without saying 10 is the bar has said nothing.\n'),
+  "agentSwitchedOn": zod.boolean().describe('The master switch. Both it and the pattern\'s rung have to hold before anything runs unattended.\n')
+})
+
+
+/**
+ * The only place a person grants standing permission for something to act without them. Owner or manager only, and refused outright for any action that asserts a person did something — no amount of precedent promotes past the floor (R-80).
+ * The pattern travels in the body rather than the path because it carries colons, and a key that has to be URL-encoded to be named is one somebody will eventually encode wrongly.
+ * @summary Allow one pattern to run unattended
+ */
+export const GrantAutonomyConsentBody = zod.object({
+  "patternKey": zod.string(),
+  "onCount": zod.number().int().optional().describe('The count that was on the table when they said yes. Their evidence.')
+})
+
+export const GrantAutonomyConsentResponse = zod.object({
+  "consent": zod.record(zod.string(), zod.unknown())
+})
+
+
+/**
+ * Revoked, never deleted — the row keeps who granted it and who took it back, the same argument as a cancelled message staying a row.
+ * @summary Take it back
+ */
+export const RevokeAutonomyConsentBody = zod.object({
+  "patternKey": zod.string(),
+  "reason": zod.string().optional()
+})
+
+export const RevokeAutonomyConsentResponse = zod.object({
+  "revoked": zod.boolean()
+})
+
+
+/**
+ * The evidence behind a rung, shown rather than summarised. A count somebody cannot open is a count they have to take on trust, and this is the screen where trust is decided.
+ * @summary What was offered lately, and what became of each one
+ */
+export const ListAutonomyProposalsQueryParams = zod.object({
+  "patternKey": zod.coerce.string().optional()
+})
+
+export const ListAutonomyProposalsResponse = zod.object({
+  "proposals": zod.array(zod.object({
+  "id": zod.number().int(),
+  "patternKey": zod.string(),
+  "module": zod.string(),
+  "recordKey": zod.string(),
+  "action": zod.string(),
+  "reason": zod.string().nullish(),
+  "rung": zod.number().int(),
+  "outcome": zod.enum(['OFFERED', 'ACCEPTED', 'OVERRIDDEN', 'ACTED', 'EXPIRED']).describe('EXPIRED is nobody getting to it, and it counts neither way. OVERRIDDEN is somebody doing something else, and it is the signal that demotes.\n'),
+  "createdAt": zod.string(),
+  "outcomeAt": zod.string().nullish()
+}))
 })
 
 

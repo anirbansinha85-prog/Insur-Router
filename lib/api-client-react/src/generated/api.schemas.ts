@@ -832,6 +832,37 @@ export interface AgentSuggestion {
   narrationRejected?: string | null;
 }
 
+export type QueueLearnedRung = typeof QueueLearnedRung[keyof typeof QueueLearnedRung];
+
+
+export const QueueLearnedRung = {
+  WATCHING: 'WATCHING',
+  RECALL: 'RECALL',
+  PREFILLED: 'PREFILLED',
+  AUTOMATIC: 'AUTOMATIC',
+} as const;
+
+/**
+ * sentence and prefill can disagree, and both are shown. The sentence is what people here did; the prefill is what the agent proposes, chosen by a rule on today's workload. "The last seven went to Jaswinder" and "Ramesh is carrying the least today" are two true things and which wins is the person's call — precedent informs, it never decides (R-69).
+ */
+export interface QueueLearned {
+  /** MODULE:STATE:ACTION. The unit that graduates, per R-79. */
+  patternKey: string;
+  rung: QueueLearnedRung;
+  /**
+     * A count and a date, or nothing at all (R-68).
+     * @nullable
+     */
+  sentence?: string | null;
+  /**
+     * The value to arrive already selected, at rung 2 and above.
+     * @nullable
+     */
+  prefill?: string | null;
+  /** Why the product is at this rung here. Arguable, on purpose. */
+  because: string;
+}
+
 export interface QueueItem {
   module: QueueModule;
   recordKey: string;
@@ -883,6 +914,8 @@ export interface QueueItem {
   taskId?: number;
   /** Who the agent would hand this to, and why. Only ever on an item in the Nobody's band that supports an assignment. Present whether or not the dealership has switched the agent on: off it is a suggestion with a person's click behind it, on the scheduler will already have applied it and the item will have changed band. Null when there is nobody left to hand it to. */
   agentSuggestion?: AgentSuggestion | null;
+  /** What this outlet did the last few times, and how far the product has earned the right to help (R-68, R-79). Null when there is no settled habit — null rather than a hedge, because a queue that says something about every item teaches people to stop reading it. */
+  learned?: QueueLearned | null;
   /** The module screen, for anyone who wants the full picture. */
   href: string;
 }
@@ -955,6 +988,117 @@ export interface PolicySetting {
   max: number;
   /** switch is stored as 0 or 1 so dealer_policy stays a table of numbers and a reset is still a delete. It is the one setting here that is not a number, and it earns the exception because the decision it carries is the dealership's. */
   unit: PolicySettingUnit;
+}
+
+export type AutonomyPatternRung = typeof AutonomyPatternRung[keyof typeof AutonomyPatternRung];
+
+
+export const AutonomyPatternRung = {
+  WATCHING: 'WATCHING',
+  RECALL: 'RECALL',
+  PREFILLED: 'PREFILLED',
+  AUTOMATIC: 'AUTOMATIC',
+} as const;
+
+/**
+ * The highest this pattern may ever reach. PREFILLED where the action asserts that a person did something — no amount of precedent promotes past it (R-80), and the ceiling is may("AGENT", …) rather than a second list that could drift out of step.
+ */
+export type AutonomyPatternCeiling = typeof AutonomyPatternCeiling[keyof typeof AutonomyPatternCeiling];
+
+
+export const AutonomyPatternCeiling = {
+  WATCHING: 'WATCHING',
+  RECALL: 'RECALL',
+  PREFILLED: 'PREFILLED',
+  AUTOMATIC: 'AUTOMATIC',
+} as const;
+
+export interface AutonomyPattern {
+  patternKey: string;
+  module: string;
+  state: string;
+  action: string;
+  rung: AutonomyPatternRung;
+  rungLabel: string;
+  rungMeaning: string;
+  /** The highest this pattern may ever reach. PREFILLED where the action asserts that a person did something — no amount of precedent promotes past it (R-80), and the ceiling is may("AGENT", …) rather than a second list that could drift out of step. */
+  ceiling: AutonomyPatternCeiling;
+  /** @nullable */
+  ceilingReason?: string | null;
+  /** @nullable */
+  sentence?: string | null;
+  because: string;
+  /** Decisions a **person** made in the window. Never the agent's (R-66). */
+  decisions: number;
+  windowDays: number;
+  offered: number;
+  accepted: number;
+  overridden: number;
+  /** Done by the agent under standing consent. Not an acceptance. */
+  acted: number;
+  /**
+     * Of the ones somebody actually answered. Items nobody reached count neither way — a busy week is not a rejection.
+     * @nullable
+     */
+  overrideRatePct?: number | null;
+  /** The evidence is there, the floor allows it, and nobody has been asked. **The product asks; it never promotes itself.** */
+  consentDue: boolean;
+  /** @nullable */
+  consentedBy?: string | null;
+  /** @nullable */
+  consentedAt?: string | null;
+}
+
+/**
+ * The dealership's own thresholds, on the same response as the counts they judge. "12 accepted" without saying 10 is the bar has said nothing.
+ */
+export interface AutonomyNumbers {
+  windowDays: number;
+  recallAfter: number;
+  prefillAfter: number;
+  consentAfter: number;
+  overrideCeilingPct: number;
+}
+
+export interface AutonomyConsentInput {
+  patternKey: string;
+  /** The count that was on the table when they said yes. Their evidence. */
+  onCount?: number;
+}
+
+export interface AutonomyRevokeInput {
+  patternKey: string;
+  reason?: string;
+}
+
+/**
+ * EXPIRED is nobody getting to it, and it counts neither way. OVERRIDDEN is somebody doing something else, and it is the signal that demotes.
+ */
+export type AutonomyProposalOutcome = typeof AutonomyProposalOutcome[keyof typeof AutonomyProposalOutcome];
+
+
+export const AutonomyProposalOutcome = {
+  OFFERED: 'OFFERED',
+  ACCEPTED: 'ACCEPTED',
+  OVERRIDDEN: 'OVERRIDDEN',
+  ACTED: 'ACTED',
+  EXPIRED: 'EXPIRED',
+} as const;
+
+export interface AutonomyProposal {
+  id: number;
+  patternKey: string;
+  module: string;
+  recordKey: string;
+  action: string;
+  /** @nullable */
+  reason?: string | null;
+  rung: number;
+  /** EXPIRED is nobody getting to it, and it counts neither way. OVERRIDDEN is somebody doing something else, and it is the signal that demotes. */
+  outcome: AutonomyProposalOutcome;
+  createdAt: string;
+  /** @nullable */
+  outcomeAt?: string | null;
 }
 
 export type AutomationRuleModule = typeof AutomationRuleModule[keyof typeof AutomationRuleModule];
@@ -3569,6 +3713,31 @@ export type SetDmsPolicy200 = {
 export type ResetDmsPolicy200 = {
   /** How many settings were being overridden. */
   cleared: number;
+};
+
+export type ListAutonomy200 = {
+  patterns: AutonomyPattern[];
+  numbers: AutonomyNumbers;
+  /** The master switch. Both it and the pattern's rung have to hold before anything runs unattended. */
+  agentSwitchedOn: boolean;
+};
+
+export type GrantAutonomyConsent201Consent = { [key: string]: unknown };
+
+export type GrantAutonomyConsent201 = {
+  consent: GrantAutonomyConsent201Consent;
+};
+
+export type RevokeAutonomyConsent200 = {
+  revoked: boolean;
+};
+
+export type ListAutonomyProposalsParams = {
+patternKey?: string;
+};
+
+export type ListAutonomyProposals200 = {
+  proposals: AutonomyProposal[];
 };
 
 export type ListDmsRules200 = {

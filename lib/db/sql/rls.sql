@@ -568,6 +568,55 @@ create policy journey_steps_worker on public.journey_steps
   for all to ddms_worker using (true) with check (true);
 
 /*
+ * The ladder (OBJ-26).
+ *
+ * `agent_proposals` gates on the outlet **and** on the module, because a
+ * proposal names a record: a service advisor has no business reading what the
+ * agent suggested about a registration file, for the same reason they cannot
+ * read the file. `app.can_read(module)` is the same predicate the mirror row
+ * itself carries, so the refusal is one rule enforced twice rather than two
+ * rules that can drift.
+ *
+ * `autonomy_consents` has no module test and no outlet test, and both absences
+ * are deliberate. A consent is owner-scoped by design — letting an unattended
+ * process act is a decision about the business rather than about a branch —
+ * and it names a *pattern*, not a record, so there is nothing about anybody's
+ * data in it to gate.
+ */
+drop policy if exists agent_proposals_own on public.agent_proposals;
+create policy agent_proposals_own on public.agent_proposals
+  for all to ddms_app
+  using (
+    showroom_id in (select app.owned_showroom_ids())
+    and app.can_read(module)
+  )
+  with check (
+    showroom_id in (select app.visible_showroom_ids())
+    and app.can_read(module)
+  );
+
+drop policy if exists agent_proposals_worker on public.agent_proposals;
+create policy agent_proposals_worker on public.agent_proposals
+  for all to ddms_worker using (true) with check (true);
+
+drop policy if exists autonomy_consents_own on public.autonomy_consents;
+create policy autonomy_consents_own on public.autonomy_consents
+  for all to ddms_app
+  using (owner_id = app.current_owner_id())
+  with check (
+    owner_id = app.current_owner_id()
+    -- Granting standing consent for an unattended process is the same class of
+    -- decision as setting the dealership's own thresholds, and it is gated by
+    -- the same two roles here as well as in the route. The route can explain a
+    -- refusal; this one makes it true.
+    and app.current_role() in ('OWNER', 'MANAGER')
+  );
+
+drop policy if exists autonomy_consents_worker on public.autonomy_consents;
+create policy autonomy_consents_worker on public.autonomy_consents
+  for all to ddms_worker using (true) with check (true);
+
+/*
  * How a dealership's data gets in (OBJ-24).
  *
  * Three tables about *ingestion* rather than about a module, so they gate on
@@ -972,6 +1021,12 @@ grant select, insert, update on public.price_list_items to ddms_app;
 -- "we chose not to issue this" and "nobody ever issued anything" are different
 -- facts of which only one can be defended later.
 grant select, insert, update on public.sale_documents to ddms_app;
+-- No delete on either. A proposal that was made is a fact about what the
+-- product offered somebody, and the whole ladder is a count over those facts —
+-- a table anybody can delete from is a count anybody can change. A consent is
+-- revoked, never removed, for the same reason a cancelled message stays a row.
+grant select, insert, update on public.agent_proposals to ddms_app;
+grant select, insert, update on public.autonomy_consents to ddms_app;
 
 -- `serial` columns draw from a sequence, and a role that may insert but may not
 -- touch the sequence gets "permission denied for sequence" on every insert.
@@ -1089,6 +1144,14 @@ grant select, insert, update on public.ingest_batches to ddms_worker;
 grant select on public.price_lists to ddms_worker;
 grant select on public.price_list_items to ddms_worker;
 grant select on public.sale_documents to ddms_worker;
+-- The scheduler is the ordinary writer of proposals: it offers with nobody
+-- signed in, and it settles what became of yesterday's offers by reading the
+-- decision log. It may **not insert a consent** — an unattended process that
+-- could grant itself standing permission to act unattended is the whole failure
+-- the ladder exists to prevent, and it is refused by the grant rather than by
+-- the code being careful.
+grant select, insert, update on public.agent_proposals to ddms_worker;
+grant select on public.autonomy_consents to ddms_worker;
 
 -- Same reason as `ddms_app`: the entity graph is rebuilt wholesale rather than
 -- reconciled, so these two are the only tables the worker may delete from.

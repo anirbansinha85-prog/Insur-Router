@@ -2209,6 +2209,140 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
+  /dms/autonomy:
+    get:
+      operationId: listAutonomy
+      tags: [dms]
+      summary: What the product has learned, and how far that has earned it
+      description: >
+        Everyone builds autonomy as a dial somebody sets. This is a count.
+        Watching, then recall, then pre-filled, then — only with a person's
+        consent on evidence they can read — automatic. Per pattern, with
+        demotion, and every threshold belongs to the dealership.
+
+        Readable by anybody signed in, because it explains what is on their
+        queue. An automation layer nobody can see is where an automation layer
+        nobody can predict begins.
+      responses:
+        "200":
+          description: Every pattern with a standing, loudest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  patterns:
+                    type: array
+                    items: { $ref: "#/components/schemas/AutonomyPattern" }
+                  numbers: { $ref: "#/components/schemas/AutonomyNumbers" }
+                  agentSwitchedOn:
+                    type: boolean
+                    description: >
+                      The master switch. Both it and the pattern's rung have to
+                      hold before anything runs unattended.
+                required: [patterns, numbers, agentSwitchedOn]
+
+  /dms/autonomy/consent:
+    post:
+      operationId: grantAutonomyConsent
+      tags: [dms]
+      summary: Allow one pattern to run unattended
+      description: >
+        The only place a person grants standing permission for something to act
+        without them. Owner or manager only, and refused outright for any action
+        that asserts a person did something — no amount of precedent promotes
+        past the floor (R-80).
+
+        The pattern travels in the body rather than the path because it carries
+        colons, and a key that has to be URL-encoded to be named is one somebody
+        will eventually encode wrongly.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AutonomyConsentInput" }
+      responses:
+        "201":
+          description: Granted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  consent: { type: object, additionalProperties: true }
+                required: [consent]
+        "403":
+          description: Not a role that decides how the dealership runs
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: This one can never run unattended, however often it is right
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /dms/autonomy/revoke:
+    post:
+      operationId: revokeAutonomyConsent
+      tags: [dms]
+      summary: Take it back
+      description: >
+        Revoked, never deleted — the row keeps who granted it and who took it
+        back, the same argument as a cancelled message staying a row.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AutonomyRevokeInput" }
+      responses:
+        "200":
+          description: Taken back
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  revoked: { type: boolean }
+                required: [revoked]
+        "403":
+          description: Not a role that decides how the dealership runs
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Nothing was standing for this one
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /dms/autonomy/proposals:
+    get:
+      operationId: listAutonomyProposals
+      tags: [dms]
+      summary: What was offered lately, and what became of each one
+      description: >
+        The evidence behind a rung, shown rather than summarised. A count
+        somebody cannot open is a count they have to take on trust, and this is
+        the screen where trust is decided.
+      parameters:
+        - name: patternKey
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: Newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  proposals:
+                    type: array
+                    items: { $ref: "#/components/schemas/AutonomyProposal" }
+                required: [proposals]
+
   /dms/rules:
     get:
       operationId: listDmsRules
@@ -3518,6 +3652,15 @@ components:
             with a person's click behind it, on the scheduler will already have
             applied it and the item will have changed band. Null when there is
             nobody left to hand it to.
+        learned:
+          oneOf:
+            - $ref: "#/components/schemas/QueueLearned"
+            - type: "null"
+          description: >
+            What this outlet did the last few times, and how far the product has
+            earned the right to help (R-68, R-79). Null when there is no settled
+            habit — null rather than a hedge, because a queue that says
+            something about every item teaches people to stop reading it.
         href:
           type: string
           description: The module screen, for anyone who wants the full picture.
@@ -3611,6 +3754,131 @@ components:
             a number, and it earns the exception because the decision it carries
             is the dealership's.
       required: [key, group, section, label, help, value, default, isDefault, min, max, unit]
+
+    QueueLearned:
+      type: object
+      description: >
+        sentence and prefill can disagree, and both are shown. The sentence is
+        what people here did; the prefill is what the agent proposes, chosen by
+        a rule on today's workload. "The last seven went to Jaswinder" and
+        "Ramesh is carrying the least today" are two true things and which wins
+        is the person's call — precedent informs, it never decides (R-69).
+      properties:
+        patternKey:
+          type: string
+          description: MODULE:STATE:ACTION. The unit that graduates, per R-79.
+        rung:
+          type: string
+          enum: [WATCHING, RECALL, PREFILLED, AUTOMATIC]
+        sentence:
+          type: ["string", "null"]
+          description: A count and a date, or nothing at all (R-68).
+        prefill:
+          type: ["string", "null"]
+          description: The value to arrive already selected, at rung 2 and above.
+        because:
+          type: string
+          description: Why the product is at this rung here. Arguable, on purpose.
+      required: [patternKey, rung, because]
+
+    AutonomyPattern:
+      type: object
+      properties:
+        patternKey: { type: string }
+        module: { type: string }
+        state: { type: string }
+        action: { type: string }
+        rung:
+          type: string
+          enum: [WATCHING, RECALL, PREFILLED, AUTOMATIC]
+        rungLabel: { type: string }
+        rungMeaning: { type: string }
+        ceiling:
+          type: string
+          enum: [WATCHING, RECALL, PREFILLED, AUTOMATIC]
+          description: >
+            The highest this pattern may ever reach. PREFILLED where the action
+            asserts that a person did something — no amount of precedent
+            promotes past it (R-80), and the ceiling is may("AGENT", …) rather
+            than a second list that could drift out of step.
+        ceilingReason: { type: ["string", "null"] }
+        sentence: { type: ["string", "null"] }
+        because: { type: string }
+        decisions:
+          type: integer
+          description: Decisions a **person** made in the window. Never the agent's (R-66).
+        windowDays: { type: integer }
+        offered: { type: integer }
+        accepted: { type: integer }
+        overridden: { type: integer }
+        acted:
+          type: integer
+          description: Done by the agent under standing consent. Not an acceptance.
+        overrideRatePct:
+          type: ["integer", "null"]
+          description: >
+            Of the ones somebody actually answered. Items nobody reached count
+            neither way — a busy week is not a rejection.
+        consentDue:
+          type: boolean
+          description: >
+            The evidence is there, the floor allows it, and nobody has been
+            asked. **The product asks; it never promotes itself.**
+        consentedBy: { type: ["string", "null"] }
+        consentedAt: { type: ["string", "null"] }
+      required:
+        [patternKey, module, state, action, rung, rungLabel, rungMeaning, ceiling,
+         because, decisions, windowDays, offered, accepted, overridden, acted, consentDue]
+
+    AutonomyNumbers:
+      type: object
+      description: >
+        The dealership's own thresholds, on the same response as the counts they
+        judge. "12 accepted" without saying 10 is the bar has said nothing.
+      properties:
+        windowDays: { type: integer }
+        recallAfter: { type: integer }
+        prefillAfter: { type: integer }
+        consentAfter: { type: integer }
+        overrideCeilingPct: { type: integer }
+      required: [windowDays, recallAfter, prefillAfter, consentAfter, overrideCeilingPct]
+
+    AutonomyConsentInput:
+      type: object
+      properties:
+        patternKey: { type: string }
+        onCount:
+          type: integer
+          description: The count that was on the table when they said yes. Their evidence.
+      required: [patternKey]
+
+    AutonomyRevokeInput:
+      type: object
+      properties:
+        patternKey: { type: string }
+        reason: { type: string }
+      required: [patternKey]
+
+    AutonomyProposal:
+      type: object
+      properties:
+        id: { type: integer }
+        patternKey: { type: string }
+        module: { type: string }
+        recordKey: { type: string }
+        action: { type: string }
+        reason: { type: ["string", "null"] }
+        rung: { type: integer }
+        outcome:
+          type: string
+          enum: [OFFERED, ACCEPTED, OVERRIDDEN, ACTED, EXPIRED]
+          description: >
+            EXPIRED is nobody getting to it, and it counts neither way.
+            OVERRIDDEN is somebody doing something else, and it is the signal
+            that demotes.
+        createdAt: { type: string }
+        outcomeAt: { type: ["string", "null"] }
+      required: [id, patternKey, module, recordKey, action, rung, outcome, createdAt]
 
     AgentSuggestion:
       type: object

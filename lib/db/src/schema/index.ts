@@ -17,6 +17,7 @@ export * from "./record_activities";
 export * from "./tasks";
 // Where each thing in the building has got to (OBJ-23, R-77).
 export * from "./journeys";
+export * from "./autonomy";
 // Three ways in, one record (OBJ-24, R-84).
 export * from "./ingest";
 // Price lists with history, and the document DDMS issues (OBJ-25, R-87..R-90).

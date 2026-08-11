@@ -108,12 +108,12 @@ at what this dealership actually did last time.*
 | # | Requirement | Status |
 |---|---|---|
 | R-65 | ✅ **Priority is dealer policy, not product logic.** The severity table decides what a short-staffed dealership does first, and it is currently one owner's judgement written by us into a file. It becomes per-owner data with the product's table as the default, editable by the owner or a showroom manager, with what changed and who changed it in the decision log. Same class as R-58: a bounded table of numbers, **not** a rule builder | ○ |
-| R-66 | **Memory is what people here actually did, and nothing else.** Only rows the decision log attributes to a *person* count as precedent. A mark the system made is excluded on purpose: an agent that re-reads its own output as evidence turns one early mistake into a settled belief, and the loop is invisible from inside. `decision_log.userId` already distinguishes the two, which is the whole reason R-60 insisted null means *the system did this* | ○ |
-| R-67 | **Nothing is stored as memory that was not already stored as a fact.** Precedent is derived on read from `decision_log` and `record_events` — both append-only, both writable only through `applyAction`. No summarised memory, no free text, no ingestion surface. What cannot be written cannot be poisoned, and the commonest poisoning payload in the literature is a plausible-looking *preference* | ○ |
-| R-68 | **Precedent carries its date and its count, or it is not shown.** "You did this 5 times of the last 6, most recently on 28 July" is a fact somebody can weigh. "You usually do this" is a claim with no way to tell a settled habit from something that stopped in March. Stale-but-true is the failure mode, and a date is the whole of the fix | ○ |
-| R-69 | **Precedent informs a person or a default. It never authorises and never acts.** R-49 does not bend for memory: an agent that has seen a pattern still may not decide whether an action is permitted or a record in breach. What it may do is say what happened last time, next to the button — and propose a change to the *stored* priority for the owner to accept or refuse | ○ |
-| R-70 | **Similarity is a small set of named features, not an embedding.** Module, state, and two or three things that actually differ between cases. A dealership has hundreds of open records and twelve action types; a vector index would be slower to explain than to build, and "why did it show me that one" has to have an answer in one sentence | ○ |
-| R-71 | **A pattern that stops is a pattern that stops being shown.** Precedent reads a moving window, so a habit the dealership drops disappears from the product by itself rather than by somebody remembering to retire it | ○ |
+| R-66 | **Memory is what people here actually did, and nothing else.** Only rows the decision log attributes to a *person* count as precedent. A mark the system made is excluded on purpose: an agent that re-reads its own output as evidence turns one early mistake into a settled belief, and the loop is invisible from inside. `decision_log.userId` already distinguishes the two, which is the whole reason R-60 insisted null means *the system did this* | ● |
+| R-67 | **Nothing is stored as memory that was not already stored as a fact.** Precedent is derived on read from `decision_log` and `record_events` — both append-only, both writable only through `applyAction`. No summarised memory, no free text, no ingestion surface. What cannot be written cannot be poisoned, and the commonest poisoning payload in the literature is a plausible-looking *preference* | ● |
+| R-68 | **Precedent carries its date and its count, or it is not shown.** "You did this 5 times of the last 6, most recently on 28 July" is a fact somebody can weigh. "You usually do this" is a claim with no way to tell a settled habit from something that stopped in March. Stale-but-true is the failure mode, and a date is the whole of the fix | ● |
+| R-69 | **Precedent informs a person or a default. It never authorises and never acts.** R-49 does not bend for memory: an agent that has seen a pattern still may not decide whether an action is permitted or a record in breach. What it may do is say what happened last time, next to the button — and propose a change to the *stored* priority for the owner to accept or refuse | ● |
+| R-70 | **Similarity is a small set of named features, not an embedding.** Module, state, and two or three things that actually differ between cases. A dealership has hundreds of open records and twelve action types; a vector index would be slower to explain than to build, and "why did it show me that one" has to have an answer in one sentence | ● |
+| R-71 | **A pattern that stops is a pattern that stops being shown.** Precedent reads a moving window, so a habit the dealership drops disappears from the product by itself rather than by somebody remembering to retire it | ● |
 
 ### How it looks
 
@@ -1823,8 +1823,8 @@ and the one we lack.
 | R-76 | ✅ **DDMS creates nothing the DMS is the source of truth for.** The re-cut of the old non-goal. Deals, job cards, stock, enquiries and registration files stay mirror-only forever; notes, activities, tasks, quotations, price lists and internal costs are DDMS's outright — and owning them is what gives an agent anything legitimate to write | ○ |
 | R-77 | ✅ **A journey is the unit of work, and a wait is a queue row.** Steps, forks, and four kinds of waiting — on a person, on the outside world, on another journey, on time. A stalled step *is* the queue entry rather than a sentence somebody wrote for that module | ✅ |
 | R-78 | ✅ **Forks are rules. A model may write a sentence inside a step; it may never choose an edge.** Almost every fork in every journey is knowable from data — is tax paid, is the part on the shelf, did the date pass. R-49 restated for the runtime, and the specific temptation a workflow library introduces | ✅ |
-| R-79 | **Autonomy is earned by evidence and can be lost the same way.** Precedent → repeated acceptance → consent, per pattern, with the threshold set by the dealership and demotion when acceptance falls. A dial somebody sets is a guess; a count is a fact | ○ |
-| R-80 | **Graduation can never cross the floor.** Hard denials apply at every level of autonomy, and no amount of precedent promotes an action past them. Attested independently in three products | ○ |
+| R-79 | **Autonomy is earned by evidence and can be lost the same way.** Precedent → repeated acceptance → consent, per pattern, with the threshold set by the dealership and demotion when acceptance falls. A dial somebody sets is a guess; a count is a fact | ● |
+| R-80 | **Graduation can never cross the floor.** Hard denials apply at every level of autonomy, and no amount of precedent promotes an action past them. Attested independently in three products | ● |
 | R-81 | **One door.** Nothing writes to the record except through the same call a person's button makes — not agents, not the process runtime, not any second service. It is what lets every question about roles and visibility be answered later in one place | ○ |
 | R-82 | **Precedent is scoped, and never crosses a dealer group.** One dealership's operating decisions must not inform another's. Within a group the owner sees everything, across groups nothing — which is where the boundary already is | ○ |
 | R-83 | **The intelligence store is read by the agent alone.** Whatever it surfaces leaves through a permission-checked surface, so the store needs partitioning by group and no permission model of its own | ○ |
@@ -1850,7 +1850,7 @@ and the one we lack.
 | 23 | ~~**The journey model**~~ ✅ | no | 22 | the runtime, proved end to end on one journey |
 | 24 | ~~**Ingestion beyond the API**~~ ✅ | at the mapping step only | — | independent of everything, and the thing that decides how many dealers can be sold to at all |
 | 25 | ~~**The invoice DDMS produces**~~ ✅ | no | 22, 23, 24 | the first document the product issues, and the first record it holds *before* the DMS knows anything |
-| 26 | **Autonomy: the ladder and graduation** | recall only | 21, 23 | needs journeys running long enough to have history to cite. Absorbs OBJ-19 |
+| 26 | ~~**Autonomy: the ladder and graduation**~~ ✅ | recall only | 21, 23 | needs journeys running long enough to have history to cite. Absorbs OBJ-19 |
 | 27 | **dm-concierge — messages out, replies in** | no | 22 | the Outbox has no transport at all. Inbound is the larger half: a reply is a fact the DMS will never hold |
 | 28 | **The trace and the stand-down** | no | 23, 26 | you cannot supervise what you cannot watch, and cost belongs here |
 | 29 | **More agents** | yes | all | last, and only once there is a model that admits new principals, a ladder to place them on, records they may write, and a trace to watch them in |
@@ -2482,6 +2482,85 @@ person consents on, and the consent authorises. Below the consent step the model
 **Done when:** a pattern is cited with its count and date, accepting it ten
 times produces a consent request rather than an automatic promotion, rejecting
 it demotes, and no amount of precedent moves anything past the floor.
+
+#### What it turned out to be  ✅ **done 11 Aug**
+
+Two files of judgement, one ledger, two tables and ten verified sections.
+
+**The pattern is `MODULE:STATE:ACTION`, and recovering the state was the
+interesting part.** `decision_log` records what was decided and not what the
+record's derived state was at the time — correctly, it is a log of decisions
+rather than of situations. So `precedent.ts` joins to `record_events` for the
+newest event **at or before the moment of the decision**: the state the person
+was actually looking at. Reading the record's *current* state instead would
+have been the sharper mistake, re-filing every past decision under whatever
+happened to the record afterwards, so a habit would silently change shape as
+records moved on.
+
+**Rungs 0 to 2 are derived; only rung 3 is stored.** Nothing persists a rung, so
+a habit the dealership drops takes its rung with it and demotion needs no
+scheduled job to notice — R-71 for free rather than as a feature. Rung 3 needs a
+row with somebody's name on it, because letting an unattended process act is a
+decision rather than an observation.
+
+> **Consent raises the ceiling. Evidence sets what has been earned. Both have to
+> hold.**
+
+That one sentence is what makes it a ladder rather than a ratchet. A consent
+standing while acceptance falls does not keep a pattern automatic: the earned
+rung drops and the pattern drops with it, the consent row untouched and still
+true, and recovery needs nobody to remember to re-grant anything.
+
+**The floor is `may("AGENT", …)`, not a second list.** The same table that
+answers for a service advisor, with `whyNot()` supplying the sentence — so it
+cannot drift out of step with the permission table, and R-80 is one line rather
+than a policy. Eight of the twelve registry actions assert that a *person* did
+something, so those patterns climb to **pre-filled and stop**: pre-filling is
+the product offering a default somebody presses, automatic is the product
+asserting the phone call happened.
+
+**`agent_proposals` is the substrate, and the agent writes only half of it.**
+`record()` writes what was offered; **nothing writes an acceptance**.
+`resolveProposals` reads `decision_log` — which only `applyAction` appends to —
+and works out what happened by comparing what a person did against what was on
+offer. The agent therefore cannot mark its own proposal accepted, which is the
+single property that stops the ladder being climbable from inside. OBJ-22's rule
+arriving where it matters most.
+
+**`EXPIRED` counts neither way.** A queue nobody had time to reach is not a
+rejection, and dividing by everything offered would demote the agent for the
+dealership being short-staffed — the exact circumstance this product exists to
+be sympathetic about.
+
+**`AGENT.ASSIGN_ORPHANS` narrowed, and it is worth saying out loud.** It used to
+mean *act on everything in the Nobody's band*. It now means *anything may run
+unattended at all*, and the pattern's rung decides which. A dealership that
+switches the agent on with no history gets suggestions rather than actions,
+which is a strict narrowing of an existing behaviour and the safer direction of
+the two. The loop closes through people: acceptances at rungs 1 and 2 are what
+earn rung 3, and every one of them is somebody clicking.
+
+> **The verifier tried to grant consent as the scheduler, and the grant refused
+> it.** `permission denied for table autonomy_consents` — `ddms_worker` holds
+> select and no insert, because an unattended process that could grant itself
+> standing permission to act unattended is the whole failure the ladder exists
+> to prevent. Second time the credential design has caught a test: OBJ-24's was
+> the same shape on `ingest_mappings`. The accident became check 6.
+
+> **A crashed run has to be cleanable by the next one.** This verifier writes
+> real decisions onto real mirror rows, because a ladder proved against fixture
+> rows would not have been proved. The first version tidied from an in-memory
+> list, a run threw halfway, and the next run counted 24 decisions where its
+> section had made six — three checks failing for a reason that had nothing to
+> do with the ladder. The marker is in the data now. Same lesson as OBJ-24's
+> non-self-healing ingest verifier.
+
+> **A rung the product cannot honour is worse than no rung.** `MESSAGE_EDITED`
+> is in the decision log and a dealership that edits a lot of drafts genuinely
+> has a habit — but there is no button to pre-fill and nothing for an unattended
+> pass to press. Its ceiling was `PREFILLED`, which would have had the product
+> reporting a rung it had reached while nothing on any screen ever changed. Now
+> `RECALL`: it may say what happened, and there is nothing further to do.
 
 ### OBJ-27 — dm-concierge: messages out, replies in
 *Covers R-91 in part. Needs 22.*
