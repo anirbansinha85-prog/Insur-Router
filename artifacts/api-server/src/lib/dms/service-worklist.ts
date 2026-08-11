@@ -22,7 +22,8 @@ import {
   showroomDmsAccountsTable,
 } from "@workspace/db";
 import { logger } from "../logger";
-import { dmsJobCards, fetchJobCard } from "./client";
+import { jobCardSourceFor } from "./ingest";
+import type { Listed } from "./ingest";
 import { toIsoDate, toAmount } from "./hero-adapter";
 import type { DmsJobCard } from "./types";
 
@@ -88,7 +89,16 @@ async function syncDealerJobCards(
   dealerCode: string,
 ): Promise<JobCardSyncResult> {
   const startedAt = Date.now();
-  const summaries = await dmsJobCards(dealerCode);
+  /*
+   * The one line that makes three paths possible.
+   *
+   * Everything below is written against a `Source<T>` and cannot tell the OEM's
+   * API from a register somebody exported this morning. A dealership nobody has
+   * configured resolves to `API` and behaves exactly as it did before.
+   */
+  const source = await jobCardSourceFor(showroomId, dealerCode);
+  const listed = await source.list();
+
 
   const existing = await db
     .select({
@@ -105,26 +115,36 @@ async function syncDealerJobCards(
   let changed = 0;
   let unchanged = 0;
 
-  for (const summary of summaries) {
-    const summaryHash = hashOf(summary);
-    const prior = known.get(summary.jcNo);
-
-    if (prior && prior.rawHash === summaryHash) {
+  /*
+   * Which ones to load in full.
+   *
+   * The listing carries a fingerprint of whatever the source could see cheaply,
+   * so a record whose fingerprint has not moved needs no expensive load. On the
+   * API path that is one round trip instead of a hundred; on the report path
+   * the file is already in hand and this costs nothing.
+   */
+  const toLoad: string[] = [];
+  for (const l of listed) {
+    const prior = known.get(l.key);
+    if (prior && prior.rawHash === l.fingerprint) {
       await db
         .update(dmsJobCardsTable)
         .set({ lastSyncedAt: new Date(), disappearedAt: null })
         .where(
-          and(eq(dmsJobCardsTable.dealerCode, dealerCode), eq(dmsJobCardsTable.jcNo, summary.jcNo)),
+          and(eq(dmsJobCardsTable.dealerCode, dealerCode), eq(dmsJobCardsTable.jcNo, l.key)),
         );
       unchanged++;
       continue;
     }
+    toLoad.push(l.key);
+  }
 
-    const jc = await fetchJobCard(summary.jcNo);
-    if (!jc) {
-      logger.warn({ jcNo: summary.jcNo }, "DMS listed a job card it then could not return");
-      continue;
-    }
+  const fingerprintOf = new Map(listed.map((l: Listed) => [l.key, l.fingerprint]));
+
+  for (const sourced of await source.load(toLoad)) {
+    const jc = sourced.record;
+    const summaryHash = fingerprintOf.get(sourced.key) ?? hashOf(jc);
+    const prior = known.get(sourced.key);
 
     const projected = project(jc);
     const now = new Date();
@@ -166,8 +186,16 @@ async function syncDealerJobCards(
     changed++;
   }
 
-  const seenIds = summaries.map((s) => s.jcNo);
-  const gone = await db
+  /*
+   * Disappearance, and only where the source is entitled to claim it.
+   *
+   * An API lists the outlet's whole book every time, so a record that stops
+   * appearing has genuinely gone. A report covering one month says nothing
+   * about the other eleven.
+   */
+  const seenIds = listed.map((l: Listed) => l.key);
+  const gone = source.listIsComplete
+    ? await db
     .update(dmsJobCardsTable)
     .set({ disappearedAt: new Date() })
     .where(
@@ -178,7 +206,8 @@ async function syncDealerJobCards(
         ...(seenIds.length > 0 ? [notInArray(dmsJobCardsTable.jcNo, seenIds)] : []),
       ),
     )
-    .returning({ jcNo: dmsJobCardsTable.jcNo });
+    .returning({ jcNo: dmsJobCardsTable.jcNo })
+    : [];
 
   if (seenIds.length === 0) {
     logger.warn({ dealerCode }, "DMS returned zero job cards — treating as a fault, not an empty workshop");
@@ -187,7 +216,7 @@ async function syncDealerJobCards(
   const result: JobCardSyncResult = {
     showroomId,
     dealerCode,
-    seen: summaries.length,
+    seen: listed.length,
     added,
     changed,
     unchanged,

@@ -28,9 +28,29 @@ import {
   type IngestBatchRow,
 } from "@workspace/db";
 import { logger } from "../../logger";
-import { dmsList, dmsEnquiries, fetchDeal, fetchEnquiry } from "../client";
+import {
+  dmsList,
+  dmsEnquiries,
+  dmsJobCards,
+  dmsRegistrations,
+  dmsPartStock,
+  dmsReceivables,
+  dmsVehicleStock,
+  fetchDeal,
+  fetchEnquiry,
+  fetchJobCard,
+  fetchRegnFile,
+} from "../client";
 import { toIsoDate, toAmount as amountFromApi, assembleName } from "../hero-adapter";
-import type { DmsDeal, DmsEnquiry } from "../types";
+import type {
+  DmsDeal,
+  DmsEnquiry,
+  DmsJobCard,
+  DmsPartStock,
+  DmsReceivable,
+  DmsRegnFile,
+  DmsVehicleStock,
+} from "../types";
 import type { DataType, DealRecord, IngestPath, Listed, Source, Sourced } from "./types";
 import { extract, noteMappingUse, type FieldMapping } from "./mapping";
 import { parseTable } from "./table";
@@ -405,6 +425,194 @@ export async function enquirySourceFor(
         out.push({ key, record, path: "API" as const });
       }
       return out;
+    },
+  };
+}
+
+/**
+ * A source over a list the client returns whole, with no separate fetch.
+ *
+ * Parts, receivables and vehicle stock have no summary/detail split in the OEM's
+ * API — one call returns the record — so their `load` reads the same array
+ * `list` did. The split is kept rather than collapsed because every sync above
+ * is written against it, and a source that answered a different shape would be
+ * the one place in the product that does not fit the seam.
+ */
+function wholeListSource<T>(
+  fetchAll: () => Promise<T[]>,
+  keyOf: (record: T) => string,
+): Source<T> {
+  let all: T[] | null = null;
+  const load = async () => (all ??= await fetchAll());
+
+  return {
+    path: "API",
+    listIsComplete: true,
+    async list(): Promise<Listed[]> {
+      return (await load()).map((r) => ({ key: keyOf(r), fingerprint: hashOf(r) }));
+    },
+    async load(keys: string[]): Promise<Array<Sourced<T>>> {
+      const wanted = new Set(keys);
+      return (await load())
+        .filter((r) => wanted.has(keyOf(r)))
+        .map((record) => ({ key: keyOf(record), record, path: "API" as const }));
+    },
+  };
+}
+
+/**
+ * A source that lists cheaply and fetches each record in full.
+ *
+ * Job cards and registration files both carry lines the summary does not — the
+ * parts on a job, the documents on a file — so the detail call is not an
+ * optimisation to be skipped but the only place those come from.
+ */
+function summaryThenFetchSource<S, T>(
+  listAll: () => Promise<S[]>,
+  keyOfSummary: (s: S) => string,
+  fetchOne: (key: string) => Promise<T | null>,
+  what: string,
+): Source<T> {
+  return {
+    path: "API",
+    listIsComplete: true,
+    async list(): Promise<Listed[]> {
+      return (await listAll()).map((s) => ({ key: keyOfSummary(s), fingerprint: hashOf(s) }));
+    },
+    async load(keys: string[]): Promise<Array<Sourced<T>>> {
+      const out: Array<Sourced<T>> = [];
+      for (const key of keys) {
+        const record = await fetchOne(key);
+        if (!record) {
+          logger.warn({ key, what }, "DMS listed a record it then could not return");
+          continue;
+        }
+        out.push({ key, record, path: "API" as const });
+      }
+      return out;
+    },
+  };
+}
+
+/**
+ * A report carries the answer, not the working.
+ *
+ * `project()` on a job card reads `jc.parts.some(p => p.issuedFlg === "N")`,
+ * and on a registration file it reads the outstanding document lines — nested
+ * shapes a flat file cannot hold. The vocabulary therefore asks for the
+ * **flags**, which the dealer's own register already prints, and these two
+ * rebuild exactly the nested shape the projection reads and nothing more.
+ *
+ * The alternative was to ask a dealership to export every part line so that we
+ * could recompute a boolean they had already handed us. That is asking for the
+ * working when they gave us the answer, and it is the kind of requirement that
+ * makes an onboarding fail on the first afternoon.
+ */
+function withJobCardLines(r: Record<string, unknown>): DmsJobCard {
+  const awaiting = String(r["hasUnissuedPart"] ?? "").toUpperCase() === "Y";
+  const followedUp = String(r["psfDone"] ?? "").toUpperCase() === "Y";
+  return {
+    ...(r as unknown as DmsJobCard),
+    // One line is enough: the projection asks *whether any* is unissued, and a
+    // report that could name them would be a report with a second sheet.
+    parts: awaiting ? [{ issuedFlg: "N" } as never] : [],
+    psf: followedUp ? ({ callDt: "REPORTED" } as never) : null,
+  };
+}
+
+function withRegistrationDocs(r: Record<string, unknown>): DmsRegnFile {
+  const pending = String(r["hasPendingDoc"] ?? "").toUpperCase() === "Y";
+  const named = String(r["pendingDocDesc"] ?? "").trim();
+  return {
+    ...(r as unknown as DmsRegnFile),
+    docs: pending
+      ? (named ? named.split(";") : ["Not stated"]).map(
+          (d) => ({ docDesc: d.trim(), receivedFlg: "N" }) as never,
+        )
+      : [],
+  };
+}
+
+export async function jobCardSourceFor(
+  showroomId: number,
+  dealerCode: string,
+): Promise<Source<DmsJobCard>> {
+  if ((await pathFor(showroomId, "JOB_CARD")) === "REPORT") {
+    const raw = reportSource<Record<string, unknown>>(
+      showroomId,
+      "JOB_CARD",
+      (r) => String(r["jcNo"]),
+    );
+    return mapRecords(raw, withJobCardLines);
+  }
+  return summaryThenFetchSource(
+    () => dmsJobCards(dealerCode),
+    (s) => s.jcNo,
+    fetchJobCard,
+    "job card",
+  );
+}
+
+export async function registrationSourceFor(
+  showroomId: number,
+  dealerCode: string,
+): Promise<Source<DmsRegnFile>> {
+  if ((await pathFor(showroomId, "REGISTRATION")) === "REPORT") {
+    const raw = reportSource<Record<string, unknown>>(
+      showroomId,
+      "REGISTRATION",
+      (r) => String(r["regnFileNo"]),
+    );
+    return mapRecords(raw, withRegistrationDocs);
+  }
+  return summaryThenFetchSource(
+    () => dmsRegistrations(dealerCode),
+    (s) => s.regnFileNo,
+    fetchRegnFile,
+    "registration file",
+  );
+}
+
+export async function partSourceFor(
+  showroomId: number,
+  dealerCode: string,
+): Promise<Source<DmsPartStock>> {
+  if ((await pathFor(showroomId, "PART")) === "REPORT") {
+    return reportSource<DmsPartStock>(showroomId, "PART", (r) => r.partNo);
+  }
+  return wholeListSource(() => dmsPartStock(dealerCode), (r) => r.partNo);
+}
+
+export async function receivableSourceFor(
+  showroomId: number,
+  dealerCode: string,
+): Promise<Source<DmsReceivable>> {
+  if ((await pathFor(showroomId, "RECEIVABLE")) === "REPORT") {
+    return reportSource<DmsReceivable>(showroomId, "RECEIVABLE", (r) => r.receivableId);
+  }
+  return wholeListSource(() => dmsReceivables(dealerCode), (r) => r.receivableId);
+}
+
+export async function vehicleSourceFor(
+  showroomId: number,
+  dealerCode: string,
+): Promise<Source<DmsVehicleStock>> {
+  if ((await pathFor(showroomId, "VEHICLE")) === "REPORT") {
+    return reportSource<DmsVehicleStock>(showroomId, "VEHICLE", (r) => r.chassisNo);
+  }
+  return wholeListSource(() => dmsVehicleStock(dealerCode), (r) => r.chassisNo);
+}
+
+/** One source wrapped in another's shape. The keys and the listing are untouched. */
+function mapRecords<A, B>(inner: Source<A>, f: (a: A) => B): Source<B> {
+  return {
+    path: inner.path,
+    get listIsComplete() {
+      return inner.listIsComplete;
+    },
+    list: () => inner.list(),
+    async load(keys: string[]): Promise<Array<Sourced<B>>> {
+      return (await inner.load(keys)).map((s) => ({ ...s, record: f(s.record) }));
     },
   };
 }

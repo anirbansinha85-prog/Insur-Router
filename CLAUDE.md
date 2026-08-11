@@ -770,7 +770,7 @@ every projected column identical across paths.
 > first version imported the footer as a deal priced at 78. A record needs its
 > key **plus two other fields**.
 
-**Deals and enquiries.** Widening the first time proved the seam was one: the
+**All seven modules.** Widening the first time proved the seam was one: the
 mapping was deal-bound in six places and the report source in one, and once
 those were generic a second module cost a **field vocabulary and a source
 function**. `FIELDS_FOR` and `SYNONYMS_FOR` are keyed by data type, `extract`
@@ -792,15 +792,29 @@ entries** — the dealership drops the file, nothing happens, and the product ha
 told them a lie with a dropdown.
 
 `sample-reports/` holds eight exports per outlet, generated from the mirror by
-`db:export-reports`. Dropping the enquiry register maps all fourteen headings by
-name with no model, and accepts 141 of 142 rows — the one rejection being the
-total line.
+`db:export-reports`. All seven droppable ones map **every heading by name with
+no model called**: vehicle stock 14/14, enquiries 14/14, deals 16/16,
+registrations 26/26, job cards 16/16, parts 12/12, receivables 16/16. The eighth
+is the staff master, which has no data type of its own — employees sync inside
+the enquiry pass, because the lead derivation joins against them and a stale
+roster reports a lead as owned when its owner left last month.
 
-> **Five modules still call the client directly** and resolve to `API`: job
-> cards, registrations, parts, receivables and vehicle stock. Each is now a
-> vocabulary and a source function, with the sync's list/load split already the
-> right shape. The file bodies live in memory — there is no object storage — so
-> a restart loses a held drop's bytes but never its audit row.
+> **A report carries the answer, not the working.** `project()` on a job card
+> reads `jc.parts.some(p => p.issuedFlg === "N")` and on a registration file it
+> reads the outstanding document lines — nested shapes a flat file cannot hold.
+> The vocabulary asks for the **flags** instead, which the dealer's own register
+> already prints, and the source rebuilds exactly the shape the projection reads
+> and nothing more. Asking a dealership to export every part line so we can
+> recompute a boolean they handed us is asking for the working when they gave us
+> the answer, and it is how an onboarding fails on the first afternoon.
+
+Three source shapes cover all seven: `wholeListSource` where the client returns
+the record in one call (parts, receivables, vehicle stock), `summaryThenFetchSource`
+where the detail carries lines the summary does not (deals, job cards,
+registrations, enquiries), and `reportSource` for a dropped file.
+
+> The file bodies live in memory — there is no object storage — so a restart
+> loses a held drop's bytes but never its audit row.
 
 ## Where each sale has got to
 

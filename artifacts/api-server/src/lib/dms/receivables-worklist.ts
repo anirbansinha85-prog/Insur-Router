@@ -33,7 +33,7 @@ import {
 } from "@workspace/db";
 import { logger } from "../logger";
 import { policyForShowroom, type ResolvedPolicy } from "./policy";
-import { dmsReceivables } from "./client";
+import { receivableSourceFor } from "./ingest";
 import { toIsoDate } from "./hero-adapter";
 import type { DmsReceivable } from "./types";
 
@@ -113,7 +113,25 @@ async function syncDealerReceivables(
   dealerCode: string,
 ): Promise<ReceivablesSyncResult> {
   const startedAt = Date.now();
-  const rows = await dmsReceivables(dealerCode);
+  /*
+   * The one line that makes three paths possible.
+   *
+   * Everything below is written against a `Source<T>` and cannot tell the OEM's
+   * API from a register somebody exported this morning. A dealership nobody has
+   * configured resolves to `API` and behaves exactly as it did before.
+   */
+  const source = await receivableSourceFor(showroomId, dealerCode);
+  const listed = await source.list();
+  /*
+   * Loaded in one go, and that is not a lost optimisation.
+   *
+   * This source's `load` filters an array it has already fetched — a
+   * parts ledger has no detail view worth a round trip — so listing and
+   * loading cost the same call. The unchanged check below still spares
+   * the writes, which is where the cost actually was.
+   */
+  const rows = (await source.load(listed.map((l) => l.key))).map((s) => s.record);
+
 
   const existing = await db
     .select({
@@ -186,20 +204,31 @@ async function syncDealerReceivables(
     changed++;
   }
 
+  /*
+   * Disappearance, and only where the source is entitled to claim it.
+   *
+   * An API lists the outlet's whole book every time, so a row that stops
+   * appearing has genuinely gone. A report covering one month says nothing
+   * about the other eleven — marking everything outside the export as vanished
+   * because somebody dropped July's file is the mistake a path-blind sync makes
+   * unless it asks.
+   */
   const seenIds = rows.map((r) => r.receivableId);
-  const gone = await db
-    .update(dmsReceivablesTable)
-    .set({ disappearedAt: new Date() })
-    .where(
-      and(
-        eq(dmsReceivablesTable.showroomId, showroomId),
-        isNull(dmsReceivablesTable.disappearedAt),
-        ...(seenIds.length > 0
-          ? [notInArray(dmsReceivablesTable.receivableId, seenIds)]
-          : []),
-      ),
-    )
-    .returning({ receivableId: dmsReceivablesTable.receivableId });
+  const gone = source.listIsComplete
+    ? await db
+        .update(dmsReceivablesTable)
+        .set({ disappearedAt: new Date() })
+        .where(
+          and(
+            eq(dmsReceivablesTable.showroomId, showroomId),
+            isNull(dmsReceivablesTable.disappearedAt),
+            ...(seenIds.length > 0
+              ? [notInArray(dmsReceivablesTable.receivableId, seenIds)]
+              : []),
+          ),
+        )
+        .returning({ receivableId: dmsReceivablesTable.receivableId })
+    : [];
 
   if (seenIds.length === 0) {
     logger.warn(

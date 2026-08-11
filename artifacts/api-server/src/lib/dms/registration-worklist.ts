@@ -38,7 +38,8 @@ import {
 } from "@workspace/db";
 import { logger } from "../logger";
 import { policyForShowroom, type ResolvedPolicy } from "./policy";
-import { dmsRegistrations, fetchRegnFile } from "./client";
+import { registrationSourceFor } from "./ingest";
+import type { Listed } from "./ingest";
 import { toIsoDate, toAmount } from "./hero-adapter";
 import type { DmsRegnFile } from "./types";
 
@@ -118,7 +119,16 @@ async function syncDealerRegistrations(
   dealerCode: string,
 ): Promise<RegistrationSyncResult> {
   const startedAt = Date.now();
-  const summaries = await dmsRegistrations(dealerCode);
+  /*
+   * The one line that makes three paths possible.
+   *
+   * Everything below is written against a `Source<T>` and cannot tell the OEM's
+   * API from a register somebody exported this morning. A dealership nobody has
+   * configured resolves to `API` and behaves exactly as it did before.
+   */
+  const source = await registrationSourceFor(showroomId, dealerCode);
+  const listed = await source.list();
+
 
   const existing = await db
     .select({
@@ -135,32 +145,39 @@ async function syncDealerRegistrations(
   let changed = 0;
   let unchanged = 0;
 
-  for (const summary of summaries) {
-    const summaryHash = hashOf(summary);
-    const prior = known.get(summary.regnFileNo);
-
-    if (prior && prior.rawHash === summaryHash) {
+  /*
+   * Which ones to load in full.
+   *
+   * The listing carries a fingerprint of whatever the source could see cheaply,
+   * so a record whose fingerprint has not moved needs no expensive load. On the
+   * API path that is one round trip instead of a hundred; on the report path
+   * the file is already in hand and this costs nothing.
+   */
+  const toLoad: string[] = [];
+  for (const l of listed) {
+    const prior = known.get(l.key);
+    if (prior && prior.rawHash === l.fingerprint) {
       await db
         .update(dmsRegistrationsTable)
         .set({ lastSyncedAt: new Date(), disappearedAt: null })
         .where(
           and(
             eq(dmsRegistrationsTable.dealerCode, dealerCode),
-            eq(dmsRegistrationsTable.regnFileNo, summary.regnFileNo),
+            eq(dmsRegistrationsTable.regnFileNo, l.key),
           ),
         );
       unchanged++;
       continue;
     }
+    toLoad.push(l.key);
+  }
 
-    const file = await fetchRegnFile(summary.regnFileNo);
-    if (!file) {
-      logger.warn(
-        { regnFileNo: summary.regnFileNo },
-        "DMS listed a registration file it then could not return",
-      );
-      continue;
-    }
+  const fingerprintOf = new Map(listed.map((l: Listed) => [l.key, l.fingerprint]));
+
+  for (const sourced of await source.load(toLoad)) {
+    const file = sourced.record;
+    const summaryHash = fingerprintOf.get(sourced.key) ?? hashOf(file);
+    const prior = known.get(sourced.key);
 
     const projected = project(file);
     const now = new Date();
@@ -207,8 +224,16 @@ async function syncDealerRegistrations(
     changed++;
   }
 
-  const seenIds = summaries.map((s) => s.regnFileNo);
-  const gone = await db
+  /*
+   * Disappearance, and only where the source is entitled to claim it.
+   *
+   * An API lists the outlet's whole book every time, so a record that stops
+   * appearing has genuinely gone. A report covering one month says nothing
+   * about the other eleven.
+   */
+  const seenIds = listed.map((l: Listed) => l.key);
+  const gone = source.listIsComplete
+    ? await db
     .update(dmsRegistrationsTable)
     .set({ disappearedAt: new Date() })
     .where(
@@ -219,7 +244,8 @@ async function syncDealerRegistrations(
         ...(seenIds.length > 0 ? [notInArray(dmsRegistrationsTable.regnFileNo, seenIds)] : []),
       ),
     )
-    .returning({ regnFileNo: dmsRegistrationsTable.regnFileNo });
+    .returning({ regnFileNo: dmsRegistrationsTable.regnFileNo })
+    : [];
 
   if (seenIds.length === 0) {
     logger.warn(
@@ -231,7 +257,7 @@ async function syncDealerRegistrations(
   const result: RegistrationSyncResult = {
     showroomId,
     dealerCode,
-    seen: summaries.length,
+    seen: listed.length,
     added,
     changed,
     unchanged,

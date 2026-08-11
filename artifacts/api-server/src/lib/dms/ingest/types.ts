@@ -219,9 +219,158 @@ export const ENQUIRY_FIELDS: FieldSpec[] = [
   { field: "convertedDealId", what: "The deal number, once the lead became a sale.", type: "text" },
 ];
 
+/**
+ * The workshop.
+ *
+ * > **A report carries the answer, not the working.**
+ *
+ * `project()` reads `jc.parts.some(p => p.issuedFlg === "N")` and
+ * `jc.psf?.callDt` — nested lines a flat file cannot hold. The vocabulary asks
+ * for the **flags instead**, because the dealer's own system has already
+ * computed them and prints them on its own register. Asking a dealership to
+ * export every part line so that we can recompute a boolean they have handed us
+ * is asking for the working when they gave us the answer, and it is the kind of
+ * requirement that makes an onboarding fail on the first afternoon.
+ */
+export const JOB_CARD_FIELDS: FieldSpec[] = [
+  { field: "jcNo", what: "The job card number. The dealer's own reference.", required: true, type: "text" },
+  { field: "status", what: "Where the job is: open, awaiting part, ready, closed.", required: true, type: "text" },
+  { field: "jcType", what: "Service, running repair, accident, free service.", type: "text" },
+  { field: "jcDt", what: "When the vehicle came in.", type: "date" },
+  /*
+   * The promise made to the customer, and the only thing that makes *late*
+   * mean anything on this module. A workshop with no promised date has a
+   * queue; a workshop with one has a commitment.
+   */
+  { field: "promisedDt", what: "The date promised to the customer.", type: "date" },
+  { field: "actualCloseDt", what: "When it was actually closed.", type: "date" },
+  { field: "custName", what: "The customer's name.", type: "text" },
+  { field: "mobileNo", what: "The customer's mobile number.", type: "text" },
+  { field: "modelDesc", what: "The vehicle model.", type: "text" },
+  { field: "regNo", what: "The registration number.", type: "text" },
+  { field: "chassisNo", what: "Chassis or VIN.", type: "text" },
+  { field: "advisorEmpCode", what: "The service advisor's employee code.", type: "text" },
+  { field: "estimateAmt", what: "What was estimated.", type: "amount" },
+  { field: "finalAmt", what: "What was finally billed.", type: "amount" },
+  { field: "hasUnissuedPart", what: "Y where the job is waiting on a part.", type: "text" },
+  { field: "psfDone", what: "Y where the post-service follow-up call has been made.", type: "text" },
+];
+
+/** RTO files, from lodging to the certificate in the customer's hands. */
+export const REGISTRATION_FIELDS: FieldSpec[] = [
+  { field: "regnFileNo", what: "The registration file number.", required: true, type: "text" },
+  { field: "status", what: "Where the file is: opened, lodged, objected, registered.", required: true, type: "text" },
+  { field: "dealId", what: "The deal this file belongs to.", type: "text" },
+  { field: "chassisNo", what: "Chassis or VIN.", type: "text" },
+  { field: "custName", what: "The customer's name.", type: "text" },
+  { field: "mobileNo", what: "The customer's mobile number.", type: "text" },
+  { field: "modelDesc", what: "The vehicle model.", type: "text" },
+  { field: "openedDt", what: "When the file was opened.", type: "date" },
+  { field: "rtoCode", what: "The RTO the file went to.", type: "text" },
+  { field: "rtoOfficeDesc", what: "That office's name.", type: "text" },
+  { field: "agentEmpCode", what: "The RTO agent's employee code.", type: "text" },
+  { field: "tempRegNo", what: "The temporary registration number.", type: "text" },
+  { field: "tempRegExpiryDt", what: "When the temporary registration lapses.", type: "date" },
+  { field: "policyNo", what: "The insurance policy on the file.", type: "text" },
+  { field: "roadTaxAmt", what: "Road tax, in rupees.", type: "amount" },
+  { field: "roadTaxCollectedDt", what: "When the money was taken from the customer.", type: "date" },
+  /*
+   * The dealership's own controllable duty, and the reason both dates are
+   * asked for rather than one. Money collected and not yet paid over is a
+   * different and worse fact than a slow RTO, and only the pair distinguishes
+   * them.
+   */
+  { field: "roadTaxPaidDt", what: "When it was actually paid to the RTO.", type: "date" },
+  { field: "submittedDt", what: "When the file was lodged.", type: "date" },
+  { field: "regNo", what: "The registration number, once allotted.", type: "text" },
+  { field: "regDt", what: "The date of registration.", type: "date" },
+  { field: "hsrpFittedDt", what: "When the plates went on.", type: "date" },
+  { field: "rcReceivedDt", what: "When the certificate reached the dealership.", type: "date" },
+  { field: "rcDeliveredDt", what: "When the customer actually got it.", type: "date" },
+  { field: "objectionDesc", what: "What the RTO objected to, where they did.", type: "text" },
+  // The same *answer, not working* rule as the workshop: the document lines
+  // are the dealer's, and their register already prints what is outstanding.
+  { field: "hasPendingDoc", what: "Y where a document is still awaited from the customer.", type: "text" },
+  { field: "pendingDocDesc", what: "Which documents are outstanding.", type: "text" },
+];
+
+/** Spares. Keyed at the outlet, because stock is on a shelf rather than at a dealer code. */
+export const PART_FIELDS: FieldSpec[] = [
+  { field: "partNo", what: "The part number.", required: true, type: "text" },
+  { field: "partDesc", what: "What the part is.", required: true, type: "text" },
+  { field: "binLocation", what: "Where it sits on the shelf.", type: "text" },
+  { field: "qtyOnHand", what: "How many are physically there.", type: "amount" },
+  { field: "qtyReserved", what: "How many are already spoken for.", type: "amount" },
+  { field: "reorderLevel", what: "The level at which it should be reordered.", type: "amount" },
+  { field: "mrpAmt", what: "Maximum retail price.", type: "amount" },
+  { field: "costAmt", what: "What it cost the dealership.", type: "amount" },
+  { field: "lastReceivedDt", what: "When stock last came in.", type: "date" },
+  { field: "lastIssuedDt", what: "When one was last issued.", type: "date" },
+  { field: "onOrderQty", what: "How many are on order.", type: "amount" },
+  { field: "onOrderEtaDt", what: "When the order is expected.", type: "date" },
+];
+
+/** What each outlet is owed, party by party. */
+export const RECEIVABLE_FIELDS: FieldSpec[] = [
+  { field: "receivableId", what: "The document number for this outstanding item.", required: true, type: "text" },
+  { field: "status", what: "Open, part paid, settled, written off.", required: true, type: "text" },
+  { field: "partyType", what: "Customer, insurer, manufacturer or financier.", type: "text" },
+  /*
+   * The field this module exists for.
+   *
+   * A party code is stable across outlets, so the projection can ask what one
+   * insurer owes the *group*. Matching on names would work until somebody typed
+   * "ICICI Lombard Gen. Ins." and the exposure quietly halved.
+   */
+  { field: "partyCode", what: "The party's code. Stable across outlets, which is what makes a group total possible.", type: "text" },
+  { field: "partyName", what: "The party's name.", type: "text" },
+  { field: "partyEmailId", what: "Where a statement would be sent.", type: "text" },
+  { field: "invoiceNo", what: "The invoice this is against.", type: "text" },
+  { field: "invoiceDt", what: "The invoice date.", type: "date" },
+  { field: "invoiceAmt", what: "The invoice amount.", type: "amount" },
+  { field: "receivedAmt", what: "How much has come in against it.", type: "amount" },
+  { field: "dueDt", what: "When it fell due.", type: "date" },
+  { field: "againstType", what: "Whether it is against a deal or a job card.", type: "text" },
+  { field: "againstKey", what: "That deal or job card number.", type: "text" },
+  { field: "narrationDesc", what: "The narration on the ledger.", type: "text" },
+  { field: "lastReceiptDt", what: "The last receipt against it.", type: "date" },
+  // A promise somebody made, which is what turns *overdue* into *they said
+  // Tuesday and it is Friday*.
+  { field: "promisedDt", what: "When the party said they would pay.", type: "date" },
+];
+
+/** The floor. Cost, rate and received date together are the whole ageing question. */
+export const VEHICLE_FIELDS: FieldSpec[] = [
+  { field: "chassisNo", what: "Chassis or VIN. One frame, one row.", required: true, type: "text" },
+  { field: "status", what: "In stock, allocated, invoiced.", required: true, type: "text" },
+  { field: "engineNo", what: "Engine number.", type: "text" },
+  { field: "modelCode", what: "The manufacturer's model code.", type: "text" },
+  { field: "modelDesc", what: "The model, as the dealer writes it.", type: "text" },
+  { field: "variantDesc", what: "The variant.", type: "text" },
+  { field: "colourDesc", what: "The colour.", type: "text" },
+  { field: "allocatedDealId", what: "The deal it is held against, where it is.", type: "text" },
+  { field: "costAmt", what: "What the unit cost.", type: "amount" },
+  /*
+   * The two fields no screen in a dealer's own system puts beside the received
+   * date, and the reason the ageing worklist exists. A unit on a floor-plan
+   * line at 9.25% is costing money every day it stands; the same unit paid for
+   * outright is not.
+   */
+  { field: "financedFlg", what: "Y where the unit sits on a floor-plan line.", type: "text" },
+  { field: "interestRatePct", what: "The rate on that line.", type: "amount" },
+  { field: "receivedDt", what: "When it arrived on the floor.", type: "date" },
+  { field: "allocatedDt", what: "When it was held against a deal.", type: "date" },
+  { field: "invoicedDt", what: "When it was invoiced out.", type: "date" },
+];
+
 export const FIELDS_FOR: Partial<Record<DataType, FieldSpec[]>> = {
   DEAL: DEAL_FIELDS as unknown as FieldSpec[],
   ENQUIRY: ENQUIRY_FIELDS,
+  JOB_CARD: JOB_CARD_FIELDS,
+  REGISTRATION: REGISTRATION_FIELDS,
+  PART: PART_FIELDS,
+  RECEIVABLE: RECEIVABLE_FIELDS,
+  VEHICLE: VEHICLE_FIELDS,
 };
 
 /**

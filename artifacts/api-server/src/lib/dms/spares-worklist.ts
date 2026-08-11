@@ -35,7 +35,7 @@ import {
 } from "@workspace/db";
 import { logger } from "../logger";
 import { policyForShowroom, type ResolvedPolicy } from "./policy";
-import { dmsPartStock } from "./client";
+import { partSourceFor } from "./ingest";
 import { toIsoDate, toAmount } from "./hero-adapter";
 import type { DmsPartStock } from "./types";
 
@@ -92,7 +92,25 @@ export async function syncShowroomParts(showroomId: number): Promise<SparesSyncR
 
 async function syncDealerParts(showroomId: number, dealerCode: string): Promise<SparesSyncResult> {
   const startedAt = Date.now();
-  const lines = await dmsPartStock(dealerCode);
+  /*
+   * The one line that makes three paths possible.
+   *
+   * Everything below is written against a `Source<T>` and cannot tell the OEM's
+   * API from a register somebody exported this morning. A dealership nobody has
+   * configured resolves to `API` and behaves exactly as it did before.
+   */
+  const source = await partSourceFor(showroomId, dealerCode);
+  const listed = await source.list();
+  /*
+   * Loaded in one go, and that is not a lost optimisation.
+   *
+   * This source's `load` filters an array it has already fetched — a
+   * parts ledger has no detail view worth a round trip — so listing and
+   * loading cost the same call. The unchanged check below still spares
+   * the writes, which is where the cost actually was.
+   */
+  const lines = (await source.load(listed.map((l) => l.key))).map((s) => s.record);
+
 
   const existing = await db
     .select({ partNo: dmsPartStockTable.partNo, rawHash: dmsPartStockTable.rawHash })
@@ -169,19 +187,30 @@ async function syncDealerParts(showroomId: number, dealerCode: string): Promise<
     changed++;
   }
 
+  /*
+   * Disappearance, and only where the source is entitled to claim it.
+   *
+   * An API lists the outlet's whole book every time, so a row that stops
+   * appearing has genuinely gone. A report covering one month says nothing
+   * about the other eleven — marking everything outside the export as vanished
+   * because somebody dropped July's file is the mistake a path-blind sync makes
+   * unless it asks.
+   */
   const seenParts = lines.map((l) => l.partNo);
-  const gone = await db
-    .update(dmsPartStockTable)
-    .set({ disappearedAt: new Date() })
-    .where(
-      and(
-        eq(dmsPartStockTable.showroomId, showroomId),
-        isNull(dmsPartStockTable.disappearedAt),
-        // An empty ledger is a fault, not a branch with no parts.
-        ...(seenParts.length > 0 ? [notInArray(dmsPartStockTable.partNo, seenParts)] : []),
-      ),
-    )
-    .returning({ partNo: dmsPartStockTable.partNo });
+  const gone = source.listIsComplete
+    ? await db
+        .update(dmsPartStockTable)
+        .set({ disappearedAt: new Date() })
+        .where(
+          and(
+            eq(dmsPartStockTable.showroomId, showroomId),
+            isNull(dmsPartStockTable.disappearedAt),
+            // An empty ledger is a fault, not a branch with no parts.
+            ...(seenParts.length > 0 ? [notInArray(dmsPartStockTable.partNo, seenParts)] : []),
+          ),
+        )
+        .returning({ partNo: dmsPartStockTable.partNo })
+    : [];
 
   if (seenParts.length === 0) {
     logger.warn({ dealerCode }, "DMS returned zero parts — treating as a fault, not an empty store");

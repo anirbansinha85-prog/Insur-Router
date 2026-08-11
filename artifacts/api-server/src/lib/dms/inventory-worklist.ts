@@ -38,7 +38,7 @@ import {
 } from "@workspace/db";
 import { logger } from "../logger";
 import { policyForShowroom, type ResolvedPolicy } from "./policy";
-import { dmsVehicleStock } from "./client";
+import { vehicleSourceFor } from "./ingest";
 import { toIsoDate } from "./hero-adapter";
 import type { DmsVehicleStock } from "./types";
 
@@ -114,7 +114,25 @@ async function syncDealerInventory(
   dealerCode: string,
 ): Promise<InventorySyncResult> {
   const startedAt = Date.now();
-  const units = await dmsVehicleStock(dealerCode);
+  /*
+   * The one line that makes three paths possible.
+   *
+   * Everything below is written against a `Source<T>` and cannot tell the OEM's
+   * API from a register somebody exported this morning. A dealership nobody has
+   * configured resolves to `API` and behaves exactly as it did before.
+   */
+  const source = await vehicleSourceFor(showroomId, dealerCode);
+  const listed = await source.list();
+  /*
+   * Loaded in one go, and that is not a lost optimisation.
+   *
+   * This source's `load` filters an array it has already fetched — a
+   * parts ledger has no detail view worth a round trip — so listing and
+   * loading cost the same call. The unchanged check below still spares
+   * the writes, which is where the cost actually was.
+   */
+  const units = (await source.load(listed.map((l) => l.key))).map((s) => s.record);
+
 
   const existing = await db
     .select({ chassisNo: dmsVehicleStockTable.chassisNo, rawHash: dmsVehicleStockTable.rawHash })
@@ -175,18 +193,29 @@ async function syncDealerInventory(
     changed++;
   }
 
+  /*
+   * Disappearance, and only where the source is entitled to claim it.
+   *
+   * An API lists the outlet's whole book every time, so a row that stops
+   * appearing has genuinely gone. A report covering one month says nothing
+   * about the other eleven — marking everything outside the export as vanished
+   * because somebody dropped July's file is the mistake a path-blind sync makes
+   * unless it asks.
+   */
   const seen = units.map((u) => u.chassisNo);
-  const gone = await db
-    .update(dmsVehicleStockTable)
-    .set({ disappearedAt: new Date() })
-    .where(
-      and(
-        eq(dmsVehicleStockTable.showroomId, showroomId),
-        isNull(dmsVehicleStockTable.disappearedAt),
-        ...(seen.length > 0 ? [notInArray(dmsVehicleStockTable.chassisNo, seen)] : []),
-      ),
-    )
-    .returning({ chassisNo: dmsVehicleStockTable.chassisNo });
+  const gone = source.listIsComplete
+    ? await db
+        .update(dmsVehicleStockTable)
+        .set({ disappearedAt: new Date() })
+        .where(
+          and(
+            eq(dmsVehicleStockTable.showroomId, showroomId),
+            isNull(dmsVehicleStockTable.disappearedAt),
+            ...(seen.length > 0 ? [notInArray(dmsVehicleStockTable.chassisNo, seen)] : []),
+          ),
+        )
+        .returning({ chassisNo: dmsVehicleStockTable.chassisNo })
+    : [];
 
   if (seen.length === 0) {
     logger.warn({ dealerCode }, "DMS returned zero vehicles — treating as a fault, not an empty floor");

@@ -98,9 +98,113 @@ const ENQUIRY_SYNONYMS: Record<string, string[]> = {
   convertedDealId: ["converted deal", "deal no", "booking no", "order no", "converted to"],
 };
 
+const JOB_CARD_SYNONYMS: Record<string, string[]> = {
+  jcNo: ["jc no", "job card no", "job card number", "jobcard no", "jc number", "repair order no", "ro no"],
+  status: ["status", "jc status", "job status", "job card status"],
+  jcType: ["jc type", "job type", "service type", "repair type", "type"],
+  jcDt: ["jc date", "job card date", "opened on", "date in", "arrival date"],
+  promisedDt: ["promised date", "promised delivery", "committed date", "pdc", "promised on"],
+  actualCloseDt: ["closed date", "close date", "actual close", "delivered on", "date out"],
+  custName: ["customer name", "customer", "cust name", "party name"],
+  mobileNo: ["mobile", "mobile no", "customer mobile", "phone", "contact no"],
+  modelDesc: ["model", "model desc", "vehicle model", "model description"],
+  regNo: ["reg no", "registration no", "vehicle no", "registration number"],
+  chassisNo: ["chassis no", "chassis", "vin", "frame no"],
+  advisorEmpCode: ["advisor", "service advisor", "sa code", "advisor code", "emp code"],
+  estimateAmt: ["estimate", "estimate amount", "estimated amount", "quoted amount"],
+  finalAmt: ["final amount", "bill amount", "invoice amount", "net amount", "total"],
+  hasUnissuedPart: ["part awaited", "awaiting part", "part pending", "parts pending", "spare awaited"],
+  psfDone: ["psf done", "psf", "follow up done", "post service call", "feedback done"],
+};
+
+const REGISTRATION_SYNONYMS: Record<string, string[]> = {
+  regnFileNo: ["file no", "file number", "registration file no", "regn file no", "rto file no"],
+  status: ["status", "file status", "registration status", "rto status"],
+  dealId: ["deal no", "deal number", "booking no", "order no", "invoice ref"],
+  chassisNo: ["chassis no", "chassis", "vin", "frame no"],
+  custName: ["customer name", "customer", "cust name", "applicant name", "party name"],
+  mobileNo: ["mobile", "mobile no", "customer mobile", "phone", "contact no"],
+  modelDesc: ["model", "model desc", "vehicle model"],
+  openedDt: ["opened date", "file date", "opened on", "file opened"],
+  rtoCode: ["rto code", "rto", "rto office code"],
+  rtoOfficeDesc: ["rto office", "rto name", "office", "rto office name"],
+  agentEmpCode: ["agent emp code", "agent", "rto agent", "agent code", "emp code"],
+  tempRegNo: ["temp reg no", "temporary reg no", "trn", "temp number"],
+  tempRegExpiryDt: ["temp reg expiry", "temporary reg expiry", "trn expiry", "temp valid till"],
+  policyNo: ["policy no", "policy number", "insurance no", "insurance policy"],
+  roadTaxAmt: ["road tax amount", "road tax", "tax amount", "rto tax"],
+  roadTaxCollectedDt: ["tax collected on", "road tax collected", "tax received on", "collected on"],
+  roadTaxPaidDt: ["tax paid on", "road tax paid", "paid to rto", "tax remitted on"],
+  submittedDt: ["submitted on", "lodged on", "submission date", "submitted date"],
+  regNo: ["reg no", "registration no", "registration number", "vehicle no"],
+  regDt: ["reg date", "registration date", "registered on"],
+  hsrpFittedDt: ["hsrp fitted on", "hsrp date", "plate fitted", "hsrp fitment"],
+  rcReceivedDt: ["rc received on", "rc received", "rc receipt date"],
+  rcDeliveredDt: ["rc delivered on", "rc delivered", "rc handover date", "rc given on"],
+  objectionDesc: ["objection", "objection reason", "rto objection", "remarks"],
+  hasPendingDoc: ["pending doc", "document pending", "docs pending", "doc awaited"],
+  pendingDocDesc: ["pending doc detail", "pending documents", "documents awaited", "doc details"],
+};
+
+const PART_SYNONYMS: Record<string, string[]> = {
+  partNo: ["part no", "part number", "item code", "material no", "sku"],
+  partDesc: ["part description", "description", "part desc", "item description", "particulars"],
+  binLocation: ["bin location", "bin", "location", "rack", "shelf"],
+  qtyOnHand: ["qty on hand", "on hand", "closing stock", "stock qty", "quantity", "balance qty"],
+  qtyReserved: ["qty reserved", "reserved", "allocated qty", "blocked qty"],
+  reorderLevel: ["reorder level", "min level", "minimum level", "safety stock"],
+  mrpAmt: ["mrp", "mrp amount", "retail price", "selling price"],
+  costAmt: ["cost", "cost amount", "purchase price", "landed cost", "rate"],
+  lastReceivedDt: ["last received", "last receipt", "last grn date", "last inward"],
+  lastIssuedDt: ["last issued", "last issue date", "last outward", "last consumed"],
+  onOrderQty: ["on order qty", "on order", "ordered qty", "po qty", "in transit"],
+  onOrderEtaDt: ["on order eta", "eta", "expected date", "po eta"],
+};
+
+const RECEIVABLE_SYNONYMS: Record<string, string[]> = {
+  receivableId: ["doc no", "document no", "voucher no", "receivable id", "ref no", "entry no"],
+  status: ["status", "settlement status", "outstanding status"],
+  partyType: ["party type", "type", "account type", "category"],
+  partyCode: ["party code", "ledger code", "account code", "customer code", "party id"],
+  partyName: ["party name", "party", "account name", "ledger name", "customer name"],
+  partyEmailId: ["party email", "email", "email id", "contact email"],
+  invoiceNo: ["invoice no", "bill no", "invoice number", "tax invoice no"],
+  invoiceDt: ["invoice date", "bill date", "invoice dt"],
+  invoiceAmt: ["invoice amount", "bill amount", "gross amount", "debit"],
+  receivedAmt: ["received amount", "received", "paid amount", "credit", "collected"],
+  dueDt: ["due date", "due on", "payment due"],
+  againstType: ["against", "against type", "reference type"],
+  againstKey: ["against ref", "reference", "against key", "ref key"],
+  narrationDesc: ["narration", "remarks", "particulars", "description"],
+  lastReceiptDt: ["last receipt", "last payment", "last received on"],
+  promisedDt: ["promised date", "ptp date", "promise to pay", "committed date"],
+};
+
+const VEHICLE_SYNONYMS: Record<string, string[]> = {
+  chassisNo: ["chassis no", "chassis", "vin", "frame no", "chassis number"],
+  status: ["stock status", "status", "vehicle status"],
+  engineNo: ["engine no", "engine", "engine number", "motor no"],
+  modelCode: ["model code", "item code", "material code"],
+  modelDesc: ["model", "model desc", "model description", "vehicle model"],
+  variantDesc: ["variant", "variant desc", "grade"],
+  colourDesc: ["colour", "color", "colour desc", "shade"],
+  allocatedDealId: ["allocated deal", "deal no", "booking no", "allocated to", "order no"],
+  costAmt: ["cost value", "cost", "purchase price", "invoice value", "landed cost"],
+  financedFlg: ["financed", "floor plan", "funded", "trade advance"],
+  interestRatePct: ["interest %", "interest rate", "rate of interest", "roi"],
+  receivedDt: ["received date", "grn date", "inward date", "date received"],
+  allocatedDt: ["allocated date", "allocation date", "blocked on"],
+  invoicedDt: ["invoiced date", "invoice date", "billed on"],
+};
+
 const SYNONYMS_FOR: Partial<Record<DataType, Record<string, string[]>>> = {
   DEAL: DEAL_SYNONYMS,
   ENQUIRY: ENQUIRY_SYNONYMS,
+  JOB_CARD: JOB_CARD_SYNONYMS,
+  REGISTRATION: REGISTRATION_SYNONYMS,
+  PART: PART_SYNONYMS,
+  RECEIVABLE: RECEIVABLE_SYNONYMS,
+  VEHICLE: VEHICLE_SYNONYMS,
 };
 
 /**
