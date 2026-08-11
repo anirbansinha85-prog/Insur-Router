@@ -786,6 +786,22 @@ sync already converts its own summary shape into mirror columns, and a report
 producing our names would need a second converter that could disagree with the
 first.
 
+**Where the trade has a word, use the trade's word.** The import screen read
+*What the file is*, *Take it in* and *What has been taken in* — plain enough,
+and not what anybody in a dealership calls these things. The people onboarding a
+dealer are its own administrator and an implementation consultant, and both
+already have words: **data type**, **import**, **import history**, **column
+mapping**. Inventing friendlier ones makes a product read as though it were
+built by people who have not done the job. Write plainly everywhere the trade
+has no word.
+
+The outlet is a picker over `listShowrooms`, not a box somebody types `1` into:
+an id they do not hold sends the file to another branch of their own group,
+which is a silent import into the wrong outlet rather than an error. And the
+native file input is hidden behind a label — *Choose file · no file chosen* is
+the browser's wording at the browser's height, so it read as neither a control
+nor a field.
+
 `GET /dms/ingest/sources` returns `reportable`, and the picker is built from it.
 **A picker offering a path that does nothing is worse than one with two
 entries** — the dealership drops the file, nothing happens, and the product has

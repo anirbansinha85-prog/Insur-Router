@@ -4,18 +4,20 @@ import {
   useConfirmIngestMapping,
   useListIngestBatches,
   useListIngestSources,
+  useListShowrooms,
   type ReportDropResult,
   type MappedColumn,
 } from "@workspace/api-client-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
   AlertTriangle,
   CheckCircle2,
   FileSpreadsheet,
+  History,
   Loader2,
+  Paperclip,
   Sparkles,
   Upload,
 } from "lucide-react"
@@ -39,6 +41,19 @@ import {
  *
  * Confirm once and it is fixed: every file of that shape afterwards is read by
  * column position with no model anywhere near it.
+ *
+ * ## The words on it are the trade's, not ours
+ *
+ * This screen read *What the file is*, *Take it in* and *What has been taken
+ * in* — plain enough, and not what anybody in a dealership calls these things.
+ * A person onboarding a dealer is a dealership's own administrator or an
+ * implementation consultant, and both of them already have words: **data type**,
+ * **import**, **import history**, **column mapping**. Inventing friendlier ones
+ * makes the product read as though it were built by people who have not done
+ * the job.
+ *
+ * The rule, worth keeping: **where the trade has a word, use the trade's word.**
+ * Write plainly everywhere it does not.
  */
 
 /**
@@ -96,7 +111,7 @@ function Confidence({ value }: { value: number }) {
           : "text-amber-800 bg-amber-50 border-amber-200"
       }`}
     >
-      {strong ? "matched" : "read by a model"}
+      {strong ? "matched by name" : "interpreted"}
     </span>
   )
 }
@@ -112,7 +127,7 @@ const TYPE_LABEL: Record<string, string> = {
 }
 
 export function DmsReport() {
-  const [showroomId, setShowroomId] = useState("1")
+  const [showroomId, setShowroomId] = useState("")
   const [dataType, setDataType] = useState("DEAL")
   const [filename, setFilename] = useState<string | null>(null)
   const [text, setText] = useState("")
@@ -130,15 +145,27 @@ export function DmsReport() {
    * module a report could reach. Hard-coding the *other* six here now would
    * offer a dealership six paths, five of which silently do nothing.
    */
+  /*
+   * The outlets this owner holds, rather than a box somebody types `1` into.
+   *
+   * A numeric input here was asking an administrator to know a database id, and
+   * to find out by being wrong — an id they do not hold sends the file to
+   * another branch of their own group, which is a silent import into the wrong
+   * outlet rather than an error.
+   */
+  const showrooms = useListShowrooms({ query: { queryKey: ["/api/dms/showrooms"] } })
+  const outlets = showrooms.data ?? []
+  const outletId = showroomId || (outlets[0] ? String(outlets[0].id) : "")
+
   const sources = useListIngestSources(
-    { showroomId: Number(showroomId) || 1 },
-    { query: { queryKey: ["/api/dms/ingest/sources", showroomId] } },
+    { showroomId: Number(outletId) || 1 },
+    { query: { queryKey: ["/api/dms/ingest/sources", outletId], enabled: Boolean(outletId) } },
   )
   const reportable = sources.data?.reportable ?? ["DEAL"]
 
   const batches = useListIngestBatches(
-    { showroomId: Number(showroomId) || 1 },
-    { query: { queryKey: ["/api/dms/ingest/batches", showroomId] } },
+    { showroomId: Number(outletId) || 1 },
+    { query: { queryKey: ["/api/dms/ingest/batches", outletId], enabled: Boolean(outletId) } },
   )
 
   const onFile = async (file: File | undefined) => {
@@ -156,7 +183,7 @@ export function DmsReport() {
     drop.mutate(
       {
         data: {
-          showroomId: Number(showroomId),
+          showroomId: Number(outletId),
           dataType,
           filename,
           text,
@@ -170,7 +197,7 @@ export function DmsReport() {
         },
         onError: (e) => {
           const b = (e as { response?: { data?: { error?: string } } })?.response?.data
-          setError(b?.error ?? "That file could not be taken in.")
+          setError(b?.error ?? "That file could not be imported.")
         },
       },
     )
@@ -185,15 +212,15 @@ export function DmsReport() {
           const rows = r.released.reduce((n, b) => n + b.rowsAccepted, 0)
           setNote(
             r.released.length > 0
-              ? `Confirmed, and the file you dropped came in — ${rows} rows. Every export of this shape from now on is read straight through.`
-              : "Confirmed. Every export of this shape from now on is read straight through.",
+              ? `Mapping confirmed. ${rows} record${rows === 1 ? "" : "s"} imported. Files in this format will now import without review.`
+              : "Mapping confirmed. Files in this format will now import without review.",
           )
           setResult({ ...result, mappingStatus: "CONFIRMED" })
           void batches.refetch()
         },
         onError: (e) => {
           const b = (e as { response?: { data?: { error?: string } } })?.response?.data
-          setError(b?.error ?? "That could not be confirmed.")
+          setError(b?.error ?? "The mapping could not be confirmed.")
         },
       },
     )
@@ -207,34 +234,51 @@ export function DmsReport() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <FileSpreadsheet className="w-4 h-4" />
-            A report from the dealer's own system
+            Import from DMS export
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Most dealers have no API and will never be given one. Export the
-            register from your DMS and drop it here — comma or tab separated. We
-            will ask what the columns mean the first time and never again.
+            For dealerships without a DMS integration. Export a register from your
+            DMS as CSV or tab-delimited and upload it here. Column mapping is
+            confirmed once per file format and reused for every import after
+            that.
             {reportable.length < 7 && (
               <>
                 {" "}
-                Only what is listed can be read today; the rest still come from
-                the API.
+                Only the data types listed can be imported from a file; the rest
+                continue to come from the API.
               </>
             )}
           </p>
 
-          <div className="flex items-end gap-3 flex-wrap">
-            <div className="w-32">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+            <div>
               <Label htmlFor="showroom">Outlet</Label>
-              <Input
+              <select
                 id="showroom"
-                value={showroomId}
-                onChange={(e) => setShowroomId(e.target.value)}
-              />
+                value={outletId}
+                onChange={(e) => {
+                  setShowroomId(e.target.value)
+                  // A mapping belongs to one outlet as well as one data type, so
+                  // a result from the last outlet answers a different question.
+                  setResult(null)
+                  setNote(null)
+                }}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+              >
+                {outlets.length === 0 && <option value="">Loading…</option>}
+                {outlets.map((o: { id: number; name: string; isActive: boolean }) => (
+                  <option key={o.id} value={String(o.id)}>
+                    {o.name}
+                    {o.isActive ? "" : " (inactive)"}
+                  </option>
+                ))}
+              </select>
             </div>
-            <div className="w-48">
-              <Label htmlFor="dataType">What the file is</Label>
+
+            <div>
+              <Label htmlFor="dataType">Data type</Label>
               <select
                 id="dataType"
                 value={dataType}
@@ -254,23 +298,53 @@ export function DmsReport() {
                 ))}
               </select>
             </div>
-            <div className="flex-1 min-w-64">
-              <Label htmlFor="file">The exported file</Label>
-              <Input
+
+            {/*
+              The native file input is hidden behind a label rather than styled.
+              `Choose file — no file chosen` is the browser's wording and the
+              browser's grey, so it read as neither a control nor a field, and
+              it sat at a different height from everything beside it. A label
+              with `htmlFor` opens the same picker, keeps the keyboard and
+              screen-reader behaviour, and lets the filename be shown where
+              somebody is looking for it.
+            */}
+            <div className="lg:col-span-1">
+              <Label htmlFor="file">Source file</Label>
+              <input
                 id="file"
                 type="file"
                 accept=".csv,.tsv,.txt"
+                className="sr-only"
                 onChange={(e) => void onFile(e.target.files?.[0])}
               />
+              <label
+                htmlFor="file"
+                className="flex h-9 w-full cursor-pointer items-center gap-2 rounded-md border border-input
+                           bg-background px-3 text-sm hover:bg-accent focus-within:ring-2 focus-within:ring-ring"
+              >
+                <Paperclip className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                <span className={filename ? "truncate" : "truncate text-muted-foreground"}>
+                  {filename ?? "Select a CSV or TSV file"}
+                </span>
+              </label>
             </div>
-            <Button onClick={send} disabled={!text || drop.isPending}>
-              {drop.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Upload className="w-4 h-4" />
-              )}
-              Take it in
-            </Button>
+
+            <div>
+              {/*
+                One primary action on the card, and it is this one. The confirm
+                button further down is the primary of *its* card; nothing else
+                on the screen competes with either, which is what makes them
+                tell apart at a glance.
+              */}
+              <Button onClick={send} disabled={!text || !outletId || drop.isPending} className="w-full">
+                {drop.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Upload className="w-4 h-4" />
+                )}
+                Upload
+              </Button>
+            </div>
           </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
@@ -290,12 +364,12 @@ export function DmsReport() {
               {held ? (
                 <>
                   <AlertTriangle className="w-4 h-4 text-amber-600" />
-                  We have not seen this shape of file before
+                  New file format — mapping required
                 </>
               ) : (
                 <>
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  Read straight through — {result.rowsAccepted} of {result.rowsSeen} rows
+                  Imported — {result.rowsAccepted} of {result.rowsSeen} records
                 </>
               )}
             </CardTitle>
@@ -306,22 +380,22 @@ export function DmsReport() {
             <p className="text-sm text-muted-foreground flex items-center gap-2">
               <Sparkles className="w-3.5 h-3.5" />
               {result.usedModel
-                ? "A model read the headings it did not recognise. It was shown no values — only the column names."
+                ? "Unrecognised column headings were interpreted by a model. It was given the headings only — never any values."
                 : result.wasKnown
-                  ? "No model was called: this shape was confirmed before, so it was read by column position."
-                  : "No model was needed — every heading matched by name."}
+                  ? "No model was used. This format was confirmed previously and was read by column position."
+                  : "No model was used. Every column heading matched a known field by name."}
             </p>
 
             {held && (
               <p className="text-sm">
-                Nothing has been imported yet. Check the columns below and confirm
-                them once; the file you just dropped will come straight in.
+                Nothing has been imported yet. Review the column mapping below and
+                confirm it once; this file will then import automatically.
               </p>
             )}
 
             {result.gaps.length > 0 && (
               <p className="text-sm text-destructive">
-                Still unplaced and needed:{" "}
+                Required fields not yet mapped:{" "}
                 {result.gaps.map((g) => NAMES[g] ?? g).join(", ")}.
               </p>
             )}
@@ -347,7 +421,7 @@ export function DmsReport() {
                         })
                       }}
                     >
-                      <option value="">— not in this file —</option>
+                      <option value="">Not present in this file</option>
                       {result.headings.map((h) => (
                         <option key={h} value={h}>
                           {h}
@@ -363,7 +437,7 @@ export function DmsReport() {
             {result.rejections.length > 0 && (
               <div className="text-sm text-muted-foreground">
                 <p className="font-medium">
-                  {result.rowsRejected} row{result.rowsRejected === 1 ? "" : "s"} not taken in:
+                  {result.rowsRejected} row{result.rowsRejected === 1 ? "" : "s"} not imported:
                 </p>
                 <ul className="list-disc pl-5">
                   {result.rejections.map((r, i) => (
@@ -380,7 +454,7 @@ export function DmsReport() {
                 ) : (
                   <CheckCircle2 className="w-4 h-4" />
                 )}
-                That is right — confirm it
+                Confirm mapping
               </Button>
             )}
           </CardContent>
@@ -389,13 +463,16 @@ export function DmsReport() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">What has been taken in</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <History className="w-4 h-4" />
+            Import history
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {/* Where a figure came from, which the API path never had to answer.
               A drop happened at a moment, and every row it produced inherits it. */}
           {(batches.data?.batches ?? []).length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nothing yet.</p>
+            <p className="text-sm text-muted-foreground">No files have been imported for this outlet.</p>
           ) : (
             <div className="text-sm divide-y">
               {(batches.data?.batches ?? []).map((b) => (
