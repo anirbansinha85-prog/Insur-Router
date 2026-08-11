@@ -1,0 +1,8 @@
+"Employee Master — all staff, active and left"
+
+Emp Code,Employee Name,Designation,Date Of Joining,Date Of Leaving,Active,Mobile No,Email Id
+AD-1182-02,Sneha Deshmukh,SERVICE_ADVISOR,09/02/2022,,Y,9822011202,sneha.deshmukh@deccantw.example
+RT-1182-01,Ganesh Shinde,RTO_AGENT,21/06/2020,,Y,9822011201,ganesh.shinde@deccantw.example
+SA-1182-03,Prasad Kulkarni,SALES_EXEC,14/07/2023,,Y,9822011203,prasad.kulkarni@deccantw.example
+TE-1182-05,Balaji Pawar,TECHNICIAN,30/10/2021,,Y,9822011205,balaji.pawar@deccantw.example
+Total,4 employees,,,,,,

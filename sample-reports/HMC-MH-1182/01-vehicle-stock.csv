@@ -1,0 +1,6 @@
+Vehicle Stock Register — as on date
+
+Chassis No,Engine No,Model Code,Model,Variant,Colour,Stock Status,Allocated Deal,Cost Value,Financed,Interest %,Received Date,Allocated Date,Invoiced Date
+MBLHAR0748PL33102,HA11ELPL33102,HER-SPL-PLUS,Splendor Plus,Splendor Plus Xtec,Black with Red,IN_STOCK,,"₹ 78,200.00",N,,14/07/2026,,
+MBLVID0912PL33101,VD22ELPL33101,VID-V2-PLUS,Vida V2 Plus,Vida V2 Plus,Matte Sports Red,IN_STOCK,,"₹ 1,21,500.00",Y,9.75,27/03/2026,,
+Total,,,2 units,,,,,,,,,,

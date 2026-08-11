@@ -10,6 +10,7 @@
     "db:seed-owners": "pnpm --filter @workspace/scripts run seed-owners",
     "db:seed-applications": "pnpm --filter @workspace/scripts run seed-applications",
     "db:seed-pricelists": "pnpm --filter @workspace/scripts run seed-pricelists",
+    "db:export-reports": "pnpm --filter @workspace/scripts run export-reports",
     "db:seed-users": "pnpm --filter @workspace/scripts run seed-users",
     "db:rls": "pnpm --filter @workspace/scripts run rls",
     "verify:records": "pnpm --filter @workspace/scripts run records",

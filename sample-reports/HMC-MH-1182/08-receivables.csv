@@ -1,0 +1,6 @@
+"Outstanding Receivables — party-wise, as on date"
+
+Doc No,Party Type,Party Code,Party Name,Party Email,Invoice No,Invoice Date,Invoice Amount,Received Amount,Due Date,Against,Against Ref,Narration,Status,Last Receipt,Promised Date
+REC-1182-3301,INSURER,ICICI-LOM,ICICI Lombard General Insurance,motorclaims.north@icicilombard.example,INV-1182-8840,14/06/2026,"₹ 37,300.00",₹ 0.00,14/07/2026,JOB_CARD,JC-MH-8841,Cashless claim — awaiting insurer approval,OPEN,,
+REC-1182-3302,CUSTOMER,CUST-M-JADHAV,Mrs Manisha Jadhav,,INV-1182-8852,28/07/2026,"₹ 4,260.00",₹ 0.00,12/08/2026,JOB_CARD,JC-MH-8842,Periodic service,OPEN,,
+Total,,,2 open items,,,,,,,,,,,,

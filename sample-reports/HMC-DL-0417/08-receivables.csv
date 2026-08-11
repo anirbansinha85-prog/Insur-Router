@@ -1,0 +1,54 @@
+"Outstanding Receivables — party-wise, as on date"
+
+Doc No,Party Type,Party Code,Party Name,Party Email,Invoice No,Invoice Date,Invoice Amount,Received Amount,Due Date,Against,Against Ref,Narration,Status,Last Receipt,Promised Date
+REC-0417-5501,INSURER,ICICI-LOM,ICICI Lombard General Insurance,motorclaims.north@icicilombard.example,INV-0417-24118,03/06/2026,"₹ 48,200.00",₹ 0.00,03/07/2026,JOB_CARD,JC-0417-24125,Cashless claim — surveyor report submitted,OPEN,,
+REC-0417-5502,CUSTOMER,CUST-SHARMA-LOG,Sharma Logistics Pvt Ltd,accounts@sharmalogistics.example,INV-0417-23904,24/03/2026,"₹ 1,27,400.00","₹ 40,000.00",23/04/2026,JOB_CARD,JC-0417-23904,"Fleet servicing — 6 vehicles, monthly account",PART_PAID,09/04/2026,
+REC-0417-5503,OEM,HERO-WTY,Hero MotoCorp — warranty claims,warranty.claims@heromotocorp.example,WTY-0417-1188,30/04/2026,"₹ 18,650.00","₹ 11,200.00",14/06/2026,JOB_CARD,JC-0417-24119,Labour hours disallowed on claim line 3 — rework and resubmit,PART_PAID,26/05/2026,
+REC-0417-5504,CUSTOMER,CUST-A-VERMA,Mr Ashok Verma,,INV-0417-24101,25/06/2026,"₹ 9,840.00",₹ 0.00,10/07/2026,JOB_CARD,JC-0417-24124,Customer to transfer on salary date,OPEN,,30/07/2026
+REC-0417-5505,INSURER,BAJAJ-ALZ,Bajaj Allianz General Insurance,motorclaims@bajajallianz.example,INV-0417-24140,25/07/2026,"₹ 21,750.00",₹ 0.00,24/08/2026,JOB_CARD,JC-0417-24121,"Cashless claim — approved, payment run pending",OPEN,,
+REC-0417-5506,FINANCIER,TVS-CREDIT,TVS Credit Services,disbursements@tvscredit.example,INV-0417-24095,07/07/2026,"₹ 74,900.00","₹ 74,900.00",14/07/2026,DEAL,HMC-DL-2026-000181,Loan disbursement against invoice,SETTLED,14/07/2026,
+REC-0417-5600,INSURER,TATA-AIG,Tata AIG General Insurance,north.dealer@tataaig.example,INV/0417/26-27/01200,12/04/2026,"₹ 1,57,585.00","₹ 78,793.00",07/06/2026,DEAL,,Motor policy commission — monthly settlement,OPEN,,
+REC-0417-5601,CUSTOMER,CUST-0417-74001,Mr Chandan Kumar,chandan.kumar@example.in,INV/0417/26-27/01201,13/06/2026,"₹ 15,008.00","₹ 15,008.00",20/06/2026,JOB_CARD,,Balance against vehicle invoice,SETTLED,27/06/2026,
+REC-0417-5602,INSURER,TATA-AIG,Tata AIG General Insurance,north.dealer@tataaig.example,INV/0417/26-27/01202,14/06/2026,"₹ 2,17,691.00",₹ 0.00,30/07/2026,DEAL,,Motor policy commission — monthly settlement,OPEN,,22/07/2026
+REC-0417-5603,INSURER,BAJAJ-ALZ,Bajaj Allianz General Insurance,dealer.settlements@bajajallianz.example,INV/0417/26-27/01203,24/04/2026,"₹ 1,71,750.00",₹ 0.00,31/05/2026,DEAL,,Motor policy commission — monthly settlement,OPEN,,02/08/2026
+REC-0417-5604,FINANCIER,HDB-FS,HDB Financial Services,subvention@hdbfs.example,INV/0417/26-27/01204,14/07/2026,"₹ 81,309.00","₹ 40,655.00",18/08/2026,DEAL,,Subvention and payout claim,OPEN,,
+REC-0417-5605,INSURER,TATA-AIG,Tata AIG General Insurance,north.dealer@tataaig.example,INV/0417/26-27/01205,24/05/2026,"₹ 2,01,199.00",₹ 0.00,30/06/2026,DEAL,,Motor policy commission — monthly settlement,OPEN,,
+REC-0417-5606,FINANCIER,HDB-FS,HDB Financial Services,subvention@hdbfs.example,INV/0417/26-27/01206,23/05/2026,"₹ 2,30,140.00","₹ 2,30,140.00",23/06/2026,DEAL,,Subvention and payout claim,SETTLED,28/05/2026,
+REC-0417-5607,CUSTOMER,CUST-0417-74007,Mr Naushad Jain,naushad.jain@example.in,INV/0417/26-27/01207,06/06/2026,"₹ 15,322.00",₹ 0.00,22/06/2026,JOB_CARD,,Balance against vehicle invoice,OPEN,,
+REC-0417-5608,FINANCIER,HDB-FS,HDB Financial Services,subvention@hdbfs.example,INV/0417/26-27/01208,16/06/2026,"₹ 2,33,004.00",₹ 0.00,05/08/2026,DEAL,,Subvention and payout claim,OPEN,,
+REC-0417-5609,INSURER,HDFC-ERG,HDFC ERGO General Insurance,motor.dealer@hdfcergo.example,INV/0417/26-27/01209,04/07/2026,"₹ 2,24,654.00","₹ 1,12,327.00",19/08/2026,DEAL,,Motor policy commission — monthly settlement,OPEN,,
+REC-0417-5610,INSURER,BAJAJ-ALZ,Bajaj Allianz General Insurance,dealer.settlements@bajajallianz.example,INV/0417/26-27/01210,07/05/2026,"₹ 1,76,839.00",₹ 0.00,20/06/2026,DEAL,,Motor policy commission — monthly settlement,OPEN,,
+REC-0417-5611,CUSTOMER,CUST-0417-74011,Mr Chandan Panwar,chandan.panwar@example.in,INV/0417/26-27/01211,17/05/2026,"₹ 5,478.00",₹ 0.00,30/05/2026,DEAL,,Balance against vehicle invoice,OPEN,,
+REC-0417-5612,INSURER,BAJAJ-ALZ,Bajaj Allianz General Insurance,dealer.settlements@bajajallianz.example,INV/0417/26-27/01212,15/05/2026,"₹ 1,98,111.00","₹ 1,98,111.00",26/06/2026,DEAL,,Motor policy commission — monthly settlement,SETTLED,27/05/2026,
+REC-0417-5613,CUSTOMER,CUST-0417-74013,Mr Arun Mahto,arun.mahto@example.in,INV/0417/26-27/01213,25/04/2026,"₹ 29,163.00",₹ 0.00,15/05/2026,DEAL,,Balance against vehicle invoice,OPEN,,29/07/2026
+REC-0417-5614,INSURER,ICICI-LOM,ICICI Lombard General Insurance,claims.north@icicilombard.example,INV/0417/26-27/01214,30/06/2026,"₹ 18,070.00","₹ 18,070.00",12/08/2026,DEAL,,Motor policy commission — monthly settlement,SETTLED,17/07/2026,
+REC-0417-5615,INSURER,BAJAJ-ALZ,Bajaj Allianz General Insurance,dealer.settlements@bajajallianz.example,INV/0417/26-27/01215,09/04/2026,"₹ 2,20,662.00","₹ 2,20,662.00",02/06/2026,DEAL,,Motor policy commission — monthly settlement,SETTLED,19/04/2026,
+REC-0417-5616,FINANCIER,HDB-FS,HDB Financial Services,subvention@hdbfs.example,INV/0417/26-27/01216,07/05/2026,"₹ 97,920.00","₹ 97,920.00",21/06/2026,DEAL,,Subvention and payout claim,SETTLED,13/05/2026,
+REC-0417-5617,CUSTOMER,CUST-0417-74017,Mrs Pooja Sethi,pooja.sethi@example.in,INV/0417/26-27/01217,18/05/2026,"₹ 16,919.00","₹ 16,919.00",29/05/2026,JOB_CARD,,Balance against vehicle invoice,SETTLED,05/06/2026,
+REC-0417-5618,FINANCIER,HDB-FS,HDB Financial Services,subvention@hdbfs.example,INV/0417/26-27/01218,16/05/2026,"₹ 1,92,655.00","₹ 96,328.00",11/07/2026,DEAL,,Subvention and payout claim,OPEN,,03/08/2026
+REC-0417-5619,INSURER,ICICI-LOM,ICICI Lombard General Insurance,claims.north@icicilombard.example,INV/0417/26-27/01219,28/04/2026,"₹ 1,77,328.00","₹ 1,77,328.00",15/06/2026,DEAL,,Motor policy commission — monthly settlement,SETTLED,15/05/2026,
+REC-0417-5620,CUSTOMER,CUST-0417-74020,Mr Sourav Das,sourav.das@example.in,INV/0417/26-27/01220,18/04/2026,"₹ 34,901.00",₹ 0.00,01/05/2026,DEAL,,Balance against vehicle invoice,OPEN,,
+REC-0417-5621,FINANCIER,TVS-CRED,TVS Credit Services,dealer.claims@tvscredit.example,INV/0417/26-27/01221,22/06/2026,"₹ 2,20,738.00","₹ 2,20,738.00",18/08/2026,DEAL,,Subvention and payout claim,SETTLED,09/07/2026,
+REC-0417-5622,CUSTOMER,CUST-0417-74022,Mr Rajesh Solanki,,INV/0417/26-27/01222,26/04/2026,"₹ 9,385.00",₹ 0.00,05/05/2026,DEAL,,Balance against vehicle invoice,OPEN,,
+REC-0417-5623,CUSTOMER,CUST-0417-74023,Mr Rohit Garg,,INV/0417/26-27/01223,12/05/2026,"₹ 26,341.00",₹ 0.00,21/05/2026,JOB_CARD,,Balance against vehicle invoice,OPEN,,27/07/2026
+REC-0417-5624,CUSTOMER,CUST-0417-74024,Mr Bhupinder Singh,bhupinder.singh@example.in,INV/0417/26-27/01224,19/05/2026,"₹ 36,795.00","₹ 36,795.00",01/06/2026,DEAL,,Balance against vehicle invoice,SETTLED,20/05/2026,
+REC-0417-5625,OEM,HERO-MC,Hero MotoCorp Limited,dealer.claims@heromotocorp.example,INV/0417/26-27/01225,02/06/2026,"₹ 71,494.00","₹ 71,494.00",27/07/2026,JOB_CARD,,Warranty claim reimbursement,SETTLED,15/06/2026,
+REC-0417-5626,CUSTOMER,CUST-0417-74026,Mr Bhupinder Tiwari,,INV/0417/26-27/01226,29/07/2026,"₹ 16,754.00","₹ 8,377.00",18/08/2026,DEAL,,Balance against vehicle invoice,OPEN,,
+REC-0417-5627,FINANCIER,HDB-FS,HDB Financial Services,subvention@hdbfs.example,INV/0417/26-27/01227,12/04/2026,"₹ 40,956.00","₹ 40,956.00",02/06/2026,DEAL,,Subvention and payout claim,SETTLED,28/04/2026,
+REC-0417-5628,CUSTOMER,CUST-0417-74028,Mr Sandeep Verma,sandeep.verma@example.in,INV/0417/26-27/01228,13/07/2026,"₹ 25,666.00",₹ 0.00,27/07/2026,JOB_CARD,,Balance against vehicle invoice,OPEN,,
+REC-0417-5629,CUSTOMER,CUST-0417-74029,Mr Yogesh Qureshi,,INV/0417/26-27/01229,08/06/2026,"₹ 27,551.00","₹ 27,551.00",15/06/2026,JOB_CARD,,Balance against vehicle invoice,SETTLED,11/06/2026,
+REC-0417-5630,INSURER,HDFC-ERG,HDFC ERGO General Insurance,motor.dealer@hdfcergo.example,INV/0417/26-27/01230,19/07/2026,"₹ 1,42,405.00","₹ 1,42,405.00",18/08/2026,DEAL,,Motor policy commission — monthly settlement,SETTLED,29/07/2026,
+REC-0417-5631,FINANCIER,HDB-FS,HDB Financial Services,subvention@hdbfs.example,INV/0417/26-27/01231,12/06/2026,"₹ 1,47,147.00","₹ 1,47,147.00",06/08/2026,DEAL,,Subvention and payout claim,SETTLED,30/06/2026,
+REC-0417-5632,FINANCIER,HDB-FS,HDB Financial Services,subvention@hdbfs.example,INV/0417/26-27/01232,13/05/2026,"₹ 2,15,593.00",₹ 0.00,06/07/2026,DEAL,,Subvention and payout claim,OPEN,,28/07/2026
+REC-0417-5633,INSURER,HDFC-ERG,HDFC ERGO General Insurance,motor.dealer@hdfcergo.example,INV/0417/26-27/01233,24/05/2026,"₹ 53,207.00",₹ 0.00,11/07/2026,DEAL,,Motor policy commission — monthly settlement,OPEN,,28/07/2026
+REC-0417-5634,INSURER,TATA-AIG,Tata AIG General Insurance,north.dealer@tataaig.example,INV/0417/26-27/01234,08/05/2026,"₹ 90,255.00","₹ 45,128.00",27/06/2026,DEAL,,Motor policy commission — monthly settlement,OPEN,,
+REC-0417-5635,OEM,HERO-MC,Hero MotoCorp Limited,dealer.claims@heromotocorp.example,INV/0417/26-27/01235,05/05/2026,"₹ 1,16,385.00",₹ 0.00,19/06/2026,JOB_CARD,,Warranty claim reimbursement,OPEN,,
+REC-0417-5636,INSURER,TATA-AIG,Tata AIG General Insurance,north.dealer@tataaig.example,INV/0417/26-27/01236,16/06/2026,"₹ 1,91,772.00",₹ 0.00,21/07/2026,DEAL,,Motor policy commission — monthly settlement,OPEN,,
+REC-0417-5637,INSURER,HDFC-ERG,HDFC ERGO General Insurance,motor.dealer@hdfcergo.example,INV/0417/26-27/01237,13/04/2026,"₹ 1,57,142.00","₹ 78,571.00",01/06/2026,DEAL,,Motor policy commission — monthly settlement,OPEN,,29/07/2026
+REC-0417-5638,FINANCIER,HDB-FS,HDB Financial Services,subvention@hdbfs.example,INV/0417/26-27/01238,02/05/2026,"₹ 1,12,061.00","₹ 1,12,061.00",04/06/2026,DEAL,,Subvention and payout claim,SETTLED,09/05/2026,
+REC-0417-5639,CUSTOMER,CUST-0417-74039,Mr Shubham Shukla,shubham.shukla@example.in,INV/0417/26-27/01239,24/07/2026,"₹ 5,923.00","₹ 2,962.00",03/08/2026,JOB_CARD,,Balance against vehicle invoice,OPEN,,
+REC-0417-5640,FINANCIER,BAJAJ-FIN,Bajaj Finance Limited,dealer.payouts@bajajfinserv.example,INV/0417/26-27/01240,27/05/2026,"₹ 51,881.00","₹ 51,881.00",19/07/2026,DEAL,,Subvention and payout claim,SETTLED,15/06/2026,
+REC-0417-5641,FINANCIER,HDB-FS,HDB Financial Services,subvention@hdbfs.example,INV/0417/26-27/01241,18/04/2026,"₹ 1,40,399.00","₹ 1,40,399.00",22/05/2026,DEAL,,Subvention and payout claim,SETTLED,20/04/2026,
+REC-0417-5642,INSURER,TATA-AIG,Tata AIG General Insurance,north.dealer@tataaig.example,INV/0417/26-27/01242,08/05/2026,"₹ 75,974.00","₹ 37,987.00",23/06/2026,DEAL,,Motor policy commission — monthly settlement,OPEN,,
+REC-0417-5643,CUSTOMER,CUST-0417-74043,Mr Pankaj Dubey,pankaj.dubey@example.in,INV/0417/26-27/01243,24/05/2026,"₹ 23,579.00",₹ 0.00,10/06/2026,DEAL,,Balance against vehicle invoice,OPEN,,28/07/2026
+Total,,,50 open items,,,,,,,,,,,,

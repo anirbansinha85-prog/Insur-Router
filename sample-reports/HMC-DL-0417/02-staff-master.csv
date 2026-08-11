@@ -1,0 +1,25 @@
+"Employee Master — all staff, active and left"
+
+Emp Code,Employee Name,Designation,Date Of Joining,Date Of Leaving,Active,Mobile No,Email Id
+AC-0417-06,Meera Joshi,ACCOUNTS,18/11/2021,,Y,9810044206,meera.joshi@saraswatiauto.example
+AD-0417-04,Sunil Rawat,SERVICE_ADVISOR,07/06/2021,,Y,9810044204,sunil.rawat@saraswatiauto.example
+AD-0417-07,Farida Sheikh,SERVICE_ADVISOR,15/03/2025,30/06/2026,N,,
+AD-0417-09,Harish Rawal,SERVICE_ADVISOR,08/08/2023,,Y,9810044209,harish.rawal@saraswatiauto.example
+AD-0417-12,Nusrat Jahan,SERVICE_ADVISOR,27/05/2025,,Y,9810044212,nusrat.jahan@saraswatiauto.example
+MG-0417-01,Anand Saraswat,MANAGER,01/04/2018,,Y,9810044201,anand.saraswat@saraswatiauto.example
+RT-0417-02,Jaswinder Sethi,RTO_AGENT,03/03/2019,,Y,9810044202,jaswinder.sethi@saraswatiauto.example
+SA-0417-19,Vikram Chandel,SALES_EXEC,11/04/2022,,Y,9810044219,vikram.chandel@saraswatiauto.example
+SA-0417-21,Imtiaz Khan,SALES_EXEC,19/08/2023,28/02/2026,N,,
+SA-0417-23,Neha Grover,SALES_EXEC,02/01/2024,,Y,9810044223,neha.grover@saraswatiauto.example
+SA-0417-24,Rajat Khurana,SALES_EXEC,16/09/2024,,Y,9810044224,rajat.khurana@saraswatiauto.example
+SA-0417-25,Kunal Sabharwal,SALES_EXEC,01/07/2024,31/07/2026,N,,
+SA-0417-26,Pooja Bhatia,SALES_EXEC,03/02/2025,,Y,9810044226,pooja.bhatia@saraswatiauto.example
+SA-0417-27,Sameer Ansari,SALES_EXEC,21/04/2025,,Y,9810044227,sameer.ansari@saraswatiauto.example
+SA-0417-29,Divya Nair,SALES_EXEC,12/01/2026,,Y,9810044229,divya.nair@saraswatiauto.example
+TE-0417-11,Ramesh Yadav,TECHNICIAN,22/09/2020,,Y,9810044211,ramesh.yadav@saraswatiauto.example
+TE-0417-14,Dinesh Sahu,TECHNICIAN,05/05/2024,,Y,9810044214,dinesh.sahu@saraswatiauto.example
+TE-0417-16,Aslam Qureshi,TECHNICIAN,12/11/2024,15/05/2026,N,,
+TE-0417-18,Mukesh Tomar,TECHNICIAN,14/02/2022,,Y,9810044218,mukesh.tomar@saraswatiauto.example
+TE-0417-21,Irfan Sheikh,TECHNICIAN,09/10/2023,,Y,9810044221,irfan.sheikh@saraswatiauto.example
+TE-0417-23,Sandeep Panwar,TECHNICIAN,05/06/2025,,Y,9810044223x,sandeep.panwar@saraswatiauto.example
+Total,21 employees,,,,,,

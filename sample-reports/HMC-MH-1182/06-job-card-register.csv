@@ -1,0 +1,6 @@
+"Job Card Register — workshop, open and closed"
+
+JC No,JC Status,JC Type,JC Date,Promised Date,Closed Date,Customer Name,Mobile No,Model,Reg No,Chassis No,Advisor,Estimate,Final Amount,Part Awaited,PSF Done
+JC-MH-8841,IN_PROGRESS,WARRANTY,04/08/2026,05/08/2026,,Mr Sameer Joshi,9823114455,Vida V2 Plus,MH12QR8890,MBLHAR0748PK21044,AD-1182-02,₹ 0.00,,N,N
+JC-MH-8842,READY,PAID,02/08/2026,03/08/2026,,Mrs Rekha Patil,9823117788,HF Deluxe,MH14ST2201,MBLHAR0748PK20551,AD-1182-02,"₹ 1,120.00","₹ 1,110.00",N,N
+Total,,,,,,2 job cards,,,,,,,,,
