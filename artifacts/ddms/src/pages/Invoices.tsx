@@ -6,6 +6,7 @@ import {
   useListPriceLists,
 } from "@workspace/api-client-react"
 import { InvoiceButton } from "../lib/invoice"
+import { SaleForm } from "../lib/sale-form"
 import { FindBox, useFind } from "../lib/find"
 import { AlertTriangle, FileText, IndianRupee, Loader2, ReceiptText, ScrollText } from "lucide-react"
 
@@ -26,6 +27,13 @@ import { AlertTriangle, FileText, IndianRupee, Loader2, ReceiptText, ScrollText 
  * *What can I raise now* — with the figures and a button.
  * *What is stopping the rest* — named, per deal, so it is a job somebody can do.
  * *What have we issued* — and what the manufacturer still owes us on it.
+ *
+ * ## And a fourth, for the dealership those three do not describe
+ *
+ * All three read from mirrored deals, which presumes a manufacturer's system
+ * feeding them. The dealership doing five units a month has none, and until
+ * OBJ-30 this screen had nothing for it: three empty lists and no way in.
+ * `SaleForm` is that way in, at the bottom, calling the same generator.
  */
 
 const rupees = (n: number | string) =>
@@ -157,6 +165,11 @@ export default function Invoices() {
         </div>
       </div>
 
+      {/* Below the lists on purpose. A dealership with a mirror should almost
+          never type a sale in by hand — that produces a second version of a
+          sale the mirror already holds — and one without a mirror will scroll
+          past three empty lists to reach it, which is the correct amount of
+          friction in each direction. */}
       {readiness.isLoading ? (
         <p className="text-sm text-slate-400 flex items-center gap-2">
           <Loader2 className="w-4 h-4 animate-spin" /> Working out what can be raised…
@@ -257,6 +270,14 @@ export default function Invoices() {
           )}
         </div>
       )}
+
+      <SaleForm
+        showroomId={showroomId}
+        onIssued={() => {
+          void documents.refetch()
+          void claims.refetch()
+        }}
+      />
     </div>
   )
 }

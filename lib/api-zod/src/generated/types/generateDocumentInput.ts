@@ -7,11 +7,20 @@
  */
 import type { GenerateDocumentInputIntent } from './generateDocumentInputIntent';
 import type { GenerateDocumentInputOtherChargesItem } from './generateDocumentInputOtherChargesItem';
+import type { StatedPrice } from './statedPrice';
+import type { TypedSale } from './typedSale';
 
+/**
+ * Exactly one of (dealerCode + dealId) or sale. Sending both describes two different sales at once and is refused rather than resolved, because silently picking one would issue a tax invoice for whichever the code happened to test first.
+ */
 export interface GenerateDocumentInput {
   showroomId: number;
-  dealerCode: string;
-  dealId: string;
+  /** @nullable */
+  dealerCode?: string | null;
+  /** @nullable */
+  dealId?: string | null;
+  sale?: TypedSale | null;
+  statedPrice?: StatedPrice | null;
   intent?: GenerateDocumentInputIntent;
   /**
      * The dealer's choice of list. Absent means the current one. Naming a list that does not cover the model is refused rather than quietly falling back — he asked for a specific price.

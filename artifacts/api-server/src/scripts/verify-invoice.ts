@@ -12,6 +12,17 @@
  * by a scheduler pass with nobody signed in. That is the difference between a
  * screen that reports and a product that notices.
  *
+ * ## And OBJ-30's, which is one sentence
+ *
+ * > *The same sale, issued twice — once from a mirrored deal and once from a
+ * > form somebody typed — produces the same money.*
+ *
+ * That is R-96 stated in a way that can fail. It is not enough for the form
+ * path to *work*; if it charged a rupee differently there would be two answers
+ * to what a sale costs, which is the failure this whole product exists to fix,
+ * arriving from inside. Section 11 issues both and compares every figure on the
+ * two documents field by field.
+ *
  * `pnpm run verify:invoice`.
  */
 
@@ -33,11 +44,15 @@ import {
   unclaimedSchemes,
   priceFor,
   money,
+  round2,
   taxOn,
   decideKind,
   financialYear,
   listDocuments,
   listPriceLists,
+  factsFromMirror,
+  doubtful,
+  type SaleFacts,
 } from "../lib/dms/invoice";
 import { advanceJourneys, traceFor, journeyQueueRows, VEHICLE_SALE } from "../lib/dms/journeys";
 import { buildQueue } from "../lib/dms/queue";
@@ -526,12 +541,365 @@ for (const d of documents) {
 }
 check("each is answerable for", documents.every((d) => d.issuedByName === ANIRBAN.name));
 
+section("11. the same sale, twice, from two different doors (OBJ-30, R-96)");
+
+/*
+ * The whole claim in one comparison.
+ *
+ * A mirrored deal is read, then the *same facts* are retyped as though a
+ * sub-dealer with no manufacturer's system had entered them by hand — same
+ * customer, same model, same frame, same discount, same scheme. Two documents
+ * come out and every figure on them has to match.
+ *
+ * The two are deliberately not issued for the same subject: the sold-this-twice
+ * check would refuse the second, and correctly. The typed one is given its own
+ * chassis, which is the only field allowed to differ.
+ */
+const donor = await ownerDb
+  .select()
+  .from(dmsDealsTable)
+  .where(eq(dmsDealsTable.showroomId, SHOWROOM))
+  .limit(400);
+
+/*
+ * The dealer code comes off the deal rather than being written in here.
+ *
+ * The first version had `HERO-SARASWATI-01` in the query, which is a plausible
+ * dealer code and is not this dealership's — the seed issues `HMC-DL-0417`. It
+ * returned no rows and the section reported *none priceable*, which reads like
+ * a finding about price lists rather than a typo in a filter. A verifier that
+ * can fail for a reason it does not name is a verifier that will one day pass
+ * for a reason it does not name either.
+ */
+let subject: { dealerCode: string; dealId: string; model: string } | undefined;
+for (const d of donor) {
+  if (!d.modelDescription || !d.chassisNo) continue;
+  const p = await priceFor({
+    ownerId: OWNER,
+    showroomId: SHOWROOM,
+    modelDescription: d.modelDescription,
+    onDate,
+  });
+  if (!p) continue;
+  subject = { dealerCode: d.dealerCode, dealId: d.dealId, model: d.modelDescription };
+  break;
+}
+check("a mirrored deal to compare against", Boolean(subject), subject ? `${subject.dealerCode}/${subject.dealId} — ${subject.model}` : "no deal at this outlet is covered by a price list");
+
+if (subject) {
+  const mirrored = await factsFromMirror({ dealerCode: subject.dealerCode, dealId: subject.dealId });
+  check("its facts resolve from the mirror", mirrored.ok);
+
+  if (mirrored.ok) {
+    const f = mirrored.facts;
+    check("and they say so", f.origin === "MIRROR" && f.dealerCode === subject.dealerCode);
+
+    const AGREED = { dealerDiscount: 3000, oemSchemeAmount: 2500, oemSchemePassedOn: 1000 };
+
+    const fromMirror = await generateDocument({
+      ownerId: OWNER,
+      showroomId: SHOWROOM,
+      dealerCode: subject.dealerCode,
+      dealId: subject.dealId,
+      intent: "SALE",
+      ...AGREED,
+      onDate: onDate,
+      userId: ANIRBAN.id,
+      userName: ANIRBAN.name,
+      principal: "OWNER",
+      policy: await loadPolicy(OWNER),
+    });
+    check("the mirror path issues", fromMirror.ok, fromMirror.ok ? fromMirror.document.reference : fromMirror.error);
+
+    /*
+     * The sub-dealer's version of the same sale. No dealer code, no deal row,
+     * nothing in `dms_deals` this could have been read from — which is the
+     * point, and is why the chassis is invented rather than borrowed.
+     */
+    const TYPED_CHASSIS = "MBLHAR0ANP9Z99001";
+    const fromForm = await generateDocument({
+      ownerId: OWNER,
+      showroomId: SHOWROOM,
+      sale: {
+        showroomId: SHOWROOM,
+        customerName: f.customerName,
+        customerMobile: f.customerMobile,
+        customerAddress: "14 Bidhan Sarani, Agartala",
+        customerGstin: null,
+        modelDescription: f.modelDescription,
+        chassisNo: TYPED_CHASSIS,
+        engineNo: "HA11EN9Z99001",
+      },
+      intent: "SALE",
+      ...AGREED,
+      onDate: onDate,
+      userId: ANIRBAN.id,
+      userName: ANIRBAN.name,
+      principal: "OWNER",
+      policy: await loadPolicy(OWNER),
+    });
+    check(
+      "a dealership with no manufacturer's system issues the same sale",
+      fromForm.ok,
+      fromForm.ok ? fromForm.document.reference : fromForm.error,
+    );
+
+    if (fromMirror.ok && fromForm.ok) {
+      const a = fromMirror.document;
+      const b = fromForm.document;
+
+      // Every figure that is money or tax. Not a sample — the whole set, because
+      // a comparison that skips a column is a comparison that will pass while
+      // that column is wrong.
+      const MONEY = [
+        "exShowroomAmount",
+        "dealerDiscount",
+        "oemSchemeAmount",
+        "oemSchemePassedOn",
+        "taxableAmount",
+        "gstRatePct",
+        "cessRatePct",
+        "cgstAmount",
+        "sgstAmount",
+        "igstAmount",
+        "cessAmount",
+        "otherChargesTotal",
+        "totalAmount",
+      ] as const;
+
+      const differing = MONEY.filter(
+        (k) => money(a[k] as string) !== money(b[k] as string),
+      );
+      check(
+        "every figure on the two documents is identical",
+        differing.length === 0,
+        differing.length === 0
+          ? `${MONEY.length} fields compared — ${rupees(money(a.totalAmount))} either way`
+          : `differ on ${differing.join(", ")}`,
+      );
+
+      check(
+        "the tax split too",
+        money(a.cgstAmount) === money(b.cgstAmount) && money(a.sgstAmount) === money(b.sgstAmount),
+        `CGST ${rupees(money(a.cgstAmount))} + SGST ${rupees(money(a.sgstAmount))}`,
+      );
+
+      // And the only things that should differ, do.
+      check("the documents say where their facts came from", a.factsOrigin === "MIRROR" && b.factsOrigin === "FORM");
+      check("a sub-dealer's document carries no dealer code", b.dealerCode === null, `dealId is the chassis: ${b.dealId}`);
+      check("and the mirror's does", a.dealerCode === subject.dealerCode);
+      check("both were priced off a list", a.priceOrigin === "LIST" && b.priceOrigin === "LIST", a.priceListName ?? "");
+      check("the typed one kept the address the mirror never had", b.customerAddress !== null && a.customerAddress === null);
+
+      // The sold-this-twice check, on the path where `dealer_code` is null —
+      // the one place a careless equality would have let the same frame be
+      // invoiced twice while looking like it was checking.
+      const again = await generateDocument({
+        ownerId: OWNER,
+        showroomId: SHOWROOM,
+        sale: { showroomId: SHOWROOM, modelDescription: f.modelDescription, chassisNo: TYPED_CHASSIS },
+        intent: "SALE",
+        onDate: onDate,
+        userId: ANIRBAN.id,
+        userName: ANIRBAN.name,
+        principal: "OWNER",
+        policy: await loadPolicy(OWNER),
+      });
+      check(
+        "the same frame cannot be invoiced twice without a dealer code",
+        !again.ok && again.status === 409,
+        again.ok ? "IT ISSUED A SECOND ONE" : again.error,
+      );
+    }
+  }
+}
+
+section("12. a dealership with no price list at all");
+
+/*
+ * The customer OBJ-30 exists for, in full: no DMS, no mirror, no deal row and
+ * no price list either. Everything on the document is something a person typed
+ * while the customer stood there — which under R-97 is a *confirmed* figure,
+ * and is why it is allowed onto a tax invoice at all.
+ */
+const NOVEL = "TVS Jupiter 110 Sub-Dealer Stock";
+const noList = await priceFor({
+  ownerId: OWNER,
+  showroomId: SHOWROOM,
+  modelDescription: NOVEL,
+  onDate: onDate,
+});
+check("no list covers this model", noList === null, NOVEL);
+
+const refused = await generateDocument({
+  ownerId: OWNER,
+  showroomId: SHOWROOM,
+  sale: { showroomId: SHOWROOM, modelDescription: NOVEL, chassisNo: "MD626BG0ANP111222" },
+  intent: "SALE",
+  onDate: onDate,
+  userId: ANIRBAN.id,
+  userName: ANIRBAN.name,
+  principal: "OWNER",
+  policy: await loadPolicy(OWNER),
+});
+check(
+  "and the refusal says what to do about it",
+  !refused.ok && refused.status === 400 && refused.error.includes("Enter the price on the document"),
+  refused.ok ? "it issued" : refused.error,
+);
+
+const stated = await generateDocument({
+  ownerId: OWNER,
+  showroomId: SHOWROOM,
+  sale: {
+    showroomId: SHOWROOM,
+    customerName: "Sujit Debbarma",
+    customerMobile: "9856012345",
+    customerAddress: "Ramnagar Road No. 4, Agartala, Tripura",
+    modelDescription: NOVEL,
+    chassisNo: "MD626BG0ANP111222",
+    engineNo: "BG0AN111222",
+  },
+  statedPrice: { exShowroomAmount: 79_500, hsn: "8711", gstRatePct: 28, cessRatePct: 0 },
+  intent: "SALE",
+  otherCharges: [
+    { label: "Insurance (1+5)", amount: 6_240 },
+    { label: "Registration and road tax", amount: 5_120 },
+  ],
+  onDate: onDate,
+  userId: ANIRBAN.id,
+  userName: ANIRBAN.name,
+  principal: "OWNER",
+  policy: await loadPolicy(OWNER),
+});
+
+check("it issues on a stated price", stated.ok, stated.ok ? stated.document.reference : stated.error);
+if (stated.ok) {
+  const d = stated.document;
+  const gst = round2(79_500 * 0.28);
+  check("the document says the price was stated, not looked up", d.priceOrigin === "STATED" && d.priceListName === null);
+  check("the arithmetic is the same arithmetic", money(d.taxableAmount) === 79_500 && money(d.cgstAmount) + money(d.sgstAmount) === gst,
+    `${rupees(79_500)} + ${rupees(gst)} GST`);
+  check(
+    "and the pass-throughs are on it but not taxed",
+    money(d.otherChargesTotal) === 11_360 && money(d.totalAmount) === round2(79_500 + gst + 11_360),
+    `total ${rupees(money(d.totalAmount))}`,
+  );
+  console.log(`      ${d.reference} — ${d.customerName}, ${d.chassisNo}, no DMS anywhere near it`);
+}
+
+section("13. a model's read may not reach a tax invoice (R-97)");
+
+/*
+ * The gate, exercised on facts rather than on a database row, because the claim
+ * is about what `generateDocument` refuses and not about how a deal got its
+ * confidence map. A scanned invoice reaching 55% on the chassis number is
+ * exactly VeloDocs' below-threshold case (OBJ-24, R-85).
+ */
+const scanned: SaleFacts = {
+  origin: "MIRROR",
+  showroomId: SHOWROOM,
+  dealerCode: subject?.dealerCode ?? "HMC-DL-0417",
+  dealId: "SCAN-OBJ30-01",
+  customerName: "Renu Prasad",
+  customerMobile: "9811122233",
+  customerAddress: null,
+  customerGstin: null,
+  modelDescription: subject?.model ?? "Hero HF Deluxe",
+  chassisNo: "MBLHAR0ANP9Z55555",
+  engineNo: "HA11EN9Z55555",
+  dmsInvoiceNo: null,
+  ingestPath: "DOCUMENT",
+  confidence: { chassisNo: 0.55, customerName: 0.62, customerMobile: 0.4 },
+};
+
+const named = doubtful(scanned);
+check(
+  "two fields on the document are proposals, and the mobile is not one of them",
+  named.length === 2 && named.every((n) => n.field !== "customerMobile"),
+  named.map((n) => `${n.field} ${Math.round(n.confidence * 100)}%`).join(", "),
+);
+
+const blocked = await generateDocument({
+  ownerId: OWNER,
+  showroomId: SHOWROOM,
+  facts: scanned,
+  intent: "SALE",
+  onDate: onDate,
+  userId: ANIRBAN.id,
+  userName: ANIRBAN.name,
+  principal: "OWNER",
+  policy: await loadPolicy(OWNER),
+});
+check(
+  "the invoice is refused, and the refusal names them",
+  !blocked.ok && blocked.status === 400 && blocked.error.includes("chassisNo (55%)"),
+  blocked.ok ? "IT ISSUED" : blocked.error,
+);
+
+const quoted = await generateDocument({
+  ownerId: OWNER,
+  showroomId: SHOWROOM,
+  facts: scanned,
+  /*
+   * Priced on the document, so that pricing cannot be what refuses.
+   *
+   * This section is about the R-97 gate and nothing else. The first version
+   * left the quotation to find a price list, the seeded model was not on one,
+   * and the check failed with *no price list covers this* — a true sentence
+   * about the wrong subject. A test that can fail for a reason other than its
+   * claim is not testing its claim.
+   */
+  statedPrice: { exShowroomAmount: 64_790 },
+  intent: "QUOTATION",
+  onDate: onDate,
+  userId: ANIRBAN.id,
+  userName: ANIRBAN.name,
+  principal: "OWNER",
+  policy: await loadPolicy(OWNER),
+});
+check(
+  "the same read is fine on a quotation, and says so",
+  quoted.ok && quoted.warnings.some((w) => w.includes("Not yet confirmed")),
+  quoted.ok ? quoted.warnings.join(" | ") : quoted.error,
+);
+console.log("      the gate is on the consequence, not on the provenance");
+
+section("14. both shapes at once is two sales, and is refused");
+
+const both = await generateDocument({
+  ownerId: OWNER,
+  showroomId: SHOWROOM,
+  dealerCode: subject?.dealerCode ?? "HMC-DL-0417",
+  dealId: subject?.dealId ?? "DEAL-1",
+  sale: { showroomId: SHOWROOM, modelDescription: "Hero HF Deluxe", chassisNo: "MBLHAR0ANP9Z77777" },
+  intent: "SALE",
+  onDate: onDate,
+  userId: ANIRBAN.id,
+  userName: ANIRBAN.name,
+  principal: "OWNER",
+  policy: await loadPolicy(OWNER),
+});
+check("two sales described at once", !both.ok && both.status === 400, both.ok ? "it picked one" : both.error);
+
+const neither = await generateDocument({
+  ownerId: OWNER,
+  showroomId: SHOWROOM,
+  intent: "SALE",
+  onDate: onDate,
+  userId: ANIRBAN.id,
+  userName: ANIRBAN.name,
+  principal: "OWNER",
+  policy: await loadPolicy(OWNER),
+});
+check("and none at all", !neither.ok && neither.status === 400, neither.ok ? "it invented one" : neither.error);
+
 await reset();
 console.log("  (documents, sale journeys and the series switch reset, on the CLI credential)");
 
 console.log(
   failures === 0
-    ? "\nAll checks passed. The dealer's price, the dealer's discount, and a document that says what it is.\n"
+    ? "\nAll checks passed. The dealer's price, the dealer's discount, a document that says what it is —\nand a dealership with no manufacturer's system behind it gets the same one.\n"
     : `\n${failures} check(s) FAILED.\n`,
 );
 process.exit(failures === 0 ? 0 : 1);

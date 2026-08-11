@@ -5,9 +5,11 @@
  * InsurRouter API - Two-wheeler insurance application routing engine
  * OpenAPI spec version: 0.1.0
  */
+import type { SaleDocumentFactsOrigin } from './saleDocumentFactsOrigin';
 import type { SaleDocumentKind } from './saleDocumentKind';
 import type { SaleDocumentOtherCharges } from './saleDocumentOtherCharges';
 import type { SaleDocumentPricedOffCurrentList } from './saleDocumentPricedOffCurrentList';
+import type { SaleDocumentPriceOrigin } from './saleDocumentPriceOrigin';
 import type { SaleDocumentStatus } from './saleDocumentStatus';
 
 export interface SaleDocument {
@@ -20,12 +22,22 @@ export interface SaleDocument {
   /** @nullable */
   dmsInvoiceNo?: string | null;
   documentDate: string;
-  dealerCode: string;
+  /** Where the facts came from (R-96). MIRROR is a deal row, however it arrived - API, exported report or scan, all of which are the same kind of thing by the time they are a row, and the row itself carries which. FORM is somebody typing the sale in. Nothing downstream reads this: it is here so the document can say where its facts came from, not so anything behaves differently because of it. */
+  factsOrigin: SaleDocumentFactsOrigin;
+  /**
+     * Null for a dealership with no manufacturer's system. A dealer code is the OEM's name for an outlet and a sub-dealer has never been given one.
+     * @nullable
+     */
+  dealerCode?: string | null;
   dealId: string;
   /** @nullable */
   customerName?: string | null;
   /** @nullable */
   customerMobile?: string | null;
+  /** @nullable */
+  customerAddress?: string | null;
+  /** @nullable */
+  customerGstin?: string | null;
   /** @nullable */
   modelDescription?: string | null;
   /** @nullable */
@@ -34,6 +46,8 @@ export interface SaleDocument {
   engineNo?: string | null;
   /** @nullable */
   hsn?: string | null;
+  /** STATED means the figures were typed onto this document rather than looked up, which is what a dealership has before it has a price list. Said out loud in the same voice as pricedOffCurrentList. */
+  priceOrigin: SaleDocumentPriceOrigin;
   /** @nullable */
   priceListId?: number | null;
   /** @nullable */

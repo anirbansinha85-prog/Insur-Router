@@ -1005,14 +1005,32 @@ export const ListInvoiceReadinessResponse = zod.object({
  * DDMS's document is the DMS's facts plus the commercial agreement, and neither system holds both. The dealer may price from an older list, discount ageing stock, or keep the manufacturer's scheme rather than pass it on — all three are lawful decisions and the product's job is to support and record them, not to have an opinion.
  * Which kind of document comes out depends on who holds the tax-invoice series (R-90). Where DDMS holds it, a TAX_INVOICE with a number from a sequential series. Where the dealer's own system does, a SALE_CONFIRMATION that carries their number for linkage and says on its face that it is not a tax invoice (R-89).
  * A salesman may send QUOTATION and may not send SALE.
+ * Two shapes, still one door (R-96). dealerCode + dealId invoices a mirrored deal; sale invoices a sale somebody typed in, which is the only thing available to a dealership with no manufacturer's system behind it. Everything after the facts are resolved is the same code either way.
  * @summary Issue the document
  */
 export const generateSaleDocumentBodyIntentDefault = `SALE`;
 
 export const GenerateSaleDocumentBody = zod.object({
   "showroomId": zod.number().int(),
-  "dealerCode": zod.string(),
-  "dealId": zod.string(),
+  "dealerCode": zod.string().nullish(),
+  "dealId": zod.string().nullish(),
+  "sale": zod.union([zod.object({
+  "customerName": zod.string().nullish(),
+  "customerMobile": zod.string().nullish(),
+  "customerAddress": zod.string().nullish(),
+  "customerGstin": zod.string().nullish().describe('Filled makes the sale B2B, which is a different line in GSTR-1. Collected now because the customer is standing in front of somebody now and will not be in October.\n'),
+  "modelDescription": zod.string(),
+  "chassisNo": zod.string(),
+  "engineNo": zod.string().nullish(),
+  "dmsInvoiceNo": zod.string().nullish().describe('For a dealership numbering its invoices somewhere outside DDMS.'),
+  "dealId": zod.string().nullish().describe('Defaults to the chassis number, which is the honest key.')
+}).describe('A sale somebody typed in, for a dealership with no manufacturer\'s system behind it (R-96). A model is required because there is nothing to price otherwise, and a chassis number is required because it is what makes the sale identifiable - without it two invoices for the same bike are indistinguishable and the sold-this-twice check has nothing to check. Everything else is optional, which is the right asymmetry for a form somebody fills in while a customer waits.\n'),zod.null()]).optional(),
+  "statedPrice": zod.union([zod.object({
+  "exShowroomAmount": zod.number(),
+  "hsn": zod.string().nullish(),
+  "gstRatePct": zod.number().optional().describe('Falls back to the list\'s, then to 28.'),
+  "cessRatePct": zod.number().optional().describe('Falls back to the list\'s, then to 0 - which is right below 350cc and wrong above it. That is why the form asks: a guessed cess is a short-paid return.\n')
+}).describe('The price, HSN and rates typed onto this one document. What a dealership selling five units a month has before it has ever built a price list - and under R-97 a confirmed figure rather than a proposal, because a person entered it. Still worse in every other way, because it teaches the product nothing about the next sale, so the document records that it was stated rather than looked up.\n'),zod.null()]).optional(),
   "intent": zod.enum(['SALE', 'QUOTATION', 'PROFORMA']).default(generateSaleDocumentBodyIntentDefault),
   "priceListId": zod.number().int().nullish().describe('The dealer\'s choice of list. Absent means the current one. Naming a list that does not cover the model is refused rather than quietly falling back — he asked for a specific price.\n'),
   "dealerDiscount": zod.number().optional().describe('The dealer\'s own margin, given away. His decision.'),
@@ -1023,7 +1041,7 @@ export const GenerateSaleDocumentBody = zod.object({
   "amount": zod.number()
 })).optional(),
   "placeOfSupply": zod.string().nullish().describe('Decides CGST+SGST against IGST. Defaults to the outlet\'s own state.')
-})
+}).describe('Exactly one of (dealerCode + dealId) or sale. Sending both describes two different sales at once and is refused rather than resolved, because silently picking one would issue a tax invoice for whichever the code happened to test first.\n')
 
 export const GenerateSaleDocumentResponse = zod.object({
   "document": zod.object({
@@ -1033,14 +1051,18 @@ export const GenerateSaleDocumentResponse = zod.object({
   "taxInvoiceNo": zod.string().nullish(),
   "dmsInvoiceNo": zod.string().nullish(),
   "documentDate": zod.string(),
-  "dealerCode": zod.string(),
+  "factsOrigin": zod.enum(['MIRROR', 'FORM']).describe('Where the facts came from (R-96). MIRROR is a deal row, however it arrived - API, exported report or scan, all of which are the same kind of thing by the time they are a row, and the row itself carries which. FORM is somebody typing the sale in. Nothing downstream reads this: it is here so the document can say where its facts came from, not so anything behaves differently because of it.\n'),
+  "dealerCode": zod.string().nullish().describe('Null for a dealership with no manufacturer\'s system. A dealer code is the OEM\'s name for an outlet and a sub-dealer has never been given one.\n'),
   "dealId": zod.string(),
   "customerName": zod.string().nullish(),
   "customerMobile": zod.string().nullish(),
+  "customerAddress": zod.string().nullish(),
+  "customerGstin": zod.string().nullish(),
   "modelDescription": zod.string().nullish(),
   "chassisNo": zod.string().nullish(),
   "engineNo": zod.string().nullish(),
   "hsn": zod.string().nullish(),
+  "priceOrigin": zod.enum(['LIST', 'STATED']).describe('STATED means the figures were typed onto this document rather than looked up, which is what a dealership has before it has a price list. Said out loud in the same voice as pricedOffCurrentList.\n'),
   "priceListId": zod.number().int().nullish(),
   "priceListName": zod.string().nullish(),
   "priceListEffectiveFrom": zod.string().nullish(),
@@ -1089,14 +1111,18 @@ export const ListSaleDocumentsResponse = zod.object({
   "taxInvoiceNo": zod.string().nullish(),
   "dmsInvoiceNo": zod.string().nullish(),
   "documentDate": zod.string(),
-  "dealerCode": zod.string(),
+  "factsOrigin": zod.enum(['MIRROR', 'FORM']).describe('Where the facts came from (R-96). MIRROR is a deal row, however it arrived - API, exported report or scan, all of which are the same kind of thing by the time they are a row, and the row itself carries which. FORM is somebody typing the sale in. Nothing downstream reads this: it is here so the document can say where its facts came from, not so anything behaves differently because of it.\n'),
+  "dealerCode": zod.string().nullish().describe('Null for a dealership with no manufacturer\'s system. A dealer code is the OEM\'s name for an outlet and a sub-dealer has never been given one.\n'),
   "dealId": zod.string(),
   "customerName": zod.string().nullish(),
   "customerMobile": zod.string().nullish(),
+  "customerAddress": zod.string().nullish(),
+  "customerGstin": zod.string().nullish(),
   "modelDescription": zod.string().nullish(),
   "chassisNo": zod.string().nullish(),
   "engineNo": zod.string().nullish(),
   "hsn": zod.string().nullish(),
+  "priceOrigin": zod.enum(['LIST', 'STATED']).describe('STATED means the figures were typed onto this document rather than looked up, which is what a dealership has before it has a price list. Said out loud in the same voice as pricedOffCurrentList.\n'),
   "priceListId": zod.number().int().nullish(),
   "priceListName": zod.string().nullish(),
   "priceListEffectiveFrom": zod.string().nullish(),
@@ -1149,14 +1175,18 @@ export const CancelSaleDocumentResponse = zod.object({
   "taxInvoiceNo": zod.string().nullish(),
   "dmsInvoiceNo": zod.string().nullish(),
   "documentDate": zod.string(),
-  "dealerCode": zod.string(),
+  "factsOrigin": zod.enum(['MIRROR', 'FORM']).describe('Where the facts came from (R-96). MIRROR is a deal row, however it arrived - API, exported report or scan, all of which are the same kind of thing by the time they are a row, and the row itself carries which. FORM is somebody typing the sale in. Nothing downstream reads this: it is here so the document can say where its facts came from, not so anything behaves differently because of it.\n'),
+  "dealerCode": zod.string().nullish().describe('Null for a dealership with no manufacturer\'s system. A dealer code is the OEM\'s name for an outlet and a sub-dealer has never been given one.\n'),
   "dealId": zod.string(),
   "customerName": zod.string().nullish(),
   "customerMobile": zod.string().nullish(),
+  "customerAddress": zod.string().nullish(),
+  "customerGstin": zod.string().nullish(),
   "modelDescription": zod.string().nullish(),
   "chassisNo": zod.string().nullish(),
   "engineNo": zod.string().nullish(),
   "hsn": zod.string().nullish(),
+  "priceOrigin": zod.enum(['LIST', 'STATED']).describe('STATED means the figures were typed onto this document rather than looked up, which is what a dealership has before it has a price list. Said out loud in the same voice as pricedOffCurrentList.\n'),
   "priceListId": zod.number().int().nullish(),
   "priceListName": zod.string().nullish(),
   "priceListEffectiveFrom": zod.string().nullish(),

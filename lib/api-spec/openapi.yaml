@@ -1047,6 +1047,11 @@ paths:
         a tax invoice (R-89).
 
         A salesman may send QUOTATION and may not send SALE.
+
+        Two shapes, still one door (R-96). dealerCode + dealId invoices a
+        mirrored deal; sale invoices a sale somebody typed in, which is the only
+        thing available to a dealership with no manufacturer's system behind it.
+        Everything after the facts are resolved is the same code either way.
       requestBody:
         required: true
         content:
@@ -1074,8 +1079,21 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "400":
+          description: >
+            Nothing to price, both shapes sent at once, or - under R-97 - a
+            figure a model read reaching a tax invoice before anybody confirmed
+            it. The message names the fields and their confidence.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such deal at that dealer code
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
         "409":
-          description: Something has already been issued for this deal
+          description: Something has already been issued for this sale
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -4192,12 +4210,79 @@ components:
             - type: "null"
       required: [dealerCode, dealId, showroomId, ready, conditions]
 
+    TypedSale:
+      type: object
+      description: >
+        A sale somebody typed in, for a dealership with no manufacturer's system
+        behind it (R-96). A model is required because there is nothing to price
+        otherwise, and a chassis number is required because it is what makes the
+        sale identifiable - without it two invoices for the same bike are
+        indistinguishable and the sold-this-twice check has nothing to check.
+        Everything else is optional, which is the right asymmetry for a form
+        somebody fills in while a customer waits.
+      properties:
+        customerName: { type: ["string", "null"] }
+        customerMobile: { type: ["string", "null"] }
+        customerAddress: { type: ["string", "null"] }
+        customerGstin:
+          type: ["string", "null"]
+          description: >
+            Filled makes the sale B2B, which is a different line in GSTR-1.
+            Collected now because the customer is standing in front of somebody
+            now and will not be in October.
+        modelDescription: { type: string }
+        chassisNo: { type: string }
+        engineNo: { type: ["string", "null"] }
+        dmsInvoiceNo:
+          type: ["string", "null"]
+          description: For a dealership numbering its invoices somewhere outside DDMS.
+        dealId:
+          type: ["string", "null"]
+          description: Defaults to the chassis number, which is the honest key.
+      required: [modelDescription, chassisNo]
+
+    StatedPrice:
+      type: object
+      description: >
+        The price, HSN and rates typed onto this one document. What a dealership
+        selling five units a month has before it has ever built a price list -
+        and under R-97 a confirmed figure rather than a proposal, because a
+        person entered it. Still worse in every other way, because it teaches
+        the product nothing about the next sale, so the document records that it
+        was stated rather than looked up.
+      properties:
+        exShowroomAmount: { type: number }
+        hsn: { type: ["string", "null"] }
+        gstRatePct:
+          type: number
+          description: Falls back to the list's, then to 28.
+        cessRatePct:
+          type: number
+          description: >
+            Falls back to the list's, then to 0 - which is right below 350cc and
+            wrong above it. That is why the form asks: a guessed cess is a
+            short-paid return.
+      required: [exShowroomAmount]
+
     GenerateDocumentInput:
       type: object
+      description: >
+        Exactly one of (dealerCode + dealId) or sale. Sending both describes two
+        different sales at once and is refused rather than resolved, because
+        silently picking one would issue a tax invoice for whichever the code
+        happened to test first.
       properties:
         showroomId: { type: integer }
-        dealerCode: { type: string }
-        dealId: { type: string }
+        dealerCode: { type: ["string", "null"] }
+        dealId: { type: ["string", "null"] }
+        sale:
+          oneOf:
+            - $ref: "#/components/schemas/TypedSale"
+            - type: "null"
+        statedPrice:
+          oneOf:
+            - $ref: "#/components/schemas/StatedPrice"
+            - type: "null"
         intent:
           type: string
           enum: [SALE, QUOTATION, PROFORMA]
@@ -4230,7 +4315,7 @@ components:
         placeOfSupply:
           type: ["string", "null"]
           description: Decides CGST+SGST against IGST. Defaults to the outlet's own state.
-      required: [showroomId, dealerCode, dealId]
+      required: [showroomId]
 
     SaleDocument:
       type: object
@@ -4249,14 +4334,38 @@ components:
         taxInvoiceNo: { type: ["string", "null"] }
         dmsInvoiceNo: { type: ["string", "null"] }
         documentDate: { type: string }
-        dealerCode: { type: string }
+        factsOrigin:
+          type: string
+          enum: [MIRROR, FORM]
+          description: >
+            Where the facts came from (R-96). MIRROR is a deal row, however it
+            arrived - API, exported report or scan, all of which are the same
+            kind of thing by the time they are a row, and the row itself carries
+            which. FORM is somebody typing the sale in. Nothing downstream reads
+            this: it is here so the document can say where its facts came from,
+            not so anything behaves differently because of it.
+        dealerCode:
+          type: ["string", "null"]
+          description: >
+            Null for a dealership with no manufacturer's system. A dealer code
+            is the OEM's name for an outlet and a sub-dealer has never been
+            given one.
         dealId: { type: string }
         customerName: { type: ["string", "null"] }
         customerMobile: { type: ["string", "null"] }
+        customerAddress: { type: ["string", "null"] }
+        customerGstin: { type: ["string", "null"] }
         modelDescription: { type: ["string", "null"] }
         chassisNo: { type: ["string", "null"] }
         engineNo: { type: ["string", "null"] }
         hsn: { type: ["string", "null"] }
+        priceOrigin:
+          type: string
+          enum: [LIST, STATED]
+          description: >
+            STATED means the figures were typed onto this document rather than
+            looked up, which is what a dealership has before it has a price
+            list. Said out loud in the same voice as pricedOffCurrentList.
         priceListId: { type: ["integer", "null"] }
         priceListName: { type: ["string", "null"] }
         priceListEffectiveFrom: { type: ["string", "null"] }
@@ -4301,7 +4410,7 @@ components:
         issuedByName: { type: ["string", "null"] }
         createdAt: { type: string }
       required:
-        [id, kind, reference, documentDate, dealerCode, dealId,
+        [id, kind, reference, documentDate, factsOrigin, dealId, priceOrigin,
          pricedOffCurrentList, exShowroomAmount, taxableAmount, totalAmount, status]
 
     DocumentCancelInput:

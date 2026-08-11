@@ -207,18 +207,72 @@ export const saleDocumentsTable = pgTable(
 
     documentDate: date("document_date", { mode: "string" }).notNull(),
 
-    /** The deal this is about. Mirror-only, referenced and never written. */
-    dealerCode: text("dealer_code").notNull(),
+    /**
+     * Where the facts on this document came from (OBJ-30, R-96).
+     *
+     * `MIRROR` is a deal row pulled from the manufacturer's system — whether it
+     * arrived by API, by an exported report or off a scan, because by the time
+     * it is a mirror row those three are the same kind of thing and the row
+     * itself carries which (R-85). `FORM` is somebody typing the sale in,
+     * which is the only thing available to a sub-dealer who has no
+     * manufacturer's system behind him at all.
+     *
+     * **Nothing downstream of the facts reads this.** The pricing, the discount
+     * composition, the tax split and the series logic are identical either way,
+     * and the column exists so the document can say where its facts came from —
+     * not so anything can behave differently because of it.
+     */
+    factsOrigin: text("facts_origin", { enum: ["MIRROR", "FORM"] })
+      .notNull()
+      .default("MIRROR"),
+
+    /**
+     * The deal this is about. Mirror-only, referenced and never written.
+     *
+     * `dealerCode` is **null for a dealership with no manufacturer's system** —
+     * a dealer code is the OEM's name for an outlet and a sub-dealer does not
+     * have one. When it is null, `dealId` holds whatever identifies the sale
+     * instead, which for a vehicle is its chassis number: one frame sells once,
+     * so it dedupes on its own without a deal register to dedupe against.
+     */
+    dealerCode: text("dealer_code"),
     dealId: text("deal_id").notNull(),
 
     customerName: text("customer_name"),
     customerMobile: text("customer_mobile"),
     customerAddress: text("customer_address"),
+    /**
+     * The buyer's GST number, where there is one.
+     *
+     * Empty on retail and load-bearing on a sale to a business: GSTR-1 reports
+     * B2B invoice by invoice and B2C in aggregate, and which bucket a sale
+     * falls into **is** whether this field is filled. Collected here rather
+     * than at return time because the customer is standing in front of somebody
+     * now and will not be in October.
+     */
+    customerGstin: text("customer_gstin"),
 
     modelDescription: text("model_description"),
     chassisNo: text("chassis_no"),
     engineNo: text("engine_no"),
     hsn: text("hsn"),
+
+    /**
+     * Whether the figures were looked up or stated (OBJ-30).
+     *
+     * `LIST` is the ordinary path and the one that keeps history. `STATED` is a
+     * price, HSN and rate typed onto this document by a person, which is what a
+     * dealership selling five units a month has before it has ever built a
+     * price list — and it is *not* a lesser provenance for a statutory purpose:
+     * under R-97 a figure a person entered is confirmed, where a figure a model
+     * read is a proposal.
+     *
+     * It is still worse for every other purpose. A stated price teaches the
+     * product nothing about the next sale, so the document says which it was.
+     */
+    priceOrigin: text("price_origin", { enum: ["LIST", "STATED"] })
+      .notNull()
+      .default("LIST"),
 
     /** Which list priced it, and what it said. Printed on the document (R-87). */
     priceListId: integer("price_list_id").references(() => priceListsTable.id, {

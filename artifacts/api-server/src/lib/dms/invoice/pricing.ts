@@ -149,3 +149,147 @@ export function taxOn(input: {
   const half = round2(gst / 2);
   return { cgst: half, sgst: round2(gst - half), igst: 0, cess, total: round2(gst + cess) };
 }
+
+/**
+ * The figures the document charges on, however they were arrived at (OBJ-30).
+ *
+ * `priceFor` above answers *what does the list say*, which presumes a list. A
+ * dealership selling five units a month has not built one yet, and telling him
+ * to enter his whole range before he can raise his first invoice is how a
+ * product gets uninstalled on the first afternoon.
+ *
+ * So a price may also be **stated**: the amount, the HSN and the rates typed
+ * onto this one document by the person raising it. Under R-97 that is a
+ * *confirmed* figure — a person entered it — which is a stronger provenance
+ * than a model's read, and the reason a stated price is allowed onto a tax
+ * invoice at all.
+ *
+ * It is still worse in every other way, because it teaches the product nothing
+ * about the next sale. The document records which it was and the screen says
+ * so, in the same voice as *priced off a list that is not the current one*.
+ */
+export interface Priced {
+  origin: "LIST" | "STATED";
+  exShowroomAmount: number;
+  hsn: string | null;
+  gstRatePct: number;
+  cessRatePct: number;
+  /** Null on a stated price: there was no list, so there is nothing to print. */
+  list: { id: number; name: string; effectiveFrom: string } | null;
+  /** Whether the list used was the current one. Always false without a list. */
+  isCurrent: boolean;
+  /** What the current list would have said, when something else was used. */
+  currentAmount: number | null;
+}
+
+export interface StatedPrice {
+  exShowroomAmount: number;
+  hsn?: string | null;
+  gstRatePct?: number;
+  cessRatePct?: number;
+}
+
+/**
+ * Look it up, or take what was stated — and warn where the two disagree.
+ *
+ * A dealer overriding a list he *has* is a legitimate thing to do and is not
+ * refused; it is the same commercial freedom R-87 protects when he prices off
+ * July's list in August. But it is said out loud, with the list's own figure in
+ * the sentence, because a price that quietly ignored the list would hide the
+ * dealer's decision from the person checking the invoice — which is the exact
+ * failure `pricedOffCurrentList` exists to prevent, arriving by another door.
+ */
+export async function resolvePrice(input: {
+  ownerId: number;
+  showroomId: number;
+  modelDescription: string;
+  onDate: string;
+  preferListId?: number | null;
+  stated?: StatedPrice | null;
+}): Promise<
+  | { ok: true; priced: Priced; warnings: string[] }
+  | { ok: false; error: string }
+> {
+  const warnings: string[] = [];
+
+  if (input.stated) {
+    const amount = round2(input.stated.exShowroomAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return { ok: false, error: "A stated price has to be a positive amount." };
+    }
+
+    // Only to compare against, never to override with. If a list covers this
+    // model the dealer is entitled to ignore it; he is not entitled to do so
+    // without the document noticing.
+    const fromList = await priceFor({ ...input, preferListId: input.preferListId ?? null });
+    if (fromList && round2(money(fromList.item.exShowroomAmount)) !== amount) {
+      warnings.push(
+        `Priced at ₹${amount.toLocaleString("en-IN")} as entered, where "${fromList.list.name}" says ` +
+          `₹${money(fromList.item.exShowroomAmount).toLocaleString("en-IN")}.`,
+      );
+    }
+
+    /*
+     * The rates fall back to the list's where there is one and to 28% / 0%
+     * otherwise, which is the two-wheeler default and is wrong above 350cc.
+     * That is why the form asks: a guessed cess is a short-paid return, and the
+     * default exists so the ordinary case needs no thought rather than so the
+     * unusual one can be ignored.
+     */
+    const gst = input.stated.gstRatePct ?? (fromList ? money(fromList.item.gstRatePct) : 28);
+    const cess = input.stated.cessRatePct ?? (fromList ? money(fromList.item.cessRatePct) : 0);
+
+    return {
+      ok: true,
+      warnings,
+      priced: {
+        origin: "STATED",
+        exShowroomAmount: amount,
+        hsn: input.stated.hsn?.trim() || fromList?.item.hsn || null,
+        gstRatePct: gst,
+        cessRatePct: cess,
+        list: null,
+        isCurrent: false,
+        currentAmount: fromList ? money(fromList.item.exShowroomAmount) : null,
+      },
+    };
+  }
+
+  const found = await priceFor({ ...input, preferListId: input.preferListId ?? null });
+  if (!found) {
+    return {
+      ok: false,
+      error: input.preferListId
+        ? "That price list does not cover this model."
+        : `No price list covers ${input.modelDescription} on ${input.onDate}. Enter the price on the document, or add the model to a list.`,
+    };
+  }
+
+  if (!found.isCurrent) {
+    warnings.push(
+      `Priced from "${found.list.name}", effective ${found.list.effectiveFrom}, which is not the current list.` +
+        (found.currentAmount !== null
+          ? ` The current list says ₹${found.currentAmount.toLocaleString("en-IN")}.`
+          : ""),
+    );
+  }
+
+  return {
+    ok: true,
+    warnings,
+    priced: {
+      origin: "LIST",
+      exShowroomAmount: money(found.item.exShowroomAmount),
+      hsn: found.item.hsn,
+      gstRatePct: money(found.item.gstRatePct),
+      cessRatePct: money(found.item.cessRatePct),
+      list: {
+        id: found.list.id,
+        name: found.list.name,
+        effectiveFrom: found.list.effectiveFrom,
+      },
+      isCurrent: found.isCurrent,
+      currentAmount: found.currentAmount,
+    },
+  };
+}

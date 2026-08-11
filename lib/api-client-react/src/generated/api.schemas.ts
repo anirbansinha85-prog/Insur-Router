@@ -1621,6 +1621,50 @@ export interface InvoiceReadiness {
   preview?: InvoiceReadinessPreview;
 }
 
+/**
+ * A sale somebody typed in, for a dealership with no manufacturer's system behind it (R-96). A model is required because there is nothing to price otherwise, and a chassis number is required because it is what makes the sale identifiable - without it two invoices for the same bike are indistinguishable and the sold-this-twice check has nothing to check. Everything else is optional, which is the right asymmetry for a form somebody fills in while a customer waits.
+ */
+export interface TypedSale {
+  /** @nullable */
+  customerName?: string | null;
+  /** @nullable */
+  customerMobile?: string | null;
+  /** @nullable */
+  customerAddress?: string | null;
+  /**
+     * Filled makes the sale B2B, which is a different line in GSTR-1. Collected now because the customer is standing in front of somebody now and will not be in October.
+     * @nullable
+     */
+  customerGstin?: string | null;
+  modelDescription: string;
+  chassisNo: string;
+  /** @nullable */
+  engineNo?: string | null;
+  /**
+     * For a dealership numbering its invoices somewhere outside DDMS.
+     * @nullable
+     */
+  dmsInvoiceNo?: string | null;
+  /**
+     * Defaults to the chassis number, which is the honest key.
+     * @nullable
+     */
+  dealId?: string | null;
+}
+
+/**
+ * The price, HSN and rates typed onto this one document. What a dealership selling five units a month has before it has ever built a price list - and under R-97 a confirmed figure rather than a proposal, because a person entered it. Still worse in every other way, because it teaches the product nothing about the next sale, so the document records that it was stated rather than looked up.
+ */
+export interface StatedPrice {
+  exShowroomAmount: number;
+  /** @nullable */
+  hsn?: string | null;
+  /** Falls back to the list's, then to 28. */
+  gstRatePct?: number;
+  /** Falls back to the list's, then to 0 - which is right below 350cc and wrong above it. That is why the form asks: a guessed cess is a short-paid return. */
+  cessRatePct?: number;
+}
+
 export type GenerateDocumentInputIntent = typeof GenerateDocumentInputIntent[keyof typeof GenerateDocumentInputIntent];
 
 
@@ -1635,10 +1679,17 @@ export type GenerateDocumentInputOtherChargesItem = {
   amount: number;
 };
 
+/**
+ * Exactly one of (dealerCode + dealId) or sale. Sending both describes two different sales at once and is refused rather than resolved, because silently picking one would issue a tax invoice for whichever the code happened to test first.
+ */
 export interface GenerateDocumentInput {
   showroomId: number;
-  dealerCode: string;
-  dealId: string;
+  /** @nullable */
+  dealerCode?: string | null;
+  /** @nullable */
+  dealId?: string | null;
+  sale?: TypedSale | null;
+  statedPrice?: StatedPrice | null;
   intent?: GenerateDocumentInputIntent;
   /**
      * The dealer's choice of list. Absent means the current one. Naming a list that does not cover the model is refused rather than quietly falling back — he asked for a specific price.
@@ -1670,6 +1721,28 @@ export const SaleDocumentKind = {
   PROFORMA: 'PROFORMA',
   TAX_INVOICE: 'TAX_INVOICE',
   SALE_CONFIRMATION: 'SALE_CONFIRMATION',
+} as const;
+
+/**
+ * Where the facts came from (R-96). MIRROR is a deal row, however it arrived - API, exported report or scan, all of which are the same kind of thing by the time they are a row, and the row itself carries which. FORM is somebody typing the sale in. Nothing downstream reads this: it is here so the document can say where its facts came from, not so anything behaves differently because of it.
+ */
+export type SaleDocumentFactsOrigin = typeof SaleDocumentFactsOrigin[keyof typeof SaleDocumentFactsOrigin];
+
+
+export const SaleDocumentFactsOrigin = {
+  MIRROR: 'MIRROR',
+  FORM: 'FORM',
+} as const;
+
+/**
+ * STATED means the figures were typed onto this document rather than looked up, which is what a dealership has before it has a price list. Said out loud in the same voice as pricedOffCurrentList.
+ */
+export type SaleDocumentPriceOrigin = typeof SaleDocumentPriceOrigin[keyof typeof SaleDocumentPriceOrigin];
+
+
+export const SaleDocumentPriceOrigin = {
+  LIST: 'LIST',
+  STATED: 'STATED',
 } as const;
 
 /**
@@ -1707,12 +1780,22 @@ export interface SaleDocument {
   /** @nullable */
   dmsInvoiceNo?: string | null;
   documentDate: string;
-  dealerCode: string;
+  /** Where the facts came from (R-96). MIRROR is a deal row, however it arrived - API, exported report or scan, all of which are the same kind of thing by the time they are a row, and the row itself carries which. FORM is somebody typing the sale in. Nothing downstream reads this: it is here so the document can say where its facts came from, not so anything behaves differently because of it. */
+  factsOrigin: SaleDocumentFactsOrigin;
+  /**
+     * Null for a dealership with no manufacturer's system. A dealer code is the OEM's name for an outlet and a sub-dealer has never been given one.
+     * @nullable
+     */
+  dealerCode?: string | null;
   dealId: string;
   /** @nullable */
   customerName?: string | null;
   /** @nullable */
   customerMobile?: string | null;
+  /** @nullable */
+  customerAddress?: string | null;
+  /** @nullable */
+  customerGstin?: string | null;
   /** @nullable */
   modelDescription?: string | null;
   /** @nullable */
@@ -1721,6 +1804,8 @@ export interface SaleDocument {
   engineNo?: string | null;
   /** @nullable */
   hsn?: string | null;
+  /** STATED means the figures were typed onto this document rather than looked up, which is what a dealership has before it has a price list. Said out loud in the same voice as pricedOffCurrentList. */
+  priceOrigin: SaleDocumentPriceOrigin;
   /** @nullable */
   priceListId?: number | null;
   /** @nullable */

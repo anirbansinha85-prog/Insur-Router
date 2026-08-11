@@ -2730,8 +2730,8 @@ DDMS at all — and OBJ-24's `DOCUMENT` path already reads those.
 
 | # | Requirement | Status |
 |---|---|---|
-| R-96 | **The invoice generator must work without a mirror.** A dealer with no DMS is the customer it exists for, and requiring a mirrored deal row excludes exactly him. Facts may come from a mirror, a scan or a form; nothing downstream of the facts may know which | ○ |
-| R-97 | **A figure that reaches a statutory return was confirmed by a person or returned by an API.** A model's read is a proposal. This is R-49 applied where being wrong is a filing offence rather than a bad morning | ○ |
+| R-96 | **The invoice generator must work without a mirror.** A dealer with no DMS is the customer it exists for, and requiring a mirrored deal row excludes exactly him. Facts may come from a mirror, a scan or a form; nothing downstream of the facts may know which | ● |
+| R-97 | **A figure that reaches a statutory return was confirmed by a person or returned by an API.** A model's read is a proposal. This is R-49 applied where being wrong is a filing offence rather than a bad morning | ◐ |
 | R-98 | **The ledger is a feeder before it is a book of record.** It produces vouchers for whatever the dealership already keeps, and becomes the record only once its numbers have reconciled against that system for an agreed period. Graduation, applied to a product decision | ○ |
 | R-99 | **The deliverable is the file the CA files.** A ledger that produces nothing lodgeable has added a system rather than replaced one | ○ |
 | R-100 | **Accounting arithmetic is deterministic, tested, and has no model anywhere near it.** R-78 restated where the consequence is statutory | ○ |
@@ -2743,7 +2743,7 @@ DDMS at all — and OBJ-24's `DOCUMENT` path already reads those.
 
 | # | Objective | Model? | Depends on | Why here |
 |---|---|---|---|---|
-| 30 | **The generator without a mirror** | no | 25 | one change, and it is what makes the product sellable to the dealer it was designed for |
+| 30 | ~~**The generator without a mirror**~~ ✅ | no | 25 | one change, and it is what makes the product sellable to the dealer it was designed for |
 | 31 | **The ledger** — accounts, vouchers, posting rules | **no** | 30 | the genuinely new half. Deterministic, tested, and the first thing in this product where being wrong is a filing offence |
 | 32 | **The CA's file** — GSTR-1 out, invoice-wise for B2B and aggregated for B2C | no | 31 | the deliverable. Without it nothing has been replaced |
 | 33 | **The feeder** — vouchers into Tally or ERPNext | no | 31 | R-98's first rung: be additive before asking to be trusted |
@@ -2754,6 +2754,55 @@ DDMS at all — and OBJ-24's `DOCUMENT` path already reads those.
 > that cannot yet send a WhatsApp message is not ready to be sold an accounting
 > replacement, and OBJ-27 is also what delivers the invoice to the customer's
 > phone, which is half of what the Gemini plan was actually for.
+
+### What OBJ-30 turned out to be
+
+Built. Two seams and a gate, and the generator lost its only reason to know
+about the mirror.
+
+**`SaleFacts` is *who bought what, and which vehicle*.** Two resolvers produce
+one — a mirrored deal, or a form somebody typed. There is deliberately **no
+third resolver for a scan**: a scanned invoice reaches the mirror through
+OBJ-24's `DOCUMENT` path and is a deal row by the time anything asks to price
+it, carrying its provenance beside the values (R-85). A separate scan resolver
+would have been a second way into the same facts, which is the shape R-81
+refuses everywhere else.
+
+**`Priced` is *what it costs*, looked up or stated.** A dealership selling five
+units a month has not built a price list, and telling it to enter its whole
+range before the first invoice is how a product gets uninstalled on the first
+afternoon. So the amount, HSN and rates may be typed onto one document — and
+under R-97 that is a **confirmed** figure rather than a proposal, which is why
+it is allowed onto a tax invoice at all. Overriding a list that *does* cover the
+model is permitted and warned about, with the list's own figure in the sentence,
+for the same reason `pricedOffCurrentList` exists.
+
+**R-97 is a gate, and it is the only place in the product where provenance
+blocks rather than annotates.** A field a model lifted off a scan below 0.7 is
+named and refused on a tax invoice or sale confirmation, and merely warned about
+on a quotation. *The gate is on the consequence, not on the provenance* — the
+same 55% read is perfectly fine on a document nobody files.
+
+`sale_documents` gained `factsOrigin`, `priceOrigin` and `customerGstin`, and
+`dealerCode` became nullable. **Nothing downstream reads the first two**; they
+exist so a document can say where it came from.
+
+> **A nullable key breaks an equality check silently.** The *sold this twice*
+> check matched on `dealer_code = $1`, which no row with a null dealer code ever
+> satisfies. A sub-dealer's documents would never have collided with each other
+> and the same frame could have been invoiced twice — with the check appearing
+> to run, and returning nothing, every time. `isNull` on that branch.
+
+> **The verifier failed for a reason it did not name.** Section 11 filtered on
+> `HERO-SARASWATI-01`, a plausible dealer code that is not this dealership's,
+> and reported *none priceable* — which reads as a finding about price lists.
+> A verifier that can fail for a reason it does not name will one day pass for a
+> reason it does not name. The dealer code now comes off the row.
+
+The proof is the claim stated so it can fail: **the same sale, issued twice,
+once from a mirrored deal and once from a form, produces the same money.** All
+thirteen money and tax columns compared, identical; the only fields that differ
+are the three that should.
 
 > **What is deliberately not adopted.** ERPNext as the backend: it is a second
 > system of record with its own chart of accounts, and R-98's feeder can post to

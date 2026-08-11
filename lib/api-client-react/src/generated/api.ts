@@ -2457,6 +2457,7 @@ export const getGenerateSaleDocumentUrl = () => {
  * DDMS's document is the DMS's facts plus the commercial agreement, and neither system holds both. The dealer may price from an older list, discount ageing stock, or keep the manufacturer's scheme rather than pass it on — all three are lawful decisions and the product's job is to support and record them, not to have an opinion.
  * Which kind of document comes out depends on who holds the tax-invoice series (R-90). Where DDMS holds it, a TAX_INVOICE with a number from a sequential series. Where the dealer's own system does, a SALE_CONFIRMATION that carries their number for linkage and says on its face that it is not a tax invoice (R-89).
  * A salesman may send QUOTATION and may not send SALE.
+ * Two shapes, still one door (R-96). dealerCode + dealId invoices a mirrored deal; sale invoices a sale somebody typed in, which is the only thing available to a dealership with no manufacturer's system behind it. Everything after the facts are resolved is the same code either way.
  * @summary Issue the document
  */
 export const generateSaleDocument = async (generateDocumentInput: GenerateDocumentInput, options?: Parameters<typeof customFetch>[1]): Promise<GenerateSaleDocument201> => {

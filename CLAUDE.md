@@ -616,6 +616,38 @@ what the customer was *given*; `oemSchemeAmount` stays at full value because the
 claim is owed on the scheme rather than on the part passed on. An unclaimed
 scheme is money given away twice — `GET /dms/invoice/claims`.
 
+**It does not know where the facts came from** (OBJ-30, R-96). The first
+version read `dms_deals` and returned 404 when the deal was not there, which
+quietly meant *this product issues invoices for dealerships that already have a
+system issuing invoices* — excluding the sub-dealer doing five units a month,
+who is the customer the standalone generator exists for. Facts now arrive as a
+`SaleFacts` from `facts.ts`: a mirrored deal, or **a form somebody typed**. No
+third resolver for a scan — a scan reaches the mirror through OBJ-24's
+`DOCUMENT` path and is a deal row by the time anything prices it.
+
+The price is the same shape: `resolvePrice` returns a `Priced` from a list, or
+from an amount, HSN and rates **stated on the document**, which is what a
+dealership has before it has built a list. Overriding a list it does have is
+permitted and warned about with the list's own figure, for the same reason
+`pricedOffCurrentList` exists. `sale_documents` records `factsOrigin` and
+`priceOrigin` so the document can *say* which; nothing downstream reads them.
+
+**A model's read may not reach a tax invoice** (R-97). A field below 0.7
+confidence is named and refused on a `TAX_INVOICE` or `SALE_CONFIRMATION`, and
+warned about on a quotation — *the gate is on the consequence, not on the
+provenance*. The one place in this product where provenance blocks rather than
+annotates.
+
+> **A nullable key breaks an equality check silently.** The *sold this twice*
+> check matched `dealer_code = $1`, which no null ever satisfies, so a
+> sub-dealer's documents would never have collided and the same frame could have
+> been invoiced twice — with the check appearing to run and returning nothing,
+> every time.
+
+`verify:invoice` proves R-96 as a claim that can fail: **the same sale, issued
+twice, once from a mirrored deal and once from a typed form, produces the same
+money** — all thirteen money and tax columns compared.
+
 **`generateDocument` is the only thing that writes a document** (R-81). When a
 journey wants an invoice raised it calls that, with a person's consent behind
 it. `invoice.generate` is withheld from the agent: it puts a priced document in

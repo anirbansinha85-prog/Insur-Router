@@ -868,6 +868,16 @@ router.get("/dms/invoice/readiness", async (req, res): Promise<void> => {
  * table, because the table answers *may this principal issue a document at all*
  * and this is *what kind* — a distinction that belongs where the intent is
  * read.
+ *
+ * ## Two shapes, still one door (OBJ-30, R-96)
+ *
+ * `dealerCode` + `dealId` invoices a mirrored deal. `sale` invoices a sale
+ * somebody typed in, which is the only thing available to a dealership with no
+ * manufacturer's system behind it — and the customer the standalone generator
+ * exists for. A second endpoint would have been easier to write and would have
+ * been a second way into `sale_documents`: the tax series, the *sold this
+ * twice* check and the discount split would then each have had two
+ * implementations, and one of them would eventually have been wrong.
  */
 router.post("/dms/invoice/generate", async (req, res): Promise<void> => {
   const user = req.sessionUser!;
@@ -892,13 +902,62 @@ router.post("/dms/invoice/generate", async (req, res): Promise<void> => {
     return;
   }
 
+  /*
+   * A typed sale is passed through as given rather than defaulted here.
+   *
+   * `factsFromForm` is where the rules about what a sale needs live — a model
+   * to price and a chassis to identify it — and duplicating them in the route
+   * would put the same refusal in two voices. The route's job is to say which
+   * shape arrived, not what makes it valid.
+   */
+  const sale = (body["sale"] ?? null) as Record<string, unknown> | null;
+
+  /*
+   * A stated price is what a dealership has before it has a price list, and
+   * `0` is not one. `Number(undefined)` is NaN and `Number(null)` is 0, so a
+   * missing amount read carelessly becomes a free bike on a tax invoice.
+   */
+  const statedBody = (body["statedPrice"] ?? null) as Record<string, unknown> | null;
+  const statedAmount = statedBody ? Number(statedBody["exShowroomAmount"]) : NaN;
+  const statedPrice =
+    statedBody && Number.isFinite(statedAmount) && statedAmount > 0
+      ? {
+          exShowroomAmount: statedAmount,
+          hsn: typeof statedBody["hsn"] === "string" ? (statedBody["hsn"] as string) : null,
+          gstRatePct:
+            statedBody["gstRatePct"] === undefined ? undefined : Number(statedBody["gstRatePct"]),
+          cessRatePct:
+            statedBody["cessRatePct"] === undefined ? undefined : Number(statedBody["cessRatePct"]),
+        }
+      : null;
+
+  if (statedBody && !statedPrice) {
+    res.status(400).json({ error: "A stated price has to be a positive amount." });
+    return;
+  }
+
   const result = await generateDocument({
     ownerId: user.ownerId,
     showroomId,
-    dealerCode: String(body["dealerCode"] ?? ""),
-    dealId: String(body["dealId"] ?? ""),
+    dealerCode: typeof body["dealerCode"] === "string" ? (body["dealerCode"] as string) : null,
+    dealId: typeof body["dealId"] === "string" ? (body["dealId"] as string) : null,
+    sale: sale
+      ? {
+          showroomId,
+          customerName: sale["customerName"] as string | null | undefined,
+          customerMobile: sale["customerMobile"] as string | null | undefined,
+          customerAddress: sale["customerAddress"] as string | null | undefined,
+          customerGstin: sale["customerGstin"] as string | null | undefined,
+          modelDescription: sale["modelDescription"] as string | null | undefined,
+          chassisNo: sale["chassisNo"] as string | null | undefined,
+          engineNo: sale["engineNo"] as string | null | undefined,
+          dmsInvoiceNo: sale["dmsInvoiceNo"] as string | null | undefined,
+          dealId: sale["dealId"] as string | null | undefined,
+        }
+      : null,
     intent: intent as "SALE" | "QUOTATION" | "PROFORMA",
     priceListId: body["priceListId"] === undefined ? null : Number(body["priceListId"]),
+    statedPrice,
     dealerDiscount: Number(body["dealerDiscount"] ?? 0),
     oemSchemeAmount: Number(body["oemSchemeAmount"] ?? 0),
     oemSchemePassedOn: Number(body["oemSchemePassedOn"] ?? 0),
