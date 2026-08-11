@@ -2611,3 +2611,154 @@ Written down so they stop being re-litigated.
 - Not replacing the OEM's DMS.
 - Not multi-OEM before one OEM works end to end.
 - Not extracting a shared UI package until a third consumer needs it.
+- Not hosting ERPNext. A feeder posts to whatever the dealership already keeps.
+- Not a second web framework in this monorepo.
+
+## 3d. The standalone invoice generator, and the ledger beneath it
+
+Anirban worked a parallel design with Gemini for a TVS sub-dealer: watch a
+folder, read the DMS invoice with a model, post double-entry journals to
+ERPNext, generate a branded PDF, send it on WhatsApp, and pitch it as *replace
+Tally*. He asked for it to be analysed against what exists and attached the way
+InsurRouter and VeloDocs are — **a fourth product, standalone, sharing the
+database**. **Nothing in this section is built.**
+
+### Most of that plan already exists here, and is further along
+
+| The plan's layer | What DDMS has | |
+|---|---|---|
+| Watch a folder / Drive / upload | **OBJ-24** — three ingestion paths, per data type per dealer, content-hash dedup, held batches | built, and more general |
+| Model reads the PDF | **VeloDocs** `ocr-engines.ts` — five engines, fallback chain, per-field confidence | built |
+| Model reads the columns | **OBJ-24** mapping — proposed once, confirmed once, deterministic thereafter | built, **and cheaper**: the plan pays a model per document for ever |
+| Which fields to believe | **R-85** — `ingestPath`, `fieldConfidence`, `ingestBatchId` on the row | built; the plan has no notion of it |
+| Produce the invoice | **OBJ-25** — price lists with history, discount composition, GST split, series ownership, R-89 | built, and considerably deeper |
+| Send it on WhatsApp | **OBJ-27** — `authoriseSend()` exists; `TRANSPORTS` is empty | half: the gate is built, the pipe is not |
+| **Double-entry journals** | — | **not built** |
+| **Chart of accounts, ledger** | — | **not built** |
+| **The CA's return file** | — | **not built** |
+
+Rebuilding the top half as a separate FastAPI service would produce two systems
+that disagree about what a sale is — the failure this product exists to fix,
+reintroduced from inside. The bottom half is a genuine gap and it is the half
+the *replace Tally* pitch actually rests on.
+
+### The sharpest thing in that conversation
+
+> **The dealer pays for Tally because the CA needs it**, for GSTR-1, GSTR-3B and
+> the audit. Replace Tally and the CA has to be kept whole, or the dealer says
+> no.
+
+Which reframes the deliverable. **It is not a ledger. It is the file the CA
+files.** A perfect double-entry ledger that produces nothing a chartered
+accountant can lodge has not replaced anything — it has added a system. This is
+the same shape as the RC correction: the dealer's controllable duty was not the
+certificate, it was the address at lodging.
+
+### Four things in the plan that would not survive contact
+
+**The journal does not balance and does not relieve stock.** The sample debits
+Bank for the whole invoice and credits revenue plus the two GST heads. A real
+two-wheeler sale is a booking advance, a financier's disbursement and a cash
+balance — three debits, not one — and the RTO fee and insurance premium the
+plan's own table calls liabilities never appear in its code. Worse, nothing
+credits inventory or debits cost of sales, so the P&L would show the whole
+ex-showroom price as margin. A dealership's gross profit on a bike is a few
+thousand rupees; that ledger would report sixty.
+
+**A model's read would go straight into a statutory return.** The plan parses
+with an LLM and posts, with no human gate anywhere. VeloDocs already has the
+answer — anything under 0.7 confidence is highlighted for a person before it
+moves — and OBJ-24 has the other half in confirm-once. A figure that reaches
+GSTR-1 must have been confirmed by a person or returned by an API. A model's
+read is a **proposal**.
+
+**"Replace Tally" is the wrong first sale, and the arithmetic is shaky.** The
+₹22,000 in that conversation was quoted as the **DMS** base cost and then reused
+in the pitch as Tally's price; the two are different numbers and the second one
+should be checked before it goes in front of a dealer. More importantly, if our
+ledger is the book of record and it is wrong, the dealer's filing is wrong and
+that is *their* liability. Sell the data-entry saving first, be a **feeder**
+into whatever they already keep, and become the book of record once the numbers
+have reconciled for a few months. That is OBJ-26's ladder applied to a product
+decision rather than to a pattern.
+
+**Python-first, Composio only where it earns it** is right and is already our
+rule in a different accent. R-81's one door says nothing writes to the record
+except through the call a person's button makes — a third-party tool runner is
+exactly the second way in that rule refuses. Composio at the edges (WhatsApp,
+Drive), never between the parser and the ledger.
+
+### The gap it exposed in what we built
+
+`generateDocument` reads `dms_deals` and returns **404** when the deal is not
+there. So OBJ-25's invoice generator cannot serve the dealer it was written for:
+the sub-dealer in Tripura doing five units a month has no DMS, no mirror, and no
+deal row. The generator is coupled to the very thing that customer does not
+have.
+
+That is the single change which makes the product standalone, and it is small:
+the facts may come from a mirror row, a scanned document, or a form somebody
+filled in — and the pricing, the discount composition, the tax split and the
+series logic do not care which.
+
+### How it attaches
+
+A fourth artifact beside InsurRouter and VeloDocs, sharing `lib/db`:
+
+```
+the sub-dealer with nothing          the dealer with a DMS
+  form / scanned invoice               dms_deals (mirror)
+            \                                /
+             \______ generateDocument ______/        OBJ-25, decoupled
+                          |
+                    sale_documents                   already exists
+                          |
+                    posting rules                    NEW — deterministic
+                          |
+              accounts · vouchers · lines            NEW
+                       /        \
+              GSTR-1 / CSV      Tally / ERPNext      NEW — the CA's file
+                                                          and the feeder
+```
+
+**The ledger's input is a `sale_document`, not a PDF.** That is the whole
+integration. DDMS already produces the invoice; the ledger posts what DDMS
+issued. The PDF path is only for a dealership whose invoices never pass through
+DDMS at all — and OBJ-24's `DOCUMENT` path already reads those.
+
+### New requirements
+
+| # | Requirement | Status |
+|---|---|---|
+| R-96 | **The invoice generator must work without a mirror.** A dealer with no DMS is the customer it exists for, and requiring a mirrored deal row excludes exactly him. Facts may come from a mirror, a scan or a form; nothing downstream of the facts may know which | ○ |
+| R-97 | **A figure that reaches a statutory return was confirmed by a person or returned by an API.** A model's read is a proposal. This is R-49 applied where being wrong is a filing offence rather than a bad morning | ○ |
+| R-98 | **The ledger is a feeder before it is a book of record.** It produces vouchers for whatever the dealership already keeps, and becomes the record only once its numbers have reconciled against that system for an agreed period. Graduation, applied to a product decision | ○ |
+| R-99 | **The deliverable is the file the CA files.** A ledger that produces nothing lodgeable has added a system rather than replaced one | ○ |
+| R-100 | **Accounting arithmetic is deterministic, tested, and has no model anywhere near it.** R-78 restated where the consequence is statutory | ○ |
+| R-101 | **A voucher names the document it came from, and one document posts once.** Re-posting a corrected invoice reverses and re-issues; it never edits a posted voucher | ○ |
+| R-102 | **Selling a vehicle relieves inventory.** A ledger that credits revenue and never credits stock reports the ex-showroom price as margin | ○ |
+| R-103 | **Money collected on somebody else's behalf is a liability, not revenue.** Road tax, RTO fees and the insurance premium pass through the dealership; treating them as income overstates turnover and the tax on it | ○ |
+
+### New objectives
+
+| # | Objective | Model? | Depends on | Why here |
+|---|---|---|---|---|
+| 30 | **The generator without a mirror** | no | 25 | one change, and it is what makes the product sellable to the dealer it was designed for |
+| 31 | **The ledger** — accounts, vouchers, posting rules | **no** | 30 | the genuinely new half. Deterministic, tested, and the first thing in this product where being wrong is a filing offence |
+| 32 | **The CA's file** — GSTR-1 out, invoice-wise for B2B and aggregated for B2C | no | 31 | the deliverable. Without it nothing has been replaced |
+| 33 | **The feeder** — vouchers into Tally or ERPNext | no | 31 | R-98's first rung: be additive before asking to be trusted |
+
+> **Sequencing against what is already queued.** OBJ-30 is an afternoon and
+> unblocks the standalone pitch, so it can go whenever. OBJ-31 to 33 are a
+> product of their own and should not jump ahead of **OBJ-27** — a dealership
+> that cannot yet send a WhatsApp message is not ready to be sold an accounting
+> replacement, and OBJ-27 is also what delivers the invoice to the customer's
+> phone, which is half of what the Gemini plan was actually for.
+
+> **What is deliberately not adopted.** ERPNext as the backend: it is a second
+> system of record with its own chart of accounts, and R-98's feeder can post to
+> it over its REST API without us hosting it. A separate FastAPI service: it
+> would duplicate OBJ-24 and OBJ-25 and give two answers about one sale. A
+> Next.js dashboard: DDMS is React and Vite and there is no reason for a second
+> framework in one monorepo.
+
