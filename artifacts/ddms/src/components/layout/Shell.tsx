@@ -2,6 +2,7 @@ import { Link, useLocation } from "wouter"
 import {
   Users, ListChecks, Wrench, LayoutDashboard, ShieldCheck, Bell,
   ExternalLink, LogOut, IdCard, Boxes, Send, Wallet, Bike, ListTodo, SlidersHorizontal,
+  ReceiptText,
 } from "lucide-react"
 import type { SessionUser } from "@workspace/api-client-react"
 import { cn } from "@/lib/utils"
@@ -66,7 +67,12 @@ const GROUPS: NavGroup[] = [
   },
   {
     label: "Finance",
-    items: [{ href: "/receivables", label: "Receivables", icon: Wallet, module: "RECEIVABLE" }],
+    items: [
+      { href: "/receivables", label: "Receivables", icon: Wallet, module: "RECEIVABLE" },
+      // Gated on DEAL, which is what an invoice is about. A technician reading
+      // job cards has no business seeing what a customer paid.
+      { href: "/invoices", label: "Invoicing", icon: ReceiptText, module: "DEAL" },
+    ],
   },
   {
     // Its own group, and last. Everything above reads the dealership's data

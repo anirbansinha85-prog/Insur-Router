@@ -37,6 +37,8 @@ export interface InventoryWorklistRow {
   interestPerDay?: number | null;
   /** @nullable */
   interestAccrued?: number | null;
+  /** How many open enquiries there are for this model — which is NOT the length of the list below. That list is capped for display, and the cap used to be reported as the count. */
+  matchingEnquiryCount?: number;
   matchingEnquiries: MatchingEnquiry[];
   lastSyncedAt: string;
   disappearedFromDms: boolean;

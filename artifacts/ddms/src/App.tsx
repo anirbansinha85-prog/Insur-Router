@@ -19,6 +19,7 @@ import Registrations from '@/pages/Registrations';
 import Spares from '@/pages/Spares';
 import Dossier from '@/pages/Dossier';
 import Outbox from '@/pages/Outbox';
+import Invoices from './pages/Invoices';
 import Receivables from '@/pages/Receivables';
 import Inventory from '@/pages/Inventory';
 
@@ -116,6 +117,7 @@ function Gate() {
           <Route path="/inventory">{guard(u, "/inventory", <Inventory />)}</Route>
           {/* The only screen where DDMS proposes to speak for the dealership,
               which is why it is its own place rather than a panel on a row. */}
+          <Route path="/invoices">{guard(u, "/invoices", <Invoices />)}</Route>
           <Route path="/outbox">{guard(u, "/outbox", <Outbox />)}</Route>
           {/* Not in the sidebar: you arrive here from the search box or from a
               row, never by browsing. It is a lens on one record, not a screen. */}

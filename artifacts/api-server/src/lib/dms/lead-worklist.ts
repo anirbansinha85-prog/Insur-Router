@@ -415,7 +415,7 @@ function classify(args: {
     return {
       state: "NO_OWNER",
       note: ownerLeftOn
-        ? `Assigned to ${ownerName ?? "someone"}, who left on ${ownerLeftOn}. Nobody has picked it up.`
+        ? `Assigned to ${ownerName ?? "an employee"}, who left on ${ownerLeftOn}. It has not been reassigned.`
         : `Assigned to ${ownerName ?? "someone"} who is no longer active.`,
       action: "Reassign to someone still here",
     };
@@ -424,7 +424,7 @@ function classify(args: {
   if (!anyContact) {
     return {
       state: "UNCONTACTED",
-      note: "Nobody has made contact yet.",
+      note: "No contact has been recorded yet.",
       action: "Make first contact",
     };
   }

@@ -102,6 +102,7 @@ import { showroomIdsForOwner } from "../lib/dms/events";
 import { buildQueue } from "../lib/dms/queue";
 import { describeRules, MAX_RULES } from "../lib/dms/rules";
 import { describePolicy, loadPolicy, resetAllPolicy, setPolicy } from "../lib/dms/policy";
+import { caseFor } from "../lib/dms/case";
 import { traceFor } from "../lib/dms/journeys";
 import {
   cancelDocument,
@@ -1178,6 +1179,34 @@ router.get("/dms/ingest/batches", async (req, res): Promise<void> => {
     return;
   }
   res.json({ batches: await listBatches(showroomId) });
+});
+
+/**
+ * The whole record, every field.
+ *
+ * The queue said *what to do* and offered a button, and there was no way to see
+ * the record the instruction came from. Acting on a conclusion you cannot
+ * inspect is a thing people do twice and then stop doing.
+ *
+ * Complete rather than curated: a column this endpoint has not been taught a
+ * label for still appears, humanised. A value that exists and is invisible is
+ * the failure being designed against, and a curated view is exactly how that
+ * happens six months after somebody adds a column.
+ */
+router.get("/dms/records/:module/:recordKey", async (req, res): Promise<void> => {
+  const module = String(req.params.module).toUpperCase() as ActivityModule;
+  if (!ACTIVITY_MODULES.has(module)) {
+    res.status(400).json({ error: `Unknown module ${req.params.module}` });
+    return;
+  }
+  if (!(await assertModuleAccess(req, res, module as never))) return;
+
+  const record = await caseFor(module as never, String(req.params.recordKey));
+  if (!record) {
+    res.status(404).json({ error: `No ${module.toLowerCase().replace(/_/g, " ")} ${req.params.recordKey}` });
+    return;
+  }
+  res.json(record);
 });
 
 /**

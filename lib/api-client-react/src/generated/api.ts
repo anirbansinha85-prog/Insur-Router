@@ -30,6 +30,7 @@ import type {
   BrowserScrapeInput,
   CancelDmsMessage200,
   CancelSaleDocument200,
+  CaseRecord,
   CloseDmsTask200,
   CreateDmsTask201,
   DashboardStats,
@@ -3218,6 +3219,91 @@ export function useListIngestBatches<TData = Awaited<ReturnType<typeof listInges
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListIngestBatchesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetCaseRecordUrl = (module: 'DEAL' | 'JOB_CARD' | 'ENQUIRY' | 'REGISTRATION' | 'PART' | 'RECEIVABLE' | 'VEHICLE',
+    recordKey: string,) => {
+
+
+
+
+  return `/api/dms/records/${module}/${recordKey}`
+}
+
+/**
+ * The queue says what to do and offers a button. This is the record that instruction came from — acting on a conclusion you cannot inspect is a thing people do twice and then stop doing.
+ * Complete rather than curated. Every column appears, labelled where there is a label and humanised where there is not, so a field nobody has taught this endpoint about is still visible. A value that exists and is invisible is the failure being designed against.
+ * Each field says where it came from: MIRROR is the manufacturer's and is never written back, DDMS is what this product concluded, META is sync bookkeeping. Only one of those three is anybody's to change here.
+ * @summary The whole record, every field
+ */
+export const getCaseRecord = async (module: 'DEAL' | 'JOB_CARD' | 'ENQUIRY' | 'REGISTRATION' | 'PART' | 'RECEIVABLE' | 'VEHICLE',
+    recordKey: string, options?: Parameters<typeof customFetch>[1]): Promise<CaseRecord> => {
+
+  return customFetch<CaseRecord>(getGetCaseRecordUrl(module,recordKey),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCaseRecordQueryKey = (module: 'DEAL' | 'JOB_CARD' | 'ENQUIRY' | 'REGISTRATION' | 'PART' | 'RECEIVABLE' | 'VEHICLE',
+    recordKey: string,) => {
+    return [
+    `/api/dms/records/${module}/${recordKey}`
+    ] as const;
+    }
+
+
+export const getGetCaseRecordQueryOptions = <TData = Awaited<ReturnType<typeof getCaseRecord>>, TError = ErrorType<ErrorResponse>>(module: 'DEAL' | 'JOB_CARD' | 'ENQUIRY' | 'REGISTRATION' | 'PART' | 'RECEIVABLE' | 'VEHICLE',
+    recordKey: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCaseRecord>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCaseRecordQueryKey(module,recordKey);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCaseRecord>>> = ({ signal }) => getCaseRecord(module,recordKey, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: module !== null && module !== undefined && recordKey !== null && recordKey !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCaseRecord>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCaseRecordQueryResult = NonNullable<Awaited<ReturnType<typeof getCaseRecord>>>
+export type GetCaseRecordQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary The whole record, every field
+ */
+
+export function useGetCaseRecord<TData = Awaited<ReturnType<typeof getCaseRecord>>, TError = ErrorType<ErrorResponse>>(
+ module: 'DEAL' | 'JOB_CARD' | 'ENQUIRY' | 'REGISTRATION' | 'PART' | 'RECEIVABLE' | 'VEHICLE',
+    recordKey: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCaseRecord>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCaseRecordQueryOptions(module,recordKey,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

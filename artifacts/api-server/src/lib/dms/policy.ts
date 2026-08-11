@@ -70,7 +70,7 @@ const SWITCH_KEYS: PolicyKey[] = [
     section: "The agent",
     label: "Let the agent hand out orphaned work",
     help:
-      "Work assigned to somebody who has left, or to nobody at all, is given to the person " +
+      "Work assigned to an employee who has left, or to no one at all, is given to the person " +
       "with the lightest load who is still here. Off, it only suggests and you click. " +
       "Either way you can undo it, and the log says the agent did it.",
     default: 0,
@@ -119,29 +119,29 @@ const SWITCH_KEYS: PolicyKey[] = [
 const SEVERITY_KEYS: Array<[string, string, string, string, number]> = [
   // module, state, label, help, default
   ["DEAL", "CONFLICT", "Insurance conflict", "Our record and the OEM's disagree about the policy.", 3],
-  ["DEAL", "BEHIND", "Policy not recorded", "We issued it; the OEM's system does not have it.", 2],
-  ["DEAL", "NOT_STARTED", "No insurance yet", "A delivered vehicle with no policy anywhere.", 2],
-  ["DEAL", "AHEAD", "OEM catching up", "We have it, theirs has not caught up yet.", 1],
+  ["DEAL", "BEHIND", "Policy not reflected upstream", "Issued here; the manufacturer's system does not hold it.", 2],
+  ["DEAL", "NOT_STARTED", "No insurance on record", "A delivered vehicle with no policy in either system.", 2],
+  ["DEAL", "AHEAD", "Awaiting upstream update", "Recorded here; the manufacturer's system has not caught up.", 1],
 
   // The sale journey (OBJ-25). READY_TO_INVOICE is the first entry in this
   // table that is not a fault — nothing is wrong, there is simply money
   // standing still. Two rather than three by default: an owner who wants
   // invoicing chased daily can raise it, and starting it at the top of every
   // queue would bury the things that are actually broken.
-  ["DEAL", "READY_TO_INVOICE", "Ready to invoice", "Everything is in place and nobody has raised it.", 2],
-  ["DEAL", "UNPRICED", "No price for this model", "No price list covers it, so it cannot be invoiced at all.", 2],
-  ["DEAL", "UNALLOCATED", "No vehicle against it", "Booked, and no chassis allocated yet.", 1],
-  ["DEAL", "UNDELIVERED", "Invoiced, not handed over", "Sold, and still on the floor.", 1],
+  ["DEAL", "READY_TO_INVOICE", "Ready to invoice", "Every requirement is met and no invoice has been raised.", 2],
+  ["DEAL", "UNPRICED", "No price on record", "No price list covers this model, so it cannot be invoiced.", 2],
+  ["DEAL", "UNALLOCATED", "Awaiting allocation", "Booked, with no chassis assigned.", 1],
+  ["DEAL", "UNDELIVERED", "Invoiced, not delivered", "Sold and still on the floor.", 1],
 
   ["JOB_CARD", "OVERDUE", "Past the promised date", "The customer was given a date and it has passed.", 3],
-  ["JOB_CARD", "READY_UNCOLLECTED", "Finished, not collected", "Done, and the bay is holding it.", 3],
-  ["JOB_CARD", "AWAITING_APPROVAL", "Waiting on the customer", "Work stopped until somebody approves an estimate.", 2],
+  ["JOB_CARD", "READY_UNCOLLECTED", "Ready, not collected", "Work complete and the vehicle is occupying a bay.", 3],
+  ["JOB_CARD", "AWAITING_APPROVAL", "Awaiting customer approval", "Work is halted pending approval of the estimate.", 2],
   ["JOB_CARD", "AWAITING_PART", "Waiting on a part", "The vehicle cannot move until a part arrives.", 2],
-  ["JOB_CARD", "FOLLOW_UP_DUE", "Post-service call due", "The satisfaction call has not been made.", 1],
+  ["JOB_CARD", "FOLLOW_UP_DUE", "Post-service call due", "The follow-up call is not yet recorded.", 1],
 
   ["ENQUIRY", "SLA_BREACHED", "Response window missed", "Reportable to the manufacturer.", 3],
-  ["ENQUIRY", "NO_OWNER", "Nobody is carrying it", "Assigned to somebody who has left.", 3],
-  ["ENQUIRY", "UNCONTACTED", "Never contacted", "Nobody has spoken to this customer.", 2],
+  ["ENQUIRY", "NO_OWNER", "Unassigned", "Assigned to an employee who has left the dealership.", 3],
+  ["ENQUIRY", "UNCONTACTED", "Not yet contacted", "No contact with this customer has been recorded.", 2],
   ["ENQUIRY", "CLOCK_RUNNING", "Response window open", "Still inside the window, and it is running.", 2],
   ["ENQUIRY", "FOLLOW_UP_OVERDUE", "Follow-up overdue", "The date the salesman set has passed.", 2],
 
@@ -149,28 +149,28 @@ const SEVERITY_KEYS: Array<[string, string, string, string, number]> = [
   ["REGISTRATION", "BLOCKED_NO_INSURANCE", "Blocked on insurance", "Nothing on the file can move without a policy.", 3],
   ["REGISTRATION", "TAX_HELD", "Road tax collected, unpaid", "The dealership holds the customer's money.", 2],
   ["REGISTRATION", "AWAITING_DOCS", "Waiting on documents", "A document is missing before it can be lodged.", 2],
-  ["REGISTRATION", "RC_IN_DRAWER", "Certificate uncollected", "It is here and the customer does not know.", 2],
-  ["REGISTRATION", "RTO_SILENT", "RTO has gone quiet", "Lodged, and nothing has come back.", 1],
+  ["REGISTRATION", "RC_IN_DRAWER", "Certificate uncollected", "Received at the dealership and the customer has not been informed.", 2],
+  ["REGISTRATION", "RTO_SILENT", "No response from the RTO", "Lodged, with nothing returned.", 1],
   ["REGISTRATION", "HSRP_PENDING", "Plate not fitted", "Registered, and the plate is still to go on.", 1],
 
-  ["PART", "STOCKOUT_BLOCKING", "Stockout holding a job", "A vehicle is waiting on a part we do not have.", 3],
-  ["PART", "AVAILABLE_ELSEWHERE", "Free at another branch", "The other outlet has it on a shelf.", 2],
+  ["PART", "STOCKOUT_BLOCKING", "Stockout blocking a job card", "A vehicle is held pending a part not in stock.", 3],
+  ["PART", "AVAILABLE_ELSEWHERE", "Available at another outlet", "Another outlet holds this part in stock.", 2],
   ["PART", "ORDER_OVERDUE", "Order overdue", "It was ordered and has not arrived.", 2],
   ["PART", "BELOW_REORDER", "Below reorder level", "Stock is low and nothing is on order.", 1],
-  ["PART", "FULLY_RESERVED", "All reserved", "On the shelf, and all of it is spoken for.", 1],
-  ["PART", "DEAD_STOCK", "Dead stock", "Capital sitting on a shelf.", 1],
+  ["PART", "FULLY_RESERVED", "Fully reserved", "In stock, with every unit already committed.", 1],
+  ["PART", "DEAD_STOCK", "Non-moving stock", "Capital held in parts with no recent issue.", 1],
 
   ["RECEIVABLE", "PROMISE_BROKEN", "Payment date passed", "They gave a date and it went by.", 3],
-  ["RECEIVABLE", "UNCHASED", "Overdue, never chased", "Nobody has asked for it.", 2],
+  ["RECEIVABLE", "UNCHASED", "Overdue, not yet pursued", "Past due with no recorded follow-up.", 2],
   ["RECEIVABLE", "DISPUTED", "Disputed", "They are contesting it.", 2],
-  ["RECEIVABLE", "BEING_CHASED", "Being chased", "Somebody is already on it.", 1],
+  ["RECEIVABLE", "BEING_CHASED", "Follow-up in progress", "A recent follow-up is on record.", 1],
   ["RECEIVABLE", "DUE_SOON", "Falling due", "Not late yet.", 1],
 
-  ["VEHICLE", "WANTED_NOW", "Somebody wants this model", "Standing stock against a live enquiry.", 3],
-  ["VEHICLE", "STUCK_ALLOCATION", "Allocated, not invoiced", "Held against a deal that has not closed.", 2],
-  ["VEHICLE", "AGEING_SEVERE", "Badly aged", "Long enough that the interest matters.", 2],
+  ["VEHICLE", "WANTED_NOW", "Matched to an open enquiry", "Standing stock against live demand for the same model.", 3],
+  ["VEHICLE", "STUCK_ALLOCATION", "Allocated, not invoiced", "Reserved against a deal that has not closed.", 2],
+  ["VEHICLE", "AGEING_SEVERE", "Aged — carrying cost material", "On the floor long enough that the interest is significant.", 2],
   ["VEHICLE", "AGEING", "Ageing", "On the floor longer than it should be.", 1],
-  ["VEHICLE", "OFFERED", "Offered to a customer", "Somebody has been shown it.", 1],
+  ["VEHICLE", "OFFERED", "Offered to a customer", "This unit has been shown to a named customer.", 1],
 ];
 
 /**

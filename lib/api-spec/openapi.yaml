@@ -1359,6 +1359,52 @@ paths:
                     items: { $ref: "#/components/schemas/IngestBatch" }
                 required: [batches]
 
+  /dms/records/{module}/{recordKey}:
+    get:
+      operationId: getCaseRecord
+      tags: [dms]
+      summary: The whole record, every field
+      description: >
+        The queue says what to do and offers a button. This is the record that
+        instruction came from — acting on a conclusion you cannot inspect is a
+        thing people do twice and then stop doing.
+
+        Complete rather than curated. Every column appears, labelled where there
+        is a label and humanised where there is not, so a field nobody has taught
+        this endpoint about is still visible. A value that exists and is
+        invisible is the failure being designed against.
+
+        Each field says where it came from: MIRROR is the manufacturer's and is
+        never written back, DDMS is what this product concluded, META is sync
+        bookkeeping. Only one of those three is anybody's to change here.
+      parameters:
+        - name: module
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [DEAL, JOB_CARD, ENQUIRY, REGISTRATION, PART, RECEIVABLE, VEHICLE]
+        - name: recordKey
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Every field on the record
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CaseRecord" }
+        "403":
+          description: Not a module this role reads
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: No such record
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
   /dms/records/{module}/{recordKey}/journey:
     get:
       operationId: getRecordJourney
@@ -4459,6 +4505,43 @@ components:
         createdAt: { type: string }
       required: [id, dataType, path, status, rowsSeen, rowsAccepted, rowsRejected, createdAt]
 
+    CaseField:
+      type: object
+      properties:
+        key: { type: string }
+        label: { type: string }
+        value: { type: ["string", "null"] }
+        origin:
+          type: string
+          enum: [MIRROR, DDMS, META]
+          description: >
+            MIRROR is the manufacturer's, pulled and never written back. DDMS is
+            what this product concluded. META is sync bookkeeping.
+      required: [key, label, origin]
+
+    CaseRecord:
+      type: object
+      properties:
+        module: { type: string }
+        recordKey: { type: string }
+        title: { type: string }
+        subtitle: { type: ["string", "null"] }
+        fields:
+          type: array
+          items: { $ref: "#/components/schemas/CaseField" }
+        provenance:
+          type: object
+          properties:
+            path: { type: ["string", "null"] }
+            confidence:
+              oneOf:
+                - type: object
+                  additionalProperties: { type: number }
+                - type: "null"
+        lastSyncedAt: { type: ["string", "null"] }
+        disappearedFromDms: { type: boolean }
+      required: [module, recordKey, title, fields, disappearedFromDms]
+
     JourneyTrace:
       type: object
       properties:
@@ -4981,6 +5064,12 @@ components:
         allocatedDays: { type: ["integer", "null"] }
         interestPerDay: { type: ["number", "null"] }
         interestAccrued: { type: ["number", "null"] }
+        matchingEnquiryCount:
+          type: integer
+          description: >
+            How many open enquiries there are for this model — which is NOT the
+            length of the list below. That list is capped for display, and the
+            cap used to be reported as the count.
         matchingEnquiries:
           type: array
           items:

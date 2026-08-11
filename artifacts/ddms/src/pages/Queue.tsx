@@ -20,6 +20,7 @@ import { ActionButton, AgentSuggestionCard, AssignPicker, ContactButtons } from 
 import { ExplainButton } from "@/lib/explain"
 import { Timeline } from "@/lib/timeline"
 import { JourneyPanel } from "../lib/journey"
+import { CasePanel } from "../lib/case"
 import { InvoiceButton } from "../lib/invoice"
 
 /**
@@ -49,15 +50,32 @@ import { InvoiceButton } from "../lib/invoice"
  */
 
 const BAND_LABEL: Record<string, string> = {
-  MINE: "Yours",
-  UNASSIGNED: "Nobody's",
-  OUTLET: "Your outlet's",
+  MINE: "Assigned to you",
+  UNASSIGNED: "Unassigned",
+  OUTLET: "Assigned to colleagues",
 }
 
 const BAND_BLURB: Record<string, string> = {
   MINE: "Carrying your employee code.",
-  UNASSIGNED: "Carrying nobody's, or somebody who has left. This is the work a dealership loses.",
-  OUTLET: "Somebody else is carrying these. Here so they can be covered, not so they can be taken.",
+  UNASSIGNED:
+    "Carrying no employee code, or one belonging to somebody who has left. This is the work a dealership loses.",
+  OUTLET:
+    "Carried by a colleague. Listed so the work can be covered when they are out, not so it can be taken.",
+}
+
+/**
+ * The same three bands as a clause rather than a label.
+ *
+ * `BAND_LABEL` is a section heading — *Unassigned*, with a list beneath it —
+ * and read badly on the open item, where it sat in a run of middot-separated
+ * fragments: **Today · Vehicle · Nobody's · DEL-SARASWATI**. Every part true,
+ * and the line is not a sentence, so it read as four disconnected words rather
+ * than as a description of the thing on the screen.
+ */
+const BAND_CLAUSE: Record<string, string> = {
+  MINE: "assigned to you",
+  UNASSIGNED: "unassigned",
+  OUTLET: "assigned to a colleague",
 }
 
 const MODULE_LABEL: Record<string, string> = {
@@ -210,17 +228,14 @@ export default function Queue() {
             <span className={`text-[11px] font-bold uppercase tracking-wider border rounded px-1.5 py-0.5 ${severityTone(current.severity)}`}>
               {severityWord(current.severity)}
             </span>
-            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+            {/* One clause, not four fragments. The severity pill above carries
+                the urgency; this says what the thing is. */}
+            <span className="text-[11px] font-medium text-slate-500">
               {MODULE_LABEL[current.module] ?? current.module}
+              {current.showroomCode ? ` at ${current.showroomCode}` : ""}
+              {" — "}
+              {BAND_CLAUSE[current.band]}
             </span>
-            <span className="text-[11px] text-slate-400">·</span>
-            <span className="text-[11px] font-medium text-slate-500">{BAND_LABEL[current.band]}</span>
-            {current.showroomCode && (
-              <>
-                <span className="text-[11px] text-slate-400">·</span>
-                <span className="text-[11px] font-medium text-slate-500">{current.showroomCode}</span>
-              </>
-            )}
             <span className="ml-auto text-[11px] text-slate-400 tabular-nums">
               {cursor + 1} of {items.length}
             </span>
@@ -418,6 +433,17 @@ export default function Queue() {
               <JourneyPanel module={current.module} recordKey={current.recordKey} />
             )}
 
+            {/* The record the instruction came from.
+
+                Above the timeline and below the journey: the journey is where
+                the thing has got to, this is what it actually says, and the
+                timeline is what people have done about it. Collapsed, because
+                the queue's job is still the next action — this is for the
+                moment somebody wants to check rather than act. */}
+            {current.source !== "TASK" && (
+              <CasePanel module={current.module} recordKey={current.recordKey} />
+            )}
+
             {current.source !== "TASK" && (
               <Timeline
                 module={current.module}
@@ -492,8 +518,21 @@ export default function Queue() {
             After this
           </div>
           <div className="border border-slate-200 rounded-lg divide-y divide-slate-100 bg-white overflow-hidden">
+            {/* Each one opens where it stands.
+
+                The list was read-only, which made the queue a conveyor belt:
+                the only way to reach the fortieth item was to press Skip
+                thirty-nine times. Ordering the work is the product's job;
+                *insisting* on the order is not, and somebody who can see a
+                receivable four rows down should be able to deal with it. */}
             {items.slice(cursor + 1, cursor + 8).map((i) => (
-              <div key={keyOf(i)} className="px-4 py-2.5 flex items-center gap-3 text-sm">
+              <button
+                key={keyOf(i)}
+                onClick={() => setCursor(items.indexOf(i))}
+                className="w-full text-left px-4 py-2.5 flex items-center gap-3 text-sm
+                           hover:bg-slate-50 focus:bg-slate-50 focus:outline-none
+                           focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-300"
+              >
                 <span className={`text-[10px] font-bold uppercase tracking-wider border rounded px-1 ${severityTone(i.severity)}`}>
                   {i.severity >= 3 ? "now" : i.severity === 2 ? "wk" : "…"}
                 </span>
@@ -505,7 +544,7 @@ export default function Queue() {
                   {i.actionRequired}
                 </span>
                 {i.assigneeGone && <UserX className="w-3.5 h-3.5 text-amber-500 shrink-0 ml-auto" />}
-              </div>
+              </button>
             ))}
             {items.length > cursor + 8 && (
               <div className="px-4 py-2 text-[11px] text-slate-400 flex items-center gap-1">

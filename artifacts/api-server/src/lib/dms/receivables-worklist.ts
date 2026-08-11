@@ -359,7 +359,7 @@ function classify(
       note:
         `${inr(balance)} outstanding, ${daysOverdue} day${daysOverdue === 1 ? "" : "s"} past due.` +
         (chaseDays === null
-          ? " Nobody has chased it."
+          ? " No follow-up has been recorded."
           : ` Last chased ${chaseDays} days ago.`),
       action: `Chase ${inr(balance)}`,
     };

@@ -160,7 +160,7 @@ export const RULES: Rule[] = [
     when: (r) => "regnFileNo" in r && !r.ddms.assignedAgentEmpCode && !r.agentEmpCode,
     template: "REGISTRATION_AGENT_ASSIGNED",
     cadenceDays: 3,
-    goal: "Somebody is assigned to the file.",
+    goal: "The file is assigned to an employee.",
   },
   {
     id: "SERVICE_READY_TELL_CUSTOMER",

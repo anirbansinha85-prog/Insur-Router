@@ -235,6 +235,8 @@ export interface MatchingEnquiry {
   enquiredAt: string | null;
   /** True when the enquiry is at a different outlet from the vehicle. */
   otherOutlet: boolean;
+  /** How long this customer has been waiting. Half of why they are first. */
+  daysWaiting: number | null;
 }
 
 export interface InventoryWorklistRow {
@@ -280,8 +282,21 @@ export interface InventoryWorklistRow {
   interestPerDay: number | null;
   /** What it has cost so far. Cost × rate × days, and nobody disputes the sum. */
   interestAccrued: number | null;
-  /** Open enquiries for this model, across every outlet the owner holds. */
+  /**
+   * The best few open enquiries for this model, **ordered**, across every
+   * outlet the owner holds. Capped for display — see `matchingEnquiryCount`
+   * for how many there actually are.
+   */
   matchingEnquiries: MatchingEnquiry[];
+  /**
+   * How many there are in total, which is **not** `matchingEnquiries.length`.
+   *
+   * It was, and the note said so: *"5 people are asking for this model"* on a
+   * model with twenty-one live enquiries against it. The display cap had become
+   * the reported figure, so a dealership read its own demand at a quarter of
+   * the truth. Two fields now, because they answer two questions.
+   */
+  matchingEnquiryCount: number;
   lastSyncedAt: string;
   disappearedFromDms: boolean;
 }
@@ -298,6 +313,51 @@ function inr(n: number): string {
 
 /** Enquiry stages that mean somebody is still deciding. */
 const LIVE_STAGES = new Set(["NEW", "CONTACTED", "QUOTED", "TEST_RIDE", "NEGOTIATION", "BOOKED"]);
+
+/**
+ * Who to offer a unit to, and **why that person**.
+ *
+ * The first version answered `matches[0]` — whichever row Postgres happened to
+ * return first. On one HF Deluxe that meant sending a salesman to a `COLD`
+ * enquiry while three `HOT` ones waited, and the screen could give no reason
+ * because there was none. *"Why is it offering to her?"* had no answer, which
+ * is a worse failure than a wrong answer: an unexplained instruction is one
+ * nobody can overrule on the evidence.
+ *
+ * Two keys, in this order, because a dealership can say both out loud:
+ *
+ *   1. **the grade the salesman gave them** — their own judgement of the
+ *      customer, and not ours to second-guess
+ *   2. **how long they have waited** — among equals, the one who asked first
+ *
+ * Deliberately *not* the stage. A `NEGOTIATION` is further along than a `NEW`
+ * and it is a different question — *closest to closing* rather than *most
+ * likely to buy* — and mixing them makes the sentence on the row two clauses
+ * that argue with each other. The stage travels on the row so a person can see
+ * it and disagree.
+ */
+const GRADE_RANK: Record<string, number> = { HOT: 0, WARM: 1, COLD: 2 };
+
+function bestFirst(a: MatchingEnquiry, b: MatchingEnquiry): number {
+  const ga = GRADE_RANK[a.grade ?? ""] ?? 3;
+  const gb = GRADE_RANK[b.grade ?? ""] ?? 3;
+  if (ga !== gb) return ga - gb;
+  // Longest wait first. A null date sorts last: an enquiry with no date is not
+  // evidence of patience.
+  const wa = a.daysWaiting ?? -1;
+  const wb = b.daysWaiting ?? -1;
+  if (wa !== wb) return wb - wa;
+  return a.enqId.localeCompare(b.enqId);
+}
+
+/** Why this customer and not one of the other twenty. One clause. */
+function whyThisOne(m: MatchingEnquiry, total: number): string {
+  const grade =
+    m.grade === "HOT" ? "the hottest" : m.grade === "WARM" ? "the warmest" : "the longest-waiting";
+  const of = total > 1 ? ` of the ${total} asking` : "";
+  const waited = m.daysWaiting === null ? "" : `, waiting ${m.daysWaiting} day${m.daysWaiting === 1 ? "" : "s"}`;
+  return `${grade}${of}${waited}`;
+}
 
 export interface InventoryWorklistOptions {
   /** The dealership's numbers. Resolved from the outlet when absent — see
@@ -352,6 +412,7 @@ export async function buildInventoryWorklist(
       grade: e.grade,
       enquiredAt: e.enquiredAt?.toISOString() ?? null,
       otherOutlet: e.showroomId !== opts.showroomId,
+      daysWaiting: e.enquiredAt ? wholeDaysBetween(e.enquiredAt, new Date()) : null,
     });
     byModel.set(e.modelInterest, list);
   }
@@ -379,14 +440,16 @@ export async function buildInventoryWorklist(
     // Only offer the match on units that are actually available. A vehicle
     // already invoiced to somebody is not an answer to anybody's enquiry, and
     // showing it as one would send a salesperson to sell a bike that has gone.
-    const matches =
-      v.status === "INVOICED" ? [] : (byModel.get(v.modelCode) ?? []).slice(0, 5);
+    const allMatches = v.status === "INVOICED" ? [] : (byModel.get(v.modelCode) ?? []);
+    // Ordered before it is cut, or the cap decides who is best.
+    const matches = [...allMatches].sort(bestFirst).slice(0, 5);
 
     const { state, note, action } = classify(
       v.status,
       ageDays,
       allocatedDays,
       matches,
+      allMatches.length,
       v.offeredToEnqId,
       interestAccrued,
       showroomCode,
@@ -427,6 +490,7 @@ export async function buildInventoryWorklist(
       interestPerDay,
       interestAccrued,
       matchingEnquiries: matches,
+      matchingEnquiryCount: allMatches.length,
       lastSyncedAt: v.lastSyncedAt.toISOString(),
       disappearedFromDms: v.disappearedAt !== null,
     };
@@ -437,7 +501,10 @@ function classify(
   status: string,
   ageDays: number,
   allocatedDays: number | null,
+  /** The shortlist, best first. */
   matches: MatchingEnquiry[],
+  /** How many there are altogether, which the shortlist's length is not. */
+  matchCount: number,
   offeredToEnqId: string | null,
   interestAccrued: number | null,
   showroomCode: string | null,
@@ -497,16 +564,18 @@ function classify(
     return {
       state: "WANTED_NOW",
       note:
-        `On the floor ${ageDays} days, and ${matches.length === 1 ? "somebody is" : `${matches.length} people are`} ` +
-        `asking for this model${where}.${cost}`,
-      action: `Offer it to ${first.customerName ?? first.enqId}`,
+        `On the floor ${ageDays} days, with ${matchCount === 1 ? "one open enquiry" : `${matchCount} open enquiries`} ` +
+        `for this model${where}.${cost}`,
+      // Who, and why them. An instruction with a reason attached is one
+      // somebody can overrule on the evidence; one without is an order.
+      action: `Offer it to ${first.customerName ?? first.enqId} — ${whyThisOne(first, matchCount)}`,
     };
   }
 
   if (ageDays >= policy.days(AGEING_SEVERE_DAYS)) {
     return {
       state: "AGEING_SEVERE",
-      note: `On the floor ${ageDays} days and nobody has asked for it.${cost}`,
+      note: `On the floor ${ageDays} days with no open enquiries for this model.${cost}`,
       action: "Discount it, move it to another outlet, or accept the carrying cost",
     };
   }

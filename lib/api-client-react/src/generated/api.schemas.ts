@@ -1937,6 +1937,48 @@ export interface IngestBatch {
 }
 
 /**
+ * MIRROR is the manufacturer's, pulled and never written back. DDMS is what this product concluded. META is sync bookkeeping.
+ */
+export type CaseFieldOrigin = typeof CaseFieldOrigin[keyof typeof CaseFieldOrigin];
+
+
+export const CaseFieldOrigin = {
+  MIRROR: 'MIRROR',
+  DDMS: 'DDMS',
+  META: 'META',
+} as const;
+
+export interface CaseField {
+  key: string;
+  label: string;
+  /** @nullable */
+  value?: string | null;
+  /** MIRROR is the manufacturer's, pulled and never written back. DDMS is what this product concluded. META is sync bookkeeping. */
+  origin: CaseFieldOrigin;
+}
+
+export type CaseRecordProvenanceConfidence = {[key: string]: number} | null;
+
+export type CaseRecordProvenance = {
+  /** @nullable */
+  path?: string | null;
+  confidence?: CaseRecordProvenanceConfidence;
+};
+
+export interface CaseRecord {
+  module: string;
+  recordKey: string;
+  title: string;
+  /** @nullable */
+  subtitle?: string | null;
+  fields: CaseField[];
+  provenance?: CaseRecordProvenance;
+  /** @nullable */
+  lastSyncedAt?: string | null;
+  disappearedFromDms: boolean;
+}
+
+/**
  * ABANDONED is not DONE. The thing the journey was about stopped existing, which must never be counted as having finished.
  */
 export type JourneyTraceStatus = typeof JourneyTraceStatus[keyof typeof JourneyTraceStatus];
@@ -2590,6 +2632,8 @@ export interface InventoryWorklistRow {
   interestPerDay?: number | null;
   /** @nullable */
   interestAccrued?: number | null;
+  /** How many open enquiries there are for this model — which is NOT the length of the list below. That list is capped for display, and the cap used to be reported as the count. */
+  matchingEnquiryCount?: number;
   matchingEnquiries: MatchingEnquiry[];
   lastSyncedAt: string;
   disappearedFromDms: boolean;

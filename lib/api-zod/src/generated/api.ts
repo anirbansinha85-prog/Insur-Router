@@ -1367,6 +1367,37 @@ export const ListIngestBatchesResponse = zod.object({
 
 
 /**
+ * The queue says what to do and offers a button. This is the record that instruction came from — acting on a conclusion you cannot inspect is a thing people do twice and then stop doing.
+ * Complete rather than curated. Every column appears, labelled where there is a label and humanised where there is not, so a field nobody has taught this endpoint about is still visible. A value that exists and is invisible is the failure being designed against.
+ * Each field says where it came from: MIRROR is the manufacturer's and is never written back, DDMS is what this product concluded, META is sync bookkeeping. Only one of those three is anybody's to change here.
+ * @summary The whole record, every field
+ */
+export const GetCaseRecordParams = zod.object({
+  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART', 'RECEIVABLE', 'VEHICLE']),
+  "recordKey": zod.coerce.string()
+})
+
+export const GetCaseRecordResponse = zod.object({
+  "module": zod.string(),
+  "recordKey": zod.string(),
+  "title": zod.string(),
+  "subtitle": zod.string().nullish(),
+  "fields": zod.array(zod.object({
+  "key": zod.string(),
+  "label": zod.string(),
+  "value": zod.string().nullish(),
+  "origin": zod.enum(['MIRROR', 'DDMS', 'META']).describe('MIRROR is the manufacturer\'s, pulled and never written back. DDMS is what this product concluded. META is sync bookkeeping.\n')
+})),
+  "provenance": zod.object({
+  "path": zod.string().nullish(),
+  "confidence": zod.union([zod.record(zod.string(), zod.number()),zod.null()]).optional()
+}).optional(),
+  "lastSyncedAt": zod.string().nullish(),
+  "disappearedFromDms": zod.boolean()
+})
+
+
+/**
  * DDMS understands a record. This is the first thing that understands a journey — one sale walking through the building, from the invoice to the certificate in the customer's hands, across four screens that do not know they describe the same vehicle.
  * Read-only, deliberately. A journey moves because the world changed, not because somebody pressed a button on it, and an endpoint that let a caller set a position would be a second way for the record to become untrue. Acting happens on the record through POST /dms/actions and the runtime notices on its next pass.
  * The position and the wait are derived on read, like reconciliation — a stored "waiting on the RTO" goes stale the moment the RTO answers. Only the arrivals come out of the database, because history does not go stale.
@@ -1907,6 +1938,7 @@ export const GetInventoryWorklistResponse = zod.object({
   "allocatedDays": zod.number().int().nullish(),
   "interestPerDay": zod.number().nullish(),
   "interestAccrued": zod.number().nullish(),
+  "matchingEnquiryCount": zod.number().int().optional().describe('How many open enquiries there are for this model — which is NOT the length of the list below. That list is capped for display, and the cap used to be reported as the count.\n'),
   "matchingEnquiries": zod.array(zod.object({
   "enqId": zod.string(),
   "showroomId": zod.number().int(),

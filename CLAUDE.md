@@ -557,6 +557,41 @@ DDMS rather than one that signed up this morning.
 > other manufactures a `CONFLICT` per matched deal. Both sides carry it, because
 > every number in that fixture is a policy no insurer issued (R-41).
 
+## The queue is inspectable, not just actionable
+
+`GET /dms/records/{module}/{recordKey}` and `lib/dms/case.ts` — every column on
+a record, labelled where there is a label and humanised where there is not.
+
+> *"I understand the automation is working fine, but it should open the case."*
+
+The queue told somebody *what to do* and offered a button, with no way to see
+the record the instruction came from. **Complete rather than curated**: a column
+nobody has taught `case.ts` about still appears, because a value that exists and
+is invisible is the failure worth designing against, and a tidy view is how that
+happens six months after somebody adds a column.
+
+Each field says `MIRROR` (the manufacturer's, never written back), `DDMS` (what
+this product concluded) or `META` (sync bookkeeping). Only one of the three is
+anybody's to change here. Where a value arrived by report or scan, its
+confidence shows beside it (OBJ-24, R-85).
+
+The up-next list is navigable — any row jumps to its card. Ordering the work is
+the product's job; *insisting* on the order is not.
+
+> **A display cap became a reported figure.** The vehicle row said *"5 people
+> are asking for this model"* on a model with 31 open enquiries: the code took
+> `.slice(0, 5)` and reported that length as the count. Two fields now,
+> `matchingEnquiries` and `matchingEnquiryCount`, because they answer two
+> questions.
+
+> **An instruction with no reason behind it.** *"Offer it to Mrs Geeta Mahto"*
+> was `matches[0]` — whichever row Postgres returned first, which meant sending
+> a salesman to a COLD enquiry while three HOT ones waited. Ordered now by the
+> grade the salesman gave and then by who has waited longest, and the row says
+> which: *"the hottest of the 31 asking, waiting 24 days"*. An unexplained
+> instruction is worse than a wrong one — nobody can overrule it on the
+> evidence.
+
 ## The document DDMS issues
 
 `lib/dms/invoice/` and three tables (OBJ-25). **DDMS's document is the DMS's

@@ -295,7 +295,7 @@ function deterministicAnswer(evidence: Evidence[]): string[] {
   // What has already been done — and the absence is the answer more often.
   const done = by("what_we_have_done");
   if (done.length === 0) {
-    out.push("Nobody has recorded anything against this in DDMS.");
+    out.push("No activity has been recorded against this in DDMS.");
   } else {
     const decisions = done.filter((d) => d.kind === "decision").length;
     const messages = done.filter((d) => d.kind === "message");
