@@ -3,6 +3,7 @@ import {
   useDropIngestReport,
   useConfirmIngestMapping,
   useListIngestBatches,
+  useListIngestSources,
   type ReportDropResult,
   type MappedColumn,
 } from "@workspace/api-client-react"
@@ -40,7 +41,32 @@ import {
  * column position with no model anywhere near it.
  */
 
+/**
+ * What each canonical field is called on the confirmation screen.
+ *
+ * One flat table across data types rather than one per type, and deliberately:
+ * the names are unique enough not to collide, and a person confirming an
+ * enquiry export should not have to care which module's dictionary a label came
+ * from. A field with no entry falls back to its own name, which is ugly and
+ * visible — the right failure for a vocabulary somebody forgot to label.
+ */
 const NAMES: Record<string, string> = {
+  // Leads
+  enqId: "Enquiry number",
+  stage: "Stage",
+  enqDt: "Enquiry date",
+  source: "Source",
+  grade: "Grade",
+  custName: "Customer",
+  mobileNo: "Mobile",
+  modelCodeInterest: "Model interested",
+  assignedEmpCode: "Salesman",
+  firstContactAt: "First contact",
+  lastContactDt: "Last contact",
+  nextFollowUpDt: "Next follow-up",
+  lostReasonDesc: "Lost reason",
+  convertedDealId: "Converted deal",
+  // Deals
   dealId: "Deal number",
   status: "Status",
   bookingDate: "Booking date",
@@ -75,8 +101,19 @@ function Confidence({ value }: { value: number }) {
   )
 }
 
+const TYPE_LABEL: Record<string, string> = {
+  DEAL: "Deal register",
+  ENQUIRY: "Enquiry register",
+  JOB_CARD: "Job cards",
+  REGISTRATION: "RTO files",
+  PART: "Spare parts",
+  RECEIVABLE: "Receivables",
+  VEHICLE: "Vehicle stock",
+}
+
 export function DmsReport() {
   const [showroomId, setShowroomId] = useState("1")
+  const [dataType, setDataType] = useState("DEAL")
   const [filename, setFilename] = useState<string | null>(null)
   const [text, setText] = useState("")
   const [result, setResult] = useState<ReportDropResult | null>(null)
@@ -86,6 +123,19 @@ export function DmsReport() {
 
   const drop = useDropIngestReport()
   const confirm = useConfirmIngestMapping()
+  /*
+   * What this outlet may feed by report, asked rather than assumed.
+   *
+   * The screen used to send `dataType: "DEAL"` because deals were the only
+   * module a report could reach. Hard-coding the *other* six here now would
+   * offer a dealership six paths, five of which silently do nothing.
+   */
+  const sources = useListIngestSources(
+    { showroomId: Number(showroomId) || 1 },
+    { query: { queryKey: ["/api/dms/ingest/sources", showroomId] } },
+  )
+  const reportable = sources.data?.reportable ?? ["DEAL"]
+
   const batches = useListIngestBatches(
     { showroomId: Number(showroomId) || 1 },
     { query: { queryKey: ["/api/dms/ingest/batches", showroomId] } },
@@ -107,7 +157,7 @@ export function DmsReport() {
       {
         data: {
           showroomId: Number(showroomId),
-          dataType: "DEAL",
+          dataType,
           filename,
           text,
         },
@@ -162,9 +212,16 @@ export function DmsReport() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Most dealers have no API and will never be given one. Export the deal
+            Most dealers have no API and will never be given one. Export the
             register from your DMS and drop it here — comma or tab separated. We
             will ask what the columns mean the first time and never again.
+            {reportable.length < 7 && (
+              <>
+                {" "}
+                Only what is listed can be read today; the rest still come from
+                the API.
+              </>
+            )}
           </p>
 
           <div className="flex items-end gap-3 flex-wrap">
@@ -175,6 +232,27 @@ export function DmsReport() {
                 value={showroomId}
                 onChange={(e) => setShowroomId(e.target.value)}
               />
+            </div>
+            <div className="w-48">
+              <Label htmlFor="dataType">What the file is</Label>
+              <select
+                id="dataType"
+                value={dataType}
+                onChange={(e) => {
+                  setDataType(e.target.value)
+                  // A mapping belongs to one data type, so a result from the
+                  // last one is about a different question entirely.
+                  setResult(null)
+                  setNote(null)
+                }}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+              >
+                {reportable.map((t) => (
+                  <option key={t} value={t}>
+                    {TYPE_LABEL[t] ?? t}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="flex-1 min-w-64">
               <Label htmlFor="file">The exported file</Label>

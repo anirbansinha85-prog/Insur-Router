@@ -28,9 +28,9 @@ import {
   type IngestBatchRow,
 } from "@workspace/db";
 import { logger } from "../../logger";
-import { dmsList, fetchDeal } from "../client";
+import { dmsList, dmsEnquiries, fetchDeal, fetchEnquiry } from "../client";
 import { toIsoDate, toAmount as amountFromApi, assembleName } from "../hero-adapter";
-import type { DmsDeal } from "../types";
+import type { DmsDeal, DmsEnquiry } from "../types";
 import type { DataType, DealRecord, IngestPath, Listed, Source, Sourced } from "./types";
 import { extract, noteMappingUse, type FieldMapping } from "./mapping";
 import { parseTable } from "./table";
@@ -204,24 +204,37 @@ export function rememberReportBody(contentHash: string, text: string): void {
   REPORT_BODIES.set(contentHash, text);
 }
 
-function reportSource(showroomId: number): Source<DealRecord> {
-  let cached: Array<{ record: DealRecord; confidence: Record<string, number> }> | null = null;
+/**
+ * A file somebody dropped, for any module that has a vocabulary.
+ *
+ * Generic over the record because the *only* thing that ever differed between
+ * modules here was which field is the key — the parsing, the held batch, the
+ * per-field confidence and the incomplete-listing rule are the same argument
+ * whatever the rows are about. It was written against `DealRecord` because
+ * deals were the first, not because it was ever a deal-shaped problem.
+ */
+function reportSource<T>(
+  showroomId: number,
+  dataType: DataType,
+  keyOf: (record: T) => string,
+): Source<T> {
+  let cached: Array<{ record: T; confidence: Record<string, number> }> | null = null;
   let batchId: number | undefined;
   let complete = true;
 
   async function rows() {
     if (cached) return cached;
-    const found = await latestBatch(showroomId, "DEAL");
+    const found = await latestBatch(showroomId, dataType);
     if (!found) {
       cached = [];
-      // Nothing dropped yet is not the same as *the dealership has no deals*,
-      // and treating it as a complete listing would disappear the whole mirror.
+      // Nothing dropped yet is not the same as *the dealership has none*, and
+      // treating it as a complete listing would disappear the whole mirror.
       complete = false;
       return cached;
     }
     const table = parseTable(found.text);
-    const { records } = extract(table, found.mapping);
-    cached = records;
+    const { records } = extract(table, found.mapping, dataType);
+    cached = records as Array<{ record: T; confidence: Record<string, number> }>;
     batchId = found.batch.id;
     return cached;
   }
@@ -236,15 +249,15 @@ function reportSource(showroomId: number): Source<DealRecord> {
       // Parsed once. The file is already in hand, so listing and loading cost
       // the same — which is exactly why `load` below returns from the cache
       // rather than re-reading.
-      return (await rows()).map((r) => ({ key: r.record.dealId, fingerprint: hashOf(r.record) }));
+      return (await rows()).map((r) => ({ key: keyOf(r.record), fingerprint: hashOf(r.record) }));
     },
 
-    async load(keys: string[]): Promise<Array<Sourced<DealRecord>>> {
+    async load(keys: string[]): Promise<Array<Sourced<T>>> {
       const wanted = new Set(keys);
       return (await rows())
-        .filter((r) => wanted.has(r.record.dealId))
+        .filter((r) => wanted.has(keyOf(r.record)))
         .map((r) => ({
-          key: r.record.dealId,
+          key: keyOf(r.record),
           record: r.record,
           path: "REPORT" as const,
           confidence: Object.keys(r.confidence).length ? r.confidence : undefined,
@@ -336,13 +349,73 @@ export function rememberDocumentRecord(
 
 // ── Resolution ──────────────────────────────────────────────────────────────
 
+/**
+ * Leads, from a file or from the API (OBJ-24 widened).
+ *
+ * The second module to get a source, and the whole of what it took was a
+ * vocabulary and this function — which is the claim the seam was built to
+ * support and the first time anything has tested it. No document path: an
+ * enquiry is a row in a register, not a piece of paper anybody scans, and
+ * offering one would be a path that could never be used.
+ */
+export async function enquirySourceFor(
+  showroomId: number,
+  dealerCode: string,
+): Promise<Source<DmsEnquiry>> {
+  if ((await pathFor(showroomId, "ENQUIRY")) === "REPORT") {
+    /*
+     * A report row is a **partial** enquiry, and the cast says so honestly.
+     *
+     * The vocabulary covers exactly the fields `project()` reads and nothing
+     * else — there is no point asking a dealership to export a column the
+     * mirror has nowhere to put. What is absent arrives as null and the
+     * projection treats it the way it treats an API that did not return it.
+     */
+    return reportSource<DmsEnquiry>(
+      showroomId,
+      "ENQUIRY",
+      (r) => r.enqId,
+    );
+  }
+
+  /*
+   * The API path, unchanged in behaviour: list cheaply, load in full.
+   *
+   * `dmsEnquiries` returns a summary per lead and `fetchEnquiry` returns the
+   * record — which is the same list/load split deals have, and the reason this
+   * seam fitted without arguing. The projection needs one field the summary
+   * does not carry, so collapsing the two would have quietly dropped the lost
+   * reason off every lead in the dealership.
+   */
+  return {
+    path: "API",
+    listIsComplete: true,
+    async list(): Promise<Listed[]> {
+      const summaries = await dmsEnquiries(dealerCode);
+      return summaries.map((e) => ({ key: e.enqId, fingerprint: hashOf(e) }));
+    },
+    async load(keys: string[]): Promise<Array<Sourced<DmsEnquiry>>> {
+      const out: Array<Sourced<DmsEnquiry>> = [];
+      for (const key of keys) {
+        const record = await fetchEnquiry(key);
+        if (!record) {
+          logger.warn({ enqId: key }, "DMS listed an enquiry it then could not return");
+          continue;
+        }
+        out.push({ key, record, path: "API" as const });
+      }
+      return out;
+    },
+  };
+}
+
 export async function dealSourceFor(
   showroomId: number,
   dealerCode: string,
 ): Promise<Source<DealRecord>> {
   switch (await pathFor(showroomId, "DEAL")) {
     case "REPORT":
-      return reportSource(showroomId);
+      return reportSource<DealRecord>(showroomId, "DEAL", (r) => r.dealId);
     case "DOCUMENT":
       return documentSource(showroomId);
     default:

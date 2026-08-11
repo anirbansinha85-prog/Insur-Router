@@ -126,6 +126,7 @@ import {
 import {
   confirmMapping,
   describeSources,
+  reportableTypes,
   dropReport,
   listBatches,
   releaseHeld,
@@ -1113,7 +1114,19 @@ router.get("/dms/ingest/sources", async (req, res): Promise<void> => {
     if (!res.headersSent) res.status(400).json({ error: "showroomId must be a positive integer" });
     return;
   }
-  res.json({ sources: await describeSources(showroomId) });
+  res.json({
+    sources: await describeSources(showroomId),
+    /*
+     * Which data types a report can actually feed today.
+     *
+     * On the response rather than in a constant on the screen, because a picker
+     * that offers a path which does nothing is worse than a picker with two
+     * entries — the dealership drops the file, nothing happens, and the product
+     * has told them a lie with a dropdown. It grows as vocabularies are added
+     * and the screen needs no change.
+     */
+    reportable: reportableTypes(),
+  });
 });
 
 /**

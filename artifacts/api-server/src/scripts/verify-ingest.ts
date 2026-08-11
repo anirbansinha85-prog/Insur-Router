@@ -303,7 +303,13 @@ await (async () => {
   check("and it extracted straight away", second.result.rowsAccepted === viaApi.size, `${second.result.rowsAccepted} of ${second.result.rowsSeen} rows`);
   check(
     "the total line was rejected with a reason, not silently skipped",
-    second.result.rowsRejected === 1 && second.result.rejections[0]!.includes("not a deal"),
+    // The claim is that a reason was given and the row named, not that the
+    // sentence uses a particular noun. It said "not a deal" while deals were
+    // the only module a report could feed; asserting the wording would have
+    // made widening the vocabulary look like a regression.
+    second.result.rowsRejected === 1 &&
+      second.result.rejections[0]!.includes("Total") &&
+      second.result.rejections[0]!.includes("carries no other data"),
     second.result.rejections[0] ?? "nothing rejected — the footer became a deal",
   );
 

@@ -770,11 +770,37 @@ every projected column identical across paths.
 > first version imported the footer as a deal priced at 78. A record needs its
 > key **plus two other fields**.
 
-> **Deals only, so far.** The other six modules still call the client directly
-> and resolve to `API`. Widening is a source function each; the vocabulary, the
-> mapping, the batches and the provenance columns are already data-type
-> agnostic. The file bodies live in memory — there is no object storage — so a
-> restart loses a held drop's bytes but never its audit row.
+**Deals and enquiries.** Widening the first time proved the seam was one: the
+mapping was deal-bound in six places and the report source in one, and once
+those were generic a second module cost a **field vocabulary and a source
+function**. `FIELDS_FOR` and `SYNONYMS_FOR` are keyed by data type, `extract`
+builds its record from whichever vocabulary it was handed, and the key is *the
+first required field* rather than `dealId`.
+
+Synonyms are per data type on purpose, not one flat table: `Status` means the
+deal's status on one export and the lead's stage on another, and a merged table
+would have matched a deal field on an enquiry file and looked like it worked.
+
+The field names are **the DMS's, not ours** — `enqDt`, not `enquiredAt`. Each
+sync already converts its own summary shape into mirror columns, and a report
+producing our names would need a second converter that could disagree with the
+first.
+
+`GET /dms/ingest/sources` returns `reportable`, and the picker is built from it.
+**A picker offering a path that does nothing is worse than one with two
+entries** — the dealership drops the file, nothing happens, and the product has
+told them a lie with a dropdown.
+
+`sample-reports/` holds eight exports per outlet, generated from the mirror by
+`db:export-reports`. Dropping the enquiry register maps all fourteen headings by
+name with no model, and accepts 141 of 142 rows — the one rejection being the
+total line.
+
+> **Five modules still call the client directly** and resolve to `API`: job
+> cards, registrations, parts, receivables and vehicle stock. Each is now a
+> vocabulary and a source function, with the sync's list/load split already the
+> right shape. The file bodies live in memory — there is no object storage — so
+> a restart loses a held drop's bytes but never its audit row.
 
 ## Where each sale has got to
 

@@ -9,4 +9,6 @@ import type { IngestSource } from './ingestSource';
 
 export type SetIngestSource200 = {
   sources: IngestSource[];
+  /** Which data types a report can actually feed today. A picker that offers a path which does nothing is worse than a picker with two entries — the dealership drops the file, nothing happens, and the product has told them a lie with a dropdown. */
+  reportable: string[];
 };

@@ -38,7 +38,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import { db, ingestMappingsTable, type IngestMappingRow } from "@workspace/db";
 import { logger } from "../../logger";
-import { DEAL_FIELDS, type DataType, type DealRecord } from "./types";
+import { DEAL_FIELDS, FIELDS_FOR, type DataType, type DealRecord, type FieldSpec } from "./types";
 import { fingerprintOf, toAmount, toDate, toText } from "./table";
 
 export type FieldMapping = Record<string, { column: string; confidence: number }>;
@@ -54,7 +54,7 @@ export type FieldMapping = Record<string, { column: string; confidence: number }
  * cannot place — which on a typical export is two or three of sixteen, and on a
  * tidy one is none.
  */
-const SYNONYMS: Record<string, string[]> = {
+const DEAL_SYNONYMS: Record<string, string[]> = {
   dealId: ["deal no", "deal number", "dealid", "deal id", "order no", "order number", "booking no", "booking number", "order ref", "sale order"],
   status: ["status", "deal status", "order status", "stage"],
   bookingDate: ["booking date", "booking dt", "order date", "booked on"],
@@ -73,13 +73,76 @@ const SYNONYMS: Record<string, string[]> = {
   invoiceDate: ["invoice date", "invoice dt", "bill date", "billing date"],
 };
 
+/**
+ * Leads, in the words a dealership's export uses for them.
+ *
+ * Worth reading beside the deal list rather than merged with it: `status` means
+ * *deal status* on one and nothing at all on the other, where an enquiry export
+ * calls the same idea `stage`. One flat table of synonyms would have matched
+ * *Status* to a deal field on an enquiry file and looked like it worked.
+ */
+const ENQUIRY_SYNONYMS: Record<string, string[]> = {
+  enqId: ["enquiry no", "enquiry number", "enq no", "enq id", "lead no", "lead id", "enquiry ref"],
+  stage: ["stage", "enquiry stage", "lead stage", "status", "enquiry status", "lead status"],
+  enqDt: ["enquiry date", "enq date", "enquiry dt", "lead date", "date of enquiry", "created on"],
+  source: ["source", "lead source", "enquiry source", "channel"],
+  grade: ["grade", "lead grade", "rating", "temperature", "category"],
+  custName: ["customer name", "customer", "cust name", "prospect name", "party name", "name"],
+  mobileNo: ["mobile", "mobile no", "customer mobile", "phone", "contact no", "mobile number"],
+  modelCodeInterest: ["model interested", "model of interest", "model", "interested model", "enquiry model", "model code"],
+  assignedEmpCode: ["sales exec", "salesman", "assigned to", "executive", "emp code", "sales executive", "consultant"],
+  firstContactAt: ["first contact", "first contacted", "first response", "first call"],
+  lastContactDt: ["last contact", "last contacted", "last call", "last follow up"],
+  nextFollowUpDt: ["next follow up", "follow up date", "next followup", "next call", "due date"],
+  lostReasonDesc: ["lost reason", "reason lost", "lost remarks", "closure reason"],
+  convertedDealId: ["converted deal", "deal no", "booking no", "order no", "converted to"],
+};
+
+const SYNONYMS_FOR: Partial<Record<DataType, Record<string, string[]>>> = {
+  DEAL: DEAL_SYNONYMS,
+  ENQUIRY: ENQUIRY_SYNONYMS,
+};
+
+/**
+ * The vocabulary for a data type, and a refusal rather than an empty one.
+ *
+ * A module with no field list cannot be read from a report, and returning `{}`
+ * would have every heading go unmatched and the file arrive as a mapping with
+ * nothing in it — which looks like a badly-formatted export rather than like a
+ * module nobody has taught the product to read yet.
+ */
+function vocabularyFor(dataType: DataType): {
+  fields: FieldSpec[];
+  synonyms: Record<string, string[]>;
+} {
+  const fields = FIELDS_FOR[dataType];
+  const synonyms = SYNONYMS_FOR[dataType];
+  if (!fields || !synonyms) {
+    throw new Error(
+      `No report vocabulary for ${dataType}. Add it to FIELDS_FOR and SYNONYMS_FOR before offering the report path for this module.`,
+    );
+  }
+  return { fields, synonyms };
+}
+
+/** `enqId` → *enquiry number*, for a sentence somebody has to act on. */
+function labelOf(field: string): string {
+  const spaced = field.replace(/([A-Z])/g, " $1").toLowerCase().trim();
+  return spaced
+    .replace(/\bno\b/, "number")
+    .replace(/\bdt\b/, "date")
+    .replace(/\benq\b/, "enquiry")
+    .replace(/\bid\b/, "number");
+}
+
 const norm = (s: string): string => s.trim().toLowerCase().replace(/[._]/g, " ").replace(/\s+/g, " ");
 
-export function matchByName(headings: string[]): FieldMapping {
+export function matchByName(headings: string[], dataType: DataType = "DEAL"): FieldMapping {
+  const { synonyms } = vocabularyFor(dataType);
   const out: FieldMapping = {};
   const used = new Set<string>();
 
-  for (const [field, names] of Object.entries(SYNONYMS)) {
+  for (const [field, names] of Object.entries(synonyms)) {
     for (const heading of headings) {
       if (used.has(heading)) continue;
       const h = norm(heading);
@@ -94,7 +157,7 @@ export function matchByName(headings: string[]): FieldMapping {
     }
   }
 
-  for (const [field, names] of Object.entries(SYNONYMS)) {
+  for (const [field, names] of Object.entries(synonyms)) {
     if (out[field]) continue;
     for (const heading of headings) {
       if (used.has(heading)) continue;
@@ -136,6 +199,7 @@ const MAPPING_SYSTEM = [
 async function proposeWithModel(
   headings: string[],
   alreadyPlaced: FieldMapping,
+  dataType: DataType,
 ): Promise<{ mapping: FieldMapping; model: string | null }> {
   const key = process.env["GEMINI_API_KEY"];
   if (!key || process.env["INGEST_MAPPING_MODEL"] === "off") {
@@ -144,7 +208,7 @@ async function proposeWithModel(
 
   const takenColumns = new Set(Object.values(alreadyPlaced).map((m) => m.column));
   const open = headings.filter((h) => !takenColumns.has(h));
-  const wanted = DEAL_FIELDS.filter((f) => !alreadyPlaced[f.field as string]);
+  const wanted = vocabularyFor(dataType).fields.filter((f) => !alreadyPlaced[f.field]);
   if (open.length === 0 || wanted.length === 0) return { mapping: {}, model: null };
 
   const model = process.env["INGEST_MAPPING_MODEL"] || "gemini-flash-latest";
@@ -207,7 +271,7 @@ async function proposeWithModel(
      */
     const known = new Set(headings);
     const valid: FieldMapping = {};
-    const fields = new Set(DEAL_FIELDS.map((f) => f.field as string));
+    const fields = new Set(vocabularyFor(dataType).fields.map((f) => f.field));
     for (const [field, m] of Object.entries(parsed)) {
       if (!fields.has(field) || alreadyPlaced[field]) continue;
       if (!m || typeof m.column !== "string" || !known.has(m.column)) continue;
@@ -275,8 +339,12 @@ export async function mappingFor(input: {
     return { row: existing, wasKnown: existing.status === "CONFIRMED", usedModel: false };
   }
 
-  const byName = matchByName(input.headings);
-  const { mapping: byModel, model } = await proposeWithModel(input.headings, byName);
+  const byName = matchByName(input.headings, input.dataType);
+  const { mapping: byModel, model } = await proposeWithModel(
+    input.headings,
+    byName,
+    input.dataType,
+  );
 
   const [row] = await db
     .insert(ingestMappingsTable)
@@ -326,16 +394,24 @@ export async function rejectMapping(id: number, note: string): Promise<void> {
 }
 
 /** Which fields a mapping still cannot fill. What the confirmation screen leads with. */
-export function gapsIn(mapping: FieldMapping): string[] {
-  return DEAL_FIELDS.filter((f) => f.required && !mapping[f.field as string]).map(
-    (f) => f.field as string,
-  );
+export function gapsIn(mapping: FieldMapping, dataType: DataType = "DEAL"): string[] {
+  return vocabularyFor(dataType)
+    .fields.filter((f) => f.required && !mapping[f.field])
+    .map((f) => f.field);
 }
 
 // ── Applying ────────────────────────────────────────────────────────────────
 
 export interface Extraction {
-  records: Array<{ record: DealRecord; confidence: Record<string, number> }>;
+  /**
+   * Flat, and typed as loosely as the file it came from.
+   *
+   * This said `DealRecord` while deals were the only module a report could
+   * feed. The extractor now builds from whichever vocabulary it was given, so
+   * the caller is the one that knows what shape it asked for and the one that
+   * narrows — the same division `Source<T>` makes one level up.
+   */
+  records: Array<{ record: Record<string, unknown>; confidence: Record<string, number> }>;
   /** Rows that could not be read, with why. A silent skip is not a result. */
   rejected: string[];
 }
@@ -352,10 +428,21 @@ export interface Extraction {
 export function extract(
   table: { headings: string[]; rows: Array<Record<string, string>> },
   mapping: FieldMapping,
+  dataType: DataType = "DEAL",
 ): Extraction {
+  const { fields } = vocabularyFor(dataType);
   const records: Extraction["records"] = [];
   const rejected: string[] = [];
-  const typeOf = new Map(DEAL_FIELDS.map((f) => [f.field as string, f.type]));
+  const typeOf = new Map(fields.map((f) => [f.field, f.type]));
+  /*
+   * The key is the first required field, not `dealId`.
+   *
+   * Every module has exactly one thing that identifies a record and it is
+   * always the first entry in its vocabulary — the deal number, the enquiry
+   * number. Hard-coding `dealId` here was the last place the extractor knew
+   * what kind of thing it was reading.
+   */
+  const keyField = fields.find((f) => f.required)?.field ?? "dealId";
 
   for (const [n, row] of table.rows.entries()) {
     const record: Partial<DealRecord> = { raw: row };
@@ -371,8 +458,9 @@ export function extract(
       if (m.confidence < 1) confidence[field] = m.confidence;
     }
 
-    if (!record.dealId) {
-      rejected.push(`Row ${n + 2}: no deal number, so nothing to match it to.`);
+    const key = (record as Record<string, unknown>)[keyField];
+    if (!key) {
+      rejected.push(`Row ${n + 2}: no ${labelOf(keyField)}, so nothing to match it to.`);
       continue;
     }
 
@@ -380,53 +468,53 @@ export function extract(
      * A key alone does not make a record, and this is not a nicety.
      *
      * Every dealer export ends `Total,,,,,,,78 deals,,,` — and the word *Total*
-     * lands in the deal-number column. The first version of this checked only
-     * that a key was present, so the footer arrived in the mirror as a deal
-     * called **Total** with an ex-showroom price of 78: a phantom row on the
-     * worklist, in the queue, and in the count an owner reads.
+     * lands in the key column. The first version of this checked only that a
+     * key was present, so the footer arrived in the mirror as a deal called
+     * **Total** with an ex-showroom price of 78: a phantom row on the worklist,
+     * in the queue, and in the count an owner reads.
      *
      * The test is *the key plus at least two other fields*, which separates a
-     * deal from a footer without guessing at the word "Total" in whatever
-     * language or abbreviation this dealer's system uses. A real deal row
-     * carries a status, a customer and a model at the very least; a footer
-     * carries a label and a count.
+     * record from a footer without guessing at the word "Total" in whatever
+     * language or abbreviation this dealer's system uses. A real row carries a
+     * status, a customer and a model at the very least; a footer carries a
+     * label and a count.
      *
      * Counted and reported rather than dropped, because *300 rows, 299
      * accepted* is a healthy import and *300 rows, 40 accepted* is a mapping
      * problem, and only the count can tell them apart.
      */
     const filled = Object.keys(record).filter(
-      (k) => k !== "raw" && k !== "dealId" && (record as Record<string, unknown>)[k] != null,
+      (k) => k !== "raw" && k !== keyField && (record as Record<string, unknown>)[k] != null,
     );
     if (filled.length < 2) {
       rejected.push(
-        `Row ${n + 2}: "${record.dealId}" carries no other data — a total or subtotal line, not a deal.`,
+        `Row ${n + 2}: "${String(key)}" carries no other data — a total or subtotal line, not a record.`,
       );
       continue;
     }
 
-    records.push({
-      record: {
-        dealId: record.dealId,
-        status: record.status ?? "UNKNOWN",
-        bookingDate: record.bookingDate ?? null,
-        plannedDeliveryDate: record.plannedDeliveryDate ?? null,
-        actualDeliveryDate: record.actualDeliveryDate ?? null,
-        customerName: record.customerName ?? null,
-        customerMobile: record.customerMobile ?? null,
-        modelDescription: record.modelDescription ?? null,
-        chassisNo: record.chassisNo ?? null,
-        engineNo: record.engineNo ?? null,
-        exShowroomAmount: record.exShowroomAmount ?? null,
-        dmsPolicyNo: record.dmsPolicyNo ?? null,
-        dmsInsurerCode: record.dmsInsurerCode ?? null,
-        dmsRegNo: record.dmsRegNo ?? null,
-        invoiceNo: record.invoiceNo ?? null,
-        invoiceDate: record.invoiceDate ?? null,
-        raw: row,
-      },
-      confidence,
-    });
+    /*
+     * Built from the vocabulary rather than from a literal.
+     *
+     * This was the shape of a `DealRecord`, written out field by field, and it
+     * was the last thing in the extractor that knew what kind of record it was
+     * producing. Every field the module declares appears, absent ones as null,
+     * so a sync below can read a column without checking whether the report
+     * happened to carry it.
+     *
+     * A **required** field that the file did not fill becomes `UNKNOWN` rather
+     * than null, because the columns downstream are not nullable and *the
+     * export did not say* is a better answer than a crash — it shows up on the
+     * screen as a state nobody recognises, which is exactly what it is.
+     */
+    const out: Record<string, unknown> = { raw: row };
+    for (const f of fields) {
+      const v = (record as Record<string, unknown>)[f.field];
+      out[f.field] = v ?? (f.required ? "UNKNOWN" : null);
+    }
+    out[keyField] = key;
+
+    records.push({ record: out, confidence });
   }
 
   return { records, rejected };

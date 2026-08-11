@@ -104,7 +104,7 @@ export async function dropReport(input: {
   });
 
   const confirmed = found.row.status === "CONFIRMED";
-  const gaps = gapsIn(found.row.mapping);
+  const gaps = gapsIn(found.row.mapping, input.dataType);
 
   // Held, with everything a person needs to finish it, rather than a partial
   // import nobody asked for.
@@ -143,7 +143,7 @@ export async function dropReport(input: {
     };
   }
 
-  const { records, rejected } = extract(table, found.row.mapping);
+  const { records, rejected } = extract(table, found.row.mapping, input.dataType);
 
   const [batch] = await db
     .insert(ingestBatchesTable)
@@ -224,14 +224,17 @@ export async function releaseHeld(input: {
   if (held.length === 0) return [];
 
   const [confirmed] = await db
-    .select({ mapping: ingestMappingsTable.mapping })
+    // The data type comes off the mapping rather than the caller: a mapping
+    // is per (outlet, data type, shape), so it already knows what it is for,
+    // and asking the caller again is one more place the two could disagree.
+    .select({ mapping: ingestMappingsTable.mapping, dataType: ingestMappingsTable.dataType })
     .from(ingestMappingsTable)
     .where(eq(ingestMappingsTable.id, input.mappingId))
     .limit(1);
   if (!confirmed) return [];
 
   const table = parseTable(input.text);
-  const { records, rejected } = extract(table, confirmed.mapping);
+  const { records, rejected } = extract(table, confirmed.mapping, confirmed.dataType);
 
   const released: IngestBatchRow[] = [];
   for (const batch of held) {

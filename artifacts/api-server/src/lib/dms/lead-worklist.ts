@@ -28,9 +28,11 @@ import {
   showroomDmsAccountsTable,
 } from "@workspace/db";
 import { logger } from "../logger";
-import { dmsEmployees, dmsEnquiries, fetchEnquiry } from "./client";
+import { dmsEmployees } from "./client";
+import { enquirySourceFor } from "./ingest";
 import { toIsoDate } from "./hero-adapter";
 import type { DmsEnquiry } from "./types";
+import type { Listed } from "./ingest";
 
 /** The OEM's first-response mandate. Thirty minutes is the common figure. */
 function slaMinutes(): number {
@@ -146,7 +148,17 @@ async function syncDealerEnquiries(
       });
   }
 
-  const summaries = await dmsEnquiries(dealerCode);
+  /*
+   * The one line that made three paths possible, a second time.
+   *
+   * Everything below is written against `Source<DmsEnquiry>` and cannot tell
+   * the OEM's API from a register somebody exported this morning. A dealership
+   * nobody has configured resolves to `API` and behaves exactly as it did
+   * before — the property that made changing this file safe, and the same one
+   * `sync.ts` relies on for deals.
+   */
+  const source = await enquirySourceFor(showroomId, dealerCode);
+  const listed = await source.list();
 
   const existing = await db
     .select({
@@ -163,26 +175,34 @@ async function syncDealerEnquiries(
   let changed = 0;
   let unchanged = 0;
 
-  for (const summary of summaries) {
-    const summaryHash = hashOf(summary);
-    const prior = known.get(summary.enqId);
-
-    if (prior && prior.rawHash === summaryHash) {
+  /*
+   * Which ones to load in full.
+   *
+   * The listing carries a fingerprint of whatever the source could see cheaply,
+   * so a lead whose fingerprint has not moved needs no expensive load. On the
+   * API path that is one round trip instead of a hundred and forty; on the
+   * report path the file is already in hand and this costs nothing.
+   */
+  const toLoad: string[] = [];
+  for (const l of listed) {
+    const prior = known.get(l.key);
+    if (prior && prior.rawHash === l.fingerprint) {
       await db
         .update(dmsEnquiriesTable)
         .set({ lastSyncedAt: new Date(), disappearedAt: null })
-        .where(
-          and(eq(dmsEnquiriesTable.dealerCode, dealerCode), eq(dmsEnquiriesTable.enqId, summary.enqId)),
-        );
+        .where(and(eq(dmsEnquiriesTable.dealerCode, dealerCode), eq(dmsEnquiriesTable.enqId, l.key)));
       unchanged++;
       continue;
     }
+    toLoad.push(l.key);
+  }
 
-    const enquiry = await fetchEnquiry(summary.enqId);
-    if (!enquiry) {
-      logger.warn({ enqId: summary.enqId }, "DMS listed an enquiry it then could not return");
-      continue;
-    }
+  const fingerprintOf = new Map(listed.map((l: Listed) => [l.key, l.fingerprint]));
+
+  for (const sourced of await source.load(toLoad)) {
+    const enquiry = sourced.record;
+    const summaryHash = fingerprintOf.get(sourced.key) ?? hashOf(enquiry);
+    const prior = known.get(sourced.key);
 
     const projected = project(enquiry);
     const now = new Date();
@@ -221,27 +241,41 @@ async function syncDealerEnquiries(
     changed++;
   }
 
-  const seenIds = summaries.map((s) => s.enqId);
-  const gone = await db
-    .update(dmsEnquiriesTable)
-    .set({ disappearedAt: new Date() })
-    .where(
-      and(
-        eq(dmsEnquiriesTable.dealerCode, dealerCode),
-        isNull(dmsEnquiriesTable.disappearedAt),
-        ...(seenIds.length > 0 ? [notInArray(dmsEnquiriesTable.enqId, seenIds)] : []),
-      ),
-    )
-    .returning({ enqId: dmsEnquiriesTable.enqId });
+  /*
+   * Disappearance, and only where the source is entitled to claim it.
+   *
+   * An API lists the outlet's whole register every time, so a lead that stops
+   * appearing has genuinely gone. A report that covered one month says nothing
+   * about the other eleven — marking every lead outside the export as vanished
+   * because somebody dropped July's file is the mistake a path-blind sync makes
+   * unless it asks. Same rule as deals, and the same reason.
+   */
+  const seenIds = listed.map((l) => l.key);
+  const gone = source.listIsComplete
+    ? await db
+        .update(dmsEnquiriesTable)
+        .set({ disappearedAt: new Date() })
+        .where(
+          and(
+            eq(dmsEnquiriesTable.dealerCode, dealerCode),
+            isNull(dmsEnquiriesTable.disappearedAt),
+            ...(seenIds.length > 0 ? [notInArray(dmsEnquiriesTable.enqId, seenIds)] : []),
+          ),
+        )
+        .returning({ enqId: dmsEnquiriesTable.enqId })
+    : [];
 
-  if (seenIds.length === 0) {
+  // An empty *complete* listing is a fault, not an empty pipeline. An empty
+  // incomplete one is a dealership that has dropped no file yet, which is the
+  // ordinary state on the day they are onboarded and not worth a warning.
+  if (seenIds.length === 0 && source.listIsComplete) {
     logger.warn({ dealerCode }, "DMS returned zero enquiries — treating as a fault, not an empty pipeline");
   }
 
   const result: EnquirySyncResult = {
     showroomId,
     dealerCode,
-    seen: summaries.length,
+    seen: listed.length,
     added,
     changed,
     unchanged,

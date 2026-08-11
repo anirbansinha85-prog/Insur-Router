@@ -1346,7 +1346,8 @@ export const ListIngestSourcesResponse = zod.object({
   "path": zod.enum(['API', 'REPORT', 'DOCUMENT']).describe('API is a live integration. REPORT is a file the dealer exports from their own system and drops here. DOCUMENT is a scan, read one record at a time. Not a fallback chain — a dealership picks one per data type and it is theirs.\n'),
   "enabled": zod.boolean().describe('Off is a real state. A dealership part-way through onboarding has three of the seven on, and the four that are not must read as \"not connected\" rather than as \"nothing to show\".\n'),
   "lastIngestedAt": zod.string().nullish()
-}))
+})),
+  "reportable": zod.array(zod.string()).describe('Which data types a report can actually feed today. A picker that offers a path which does nothing is worse than a picker with two entries — the dealership drops the file, nothing happens, and the product has told them a lie with a dropdown.\n')
 })
 
 
@@ -1367,7 +1368,8 @@ export const SetIngestSourceResponse = zod.object({
   "path": zod.enum(['API', 'REPORT', 'DOCUMENT']).describe('API is a live integration. REPORT is a file the dealer exports from their own system and drops here. DOCUMENT is a scan, read one record at a time. Not a fallback chain — a dealership picks one per data type and it is theirs.\n'),
   "enabled": zod.boolean().describe('Off is a real state. A dealership part-way through onboarding has three of the seven on, and the four that are not must read as \"not connected\" rather than as \"nothing to show\".\n'),
   "lastIngestedAt": zod.string().nullish()
-}))
+})),
+  "reportable": zod.array(zod.string()).describe('Which data types a report can actually feed today. A picker that offers a path which does nothing is worse than a picker with two entries — the dealership drops the file, nothing happens, and the product has told them a lie with a dropdown.\n')
 })
 
 

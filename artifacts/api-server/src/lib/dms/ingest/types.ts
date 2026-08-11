@@ -166,3 +166,73 @@ export const DEAL_FIELDS: Array<{
   { field: "invoiceNo", what: "The tax invoice number.", type: "text" },
   { field: "invoiceDate", what: "The invoice date.", type: "date" },
 ];
+
+/**
+ * What a report may carry, per data type (OBJ-24 widened).
+ *
+ * `DEAL_FIELDS` was the only vocabulary for as long as deals were the only
+ * module a report could feed, and `mapping.ts` referred to it by name in six
+ * places. That is the whole of what made the report path deals-only: the parser,
+ * the batches, the provenance columns and the graduation were already
+ * data-type agnostic, and one constant was not.
+ *
+ * **The field names are the DMS's, not ours.** `enqDt`, not `enquiredAt`. Each
+ * sync already converts its own summary shape into mirror columns, and a report
+ * that produced *our* names would need a second converter that could disagree
+ * with the first. So a report source produces exactly what the client produces,
+ * and the sync below it cannot tell them apart — which is the same seam
+ * `Source<T>` is, one level down.
+ */
+export interface FieldSpec {
+  field: string;
+  what: string;
+  required?: boolean;
+  type: "text" | "date" | "amount";
+}
+
+/**
+ * Leads. The biggest worklist in the product and the one a dealership without
+ * an API loses most by not having: an enquiry nobody answered is invisible
+ * everywhere else.
+ */
+export const ENQUIRY_FIELDS: FieldSpec[] = [
+  { field: "enqId", what: "The enquiry or lead number. The dealer's own reference.", required: true, type: "text" },
+  { field: "stage", what: "Where the lead has got to: open, test ride done, lost, converted.", required: true, type: "text" },
+  { field: "enqDt", what: "When the enquiry came in.", type: "date" },
+  { field: "source", what: "Where the lead came from — walk-in, the OEM's portal, a referral.", type: "text" },
+  { field: "grade", what: "How warm the salesman graded it: hot, warm, cold.", type: "text" },
+  { field: "custName", what: "The customer's name.", type: "text" },
+  { field: "mobileNo", what: "The customer's mobile number.", type: "text" },
+  { field: "modelCodeInterest", what: "The model they asked about.", type: "text" },
+  { field: "assignedEmpCode", what: "The employee code of the salesman it sits with.", type: "text" },
+  /*
+   * The manufacturer's clock, and it is theirs.
+   *
+   * A call logged in DDMS does not stop it — the OEM measures this field in
+   * their own system — so a report that leaves it out leaves the dealership
+   * unable to see the one breach the OEM will bill them for.
+   */
+  { field: "firstContactAt", what: "When somebody first contacted them. The manufacturer measures its response clock on this.", type: "date" },
+  { field: "lastContactDt", what: "The most recent contact.", type: "date" },
+  { field: "nextFollowUpDt", what: "When the salesman said they would call back.", type: "date" },
+  { field: "lostReasonDesc", what: "Why the lead was lost, where it was.", type: "text" },
+  { field: "convertedDealId", what: "The deal number, once the lead became a sale.", type: "text" },
+];
+
+export const FIELDS_FOR: Partial<Record<DataType, FieldSpec[]>> = {
+  DEAL: DEAL_FIELDS as unknown as FieldSpec[],
+  ENQUIRY: ENQUIRY_FIELDS,
+};
+
+/**
+ * Which data types a dealership may actually feed by report today.
+ *
+ * Derived from the vocabularies rather than written beside them, so a module
+ * cannot be offered on a screen before it can be read. **A picker that lists a
+ * path which does nothing is worse than a picker with two entries** — the
+ * dealership drops the file, nothing happens, and the product has told them a
+ * lie with a dropdown.
+ */
+export function reportableTypes(): DataType[] {
+  return (Object.keys(FIELDS_FOR) as DataType[]).filter((t) => (FIELDS_FOR[t]?.length ?? 0) > 0);
+}
