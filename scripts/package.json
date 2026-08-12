@@ -24,7 +24,8 @@
     "overview": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-overview.ts",
     "channels": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-channels.ts",
     "trace": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-trace.ts",
-    "ledger": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-ledger.ts"
+    "ledger": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-ledger.ts",
+    "agents": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-agents.ts"
   },
   "dependencies": {
     "@workspace/db": "workspace:*",

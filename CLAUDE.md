@@ -1272,6 +1272,67 @@ refusal.
 
 `pnpm run verify:trace`.
 
+## A second agent
+
+`lib/dms/stock-agent.ts`, one principal and eight grants (OBJ-29, R-95). The
+whole point of it is how little it cost.
+
+> **A second agent is a principal and a set of grants, and `agent.ts` does not
+> change.**
+
+`agent.ts` did not change. Not a line. The new agent is a principal in
+`permissions.ts`, a list beside it, and its own file — which calls the same
+`applyAction` a person's button calls, inherits the same refusals, stands on the
+same ladder and appears in the same trace.
+
+**It does one thing.** When a customer is waiting on a part that is out of stock
+here and sitting on a shelf at another branch, it proposes requesting the
+transfer. That is the finding the spares module exists for and no branch system
+can produce it, and it is **DDMS's own routing decision** rather than a claim
+about anybody — which is why the grant was available to give.
+
+**Why a second agent rather than a wider first one.** `part.request_transfer`
+and `vehicle.propose_transfer` were withheld from `AGENT` with the reason *"not
+the band this agent is pointed at"*. Granting them to `AGENT` would have been
+the smaller diff and the worse design: the ladder would then judge handing out
+enquiries and committing a part to a van on **one** count, so a dealership that
+trusts the first and distrusts the second has no way to say so. Two principals,
+two standings, two independent rungs.
+
+**The ladder took a principal and defaulted it.** `ceilingFor(action,
+principal = "AGENT")` — so `PART_REQUEST_TRANSFER` is automatic for the stock
+agent and capped at pre-filled for the first, both answers out of the same
+permission table, and four existing call sites needed no edit.
+
+**`ANY_AGENT_REFUSAL` is the shared half of `WITHHELD`.** Lifted rather than
+copied, because the copy is the failure: two agents refused the same act for the
+same reason must get the *same words*, or they drift and a year later the
+product gives two explanations for one rule. Everything in it is about **what
+the act asserts**, which is why it does not depend on who is asking.
+
+> **The verifier caught this being a near-identical rewrite.** The first version
+> of `WITHHELD.STOCK_AGENT` had thirteen hand-written sentences that said what
+> the first agent's said in slightly fewer words — which is exactly the drift
+> R-95 was trying to prevent, written by the person implementing R-95.
+> `verify:agents` §3 compares the two agents' sentences and failed on eight of
+> them. The fix was to share the strings, not to loosen the check.
+
+> **And then the exemption went stale.** `VEHICLE_MARK_OFFERED` was on the
+> check's expected-to-differ list; once the reasons were genuinely shared it
+> stopped differing, and leaving it there would have been an exemption quietly
+> covering nothing. A stale exemption is how a check stops checking.
+
+The runtime is deliberately **not** shared with `agent.ts`. The two differ in
+what they read, what they propose, and what a proposal even is — one picks a
+person, the other picks a branch — and the common part is four lines of loop.
+Factoring that out produces an abstraction widened by every third agent with a
+slightly different shape, which is how a two-agent runtime becomes a workflow
+engine nobody can predict.
+
+`pnpm run verify:agents` — twenty checks, and sections 1 to 4 need no database,
+because a check that needs one to answer *may this principal do that* has
+quietly moved the answer somewhere else.
+
 ## Autonomy is earned, not set
 
 `lib/dms/precedent.ts`, `lib/dms/autonomy.ts`, `lib/dms/proposals.ts` and two

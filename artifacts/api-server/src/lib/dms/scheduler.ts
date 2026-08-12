@@ -30,6 +30,7 @@ import { recordStandDown, shouldStandDown, step, withRun } from "./trace";
 import { runRules } from "./rules";
 import { advanceJourneys } from "./journeys";
 import { runAgentForShowroom } from "./agent";
+import { runStockAgentForShowroom } from "./stock-agent";
 import { standingFor, AUTONOMY_KEYS } from "./autonomy";
 import { expireStale, resolveProposals } from "./proposals";
 import { buildQueue } from "./queue";
@@ -395,6 +396,48 @@ async function runAgentPass(
       detail:
         `Considered ${queue.items.length} queue items across ${visible.length} outlet(s); ` +
         `offered ${proposed}, acted on ${assigned}, refused ${refused.length}.`,
+    });
+  });
+
+  /*
+   * The second agent, in its own run (OBJ-29).
+   *
+   * Its own standing, because the ceiling is a property of the principal and a
+   * dealership that has been accepting the first agent's assignments has earned
+   * this one nothing. Its own trace, because *what did the stock agent do at
+   * half past two* is a different question from what the other one did, and a
+   * single run covering both would answer neither.
+   *
+   * Same stand-down decision above governs both. A dealership at its daily
+   * ceiling is at its ceiling whichever agent would have spent the next paisa.
+   */
+  const stockStanding = await standingFor({
+    ownerId,
+    showroomIds: visible,
+    policy,
+    principal: "STOCK_AGENT",
+  });
+
+  await withRun({ ownerId, trigger: "SCHEDULER", kind: "stock-moves", actor: "STOCK_AGENT" }, async () => {
+    let offered = 0;
+    let acted = 0;
+    let considered = 0;
+    for (const showroomId of visible) {
+      const r = await runStockAgentForShowroom(
+        ownerId,
+        showroomId,
+        queue.items,
+        policy,
+        stockStanding,
+      );
+      considered += r.considered;
+      offered += r.proposed;
+      acted += r.acted;
+      refused.push(...r.refused);
+    }
+    await step({
+      kind: "READ",
+      detail: `Looked at ${considered} part(s) a customer is waiting on; offered ${offered}, acted on ${acted}.`,
     });
   });
 

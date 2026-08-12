@@ -79,7 +79,18 @@ export type DealershipRole =
  * whole of OBJ-21. When a second agent arrives (OBJ-29) it is another entry
  * here and a set of grants, and nothing else changes.
  */
-export type Principal = DealershipRole | "AGENT";
+export type Principal =
+  | DealershipRole
+  | "AGENT"
+  /**
+   * The second agent (OBJ-29), and the whole point is how little it cost.
+   *
+   * R-95 claimed **a second agent is a principal and a set of grants and
+   * nothing else changes.** This line and `STOCK_AGENT_GRANTS` are the entire
+   * diff to the permission model; every refusal below came with it rather than
+   * being re-earned.
+   */
+  | "STOCK_AGENT";
 
 // ── The vocabulary ──────────────────────────────────────────────────────────
 
@@ -376,6 +387,40 @@ const AGENT_GRANTS: Permission[] = [
 ];
 
 /**
+ * The second agent, and the whole point of it is how little it cost (OBJ-29).
+ *
+ * R-95's claim was that **a second agent is a principal and a set of grants and
+ * nothing else changes.** This is that claim being cashed, and the list below is
+ * the entire diff to the permission model.
+ *
+ * It holds the two permissions withheld from `AGENT` with the reason *"not the
+ * band this agent is pointed at"* — moving the company's own stock between the
+ * company's own outlets. Both are **DDMS's own routing decision** and not a
+ * claim about a person: a transfer request is this product saying *the part
+ * your customer is waiting for is on a shelf in Rohini*, which is the finding
+ * the spares module exists for and which no branch system can produce.
+ *
+ * A second agent rather than a wider first one, deliberately. Widening `AGENT`
+ * would have meant the thing that hands out enquiries could also commit a part
+ * to a van, and the ladder would then judge both on one dealership's
+ * willingness to accept either — so a showroom that loves the reassignments and
+ * distrusts the transfers could not say so.
+ *
+ * `staff.view` is absent. This agent routes stock, not people, and does not
+ * need to know who still works here.
+ */
+const STOCK_AGENT_GRANTS: Permission[] = [
+  "part.view",
+  "part.request_transfer",
+  "vehicle.view",
+  "vehicle.propose_transfer",
+  "activity.view",
+  "activity.write",
+  "task.view",
+  "task.create",
+];
+
+/**
  * Why a principal does not hold a permission, in the dealership's words.
  *
  * Keyed by principal, then permission. The ten agent entries came verbatim from
@@ -410,38 +455,64 @@ const MODULELESS_REFUSAL: Partial<Record<Permission, string>> = {
     "Reading the staff master is for whoever hands work out.",
 };
 
+/**
+ * The refusals that belong to **any** agent, not to a particular one (OBJ-29).
+ *
+ * Lifted out of `WITHHELD.AGENT` when the second agent arrived, and lifted
+ * rather than copied because the copy is the failure. Two agents refused the
+ * same act for the same reason must get the *same words*: the moment somebody
+ * writes a second set, the two drift, and a year later the product gives two
+ * different explanations for one rule.
+ *
+ * `verify:agents` §3 compares the sentences the two agents get and fails on any
+ * difference it has not been told to expect — which is what caught this being a
+ * near-identical rewrite the first time it was written.
+ *
+ * Every line here is about **what the act asserts**, which is why it does not
+ * depend on which agent is asking. *A model cannot make a phone call* does not
+ * become less true for a different model.
+ */
+const ANY_AGENT_REFUSAL: Partial<Record<Permission, string>> = {
+  "enquiry.log_contact": "Asserts somebody rang the customer. The agent cannot ring anybody, and the mark removes the row from the calls-to-make count.",
+  "job_card.mark_informed": "Asserts the customer was told their vehicle is ready. Same objection, and the customer is the one who finds out it was false.",
+  "registration.mark_notified": "Asserts the customer was told their certificate has arrived. A file marked notified stops being chased.",
+  "registration.log_chase": "Asserts somebody rang the RTO. A chase that never happened makes a stalled file look handled for another week.",
+  "receivable.log_chase": "Asserts somebody asked a party for money. The dealership's cash position is not a place to record work that did not occur.",
+  "receivable.mark_disputed": "A judgement about whether a customer's account is in breach. R-49 reserves exactly that from a model, whatever it is confident of.",
+  "vehicle.mark_offered": "Asserts a salesman showed the unit to a named customer. It is also the field whose absence means nobody has asked for this bike.",
+  "part.raise_reorder": "Asserts a purchase order was raised in the dealer's own system, which DDMS never writes to (R-5, R-40).",
+  "policy.set": "The dealership's own numbers are the dealership's. An agent that could widen its own thresholds is an agent with no ceiling.",
+  "activity.retract": "Withdrawing a note is a judgement about whether something was true, and the note is usually somebody else's. The agent may add to a timeline and may not edit one.",
+  "task.complete": "Closing a task asserts the work was done, which is the one thing only the person who did it knows. The agent may raise a task and may not tick it off.",
+  "invoice.generate": "Puts a priced document in a customer's hands, and on some dealerships spends a number from a sequential tax series that cannot be un-spent. What it costs and what discount was given are commercial decisions belonging to whoever runs the business. The agent may notice a deal is ready and say so; the figure and the button are a person's.",
+  "pricelist.set": "Deciding what a model costs is the same decision as the discount, made once for every sale instead of one. An agent that could write a price list would be setting the prices it then invoices at.",
+};
+
 const WITHHELD: Partial<Record<Principal, Partial<Record<Permission, string>>>> = {
+  /**
+   * The second agent's refusals (OBJ-29).
+   *
+   * Thirteen of the fifteen are `ANY_AGENT_REFUSAL`, spread in unchanged. The
+   * two written here are the interesting ones: `enquiry.reassign` and
+   * `registration.assign_agent` are refused **not** because they assert
+   * anything false, but because they belong to the other agent. Two agents that
+   * can do each other's work are one agent with a confusing name — and the
+   * ladder would then judge both on one dealership's willingness to accept
+   * either, so a showroom that trusts one and distrusts the other could not say
+   * so.
+   */
+  STOCK_AGENT: {
+    ...ANY_AGENT_REFUSAL,
+    "enquiry.reassign":
+      "Handing work to a person is the other agent's job. Two agents that can do each other's work are one agent with a confusing name, and the ladder would then judge both on one dealership's willingness to accept either.",
+    "registration.assign_agent": "Same. This agent moves stock; it does not route people.",
+  },
   AGENT: {
-    "enquiry.log_contact":
-      "Asserts somebody rang the customer. The agent cannot ring anybody, and the mark removes the row from the calls-to-make count.",
-    "job_card.mark_informed":
-      "Asserts the customer was told their vehicle is ready. Same objection, and the customer is the one who finds out it was false.",
-    "registration.mark_notified":
-      "Asserts the customer was told their certificate has arrived. A file marked notified stops being chased.",
-    "registration.log_chase":
-      "Asserts somebody rang the RTO. A chase that never happened makes a stalled file look handled for another week.",
-    "receivable.log_chase":
-      "Asserts somebody asked a party for money. The dealership's cash position is not a place to record work that did not occur.",
-    "vehicle.mark_offered":
-      "Asserts a salesman showed the unit to a named customer. It is also the field whose absence means nobody has asked for this bike.",
-    "receivable.mark_disputed":
-      "A judgement about whether a customer's account is in breach. R-49 reserves exactly that from a model, whatever it is confident of.",
-    "part.raise_reorder":
-      "Asserts a purchase order was raised in the dealer's own system, which DDMS never writes to (R-5, R-40).",
+    ...ANY_AGENT_REFUSAL,
     "part.request_transfer":
       "Commits stock to move between outlets. A proposal rather than a claim, but the consequence is physical and it is not the band this agent is pointed at.",
     "vehicle.propose_transfer":
       "Same. Honest as a proposal, and held back until the two assignments have run for a while in a real dealership.",
-    "policy.set":
-      "The dealership's own numbers are the dealership's. An agent that could widen its own thresholds is an agent with no ceiling.",
-    "activity.retract":
-      "Withdrawing a note is a judgement about whether something was true, and the note is usually somebody else's. The agent may add to a timeline and may not edit one.",
-    "task.complete":
-      "Closing a task asserts the work was done, which is the one thing only the person who did it knows. The agent may raise a task and may not tick it off.",
-    "invoice.generate":
-      "Puts a priced document in a customer's hands, and on some dealerships spends a number from a sequential tax series that cannot be un-spent. What it costs and what discount was given are commercial decisions belonging to whoever runs the business. The agent may notice a deal is ready and say so; the figure and the button are a person's.",
-    "pricelist.set":
-      "Deciding what a model costs is the same decision as the discount, made once for every sale instead of one. An agent that could write a price list would be setting the prices it then invoices at.",
   },
 };
 
@@ -449,6 +520,7 @@ const WITHHELD: Partial<Record<Principal, Partial<Record<Permission, string>>>> 
 
 function grantsFor(principal: Principal): Set<Permission> {
   if (principal === "AGENT") return new Set(AGENT_GRANTS);
+  if (principal === "STOCK_AGENT") return new Set(STOCK_AGENT_GRANTS);
 
   const role = principal as DealershipRole;
   const modules = MODULES_BY_ROLE[role] ?? [];
@@ -506,6 +578,9 @@ export function whyNot(principal: string, permission: Permission): string {
 
   if (principal === "AGENT") {
     return `The agent does not hold ${permission}. Its whole set is ${AGENT_GRANTS.join(", ")}.`;
+  }
+  if (principal === "STOCK_AGENT") {
+    return `The stock agent does not hold ${permission}. Its whole set is ${STOCK_AGENT_GRANTS.join(", ")}.`;
   }
 
   const role = principal as DealershipRole;

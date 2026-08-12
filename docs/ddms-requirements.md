@@ -1853,7 +1853,7 @@ and the one we lack.
 | 26 | ~~**Autonomy: the ladder and graduation**~~ ✅ | recall only | 21, 23 | needs journeys running long enough to have history to cite. Absorbs OBJ-19 |
 | 27 | ~~**dm-concierge — messages out, replies in**~~ ✅ | no | 22 | the Outbox has no transport at all. Inbound is the larger half: a reply is a fact the DMS will never hold |
 | 28 | ~~**The trace and the stand-down**~~ ✅ | no | 23, 26 | you cannot supervise what you cannot watch, and cost belongs here |
-| 29 | **More agents** | yes | all | last, and only once there is a model that admits new principals, a ladder to place them on, records they may write, and a trace to watch them in |
+| 29 | ~~**More agents**~~ ✅ | yes | all | last, and only once there is a model that admits new principals, a ladder to place them on, records they may write, and a trace to watch them in |
 
 *Objectives 30 to 33 are in section 3d; 34 and 35 in section 3e. They are
 numbered in one sequence and planned in three, which is what the reconciliation
@@ -2688,9 +2688,9 @@ products, the database enforces the boundary rather than trusting the code to,
 and since OBJ-8 the server holds no credential that could bypass it — it refuses
 to start with one. What is left is not a safety question any more.
 
-**Twelve verifiers, and each states a claim it could fail.** Permissions,
-records, agent, journey, ingest, invoice, autonomy, overview, channels, trace,
-ledger and `typecheck`.
+**Thirteen verifiers, and each states a claim it could fail.** Permissions,
+records, agent, agents, journey, ingest, invoice, autonomy, overview, channels,
+trace, ledger and `typecheck`.
 The rule they are held to was learnt the expensive way in OBJ-30: *a verifier
 that can fail for a reason it does not name will one day pass for a reason it
 does not name.*
@@ -3389,4 +3389,99 @@ nothing else, asserted by `verify:ledger` §8. An entry appearing in a
 dealership's accounts with nobody signed in is not a thing this product does.
 
 **No edit control on the screen, and there will not be one.**
+
+### What OBJ-29 turned out to be
+
+Built on 12 August, last as planned, and the interesting thing about it is the
+size. R-95 made a prediction eight objectives ago — *a second agent is a
+principal and a set of grants, and `agent.ts` does not change* — and this is
+that prediction being tested rather than restated.
+
+**`agent.ts` did not change. Not a line.** The second agent is one entry in the
+`Principal` union, eight grants beside it, and its own file.
+
+#### What it does, and why that act was available
+
+When a customer is waiting on a part that is out of stock at their branch and
+sitting on a shelf at another, it proposes requesting the transfer. That is the
+finding the spares module exists for — a DMS keeps the parts ledger against a
+dealer code, so an owner with three outlets gets three ledgers and no way to ask
+the question.
+
+It was available because it is **DDMS's own routing decision** and not a claim
+about a person. Every one of the eight registry actions closed to the first
+agent is closed because it asserts somebody rang, chased or showed something;
+requesting a transfer asserts only that this product asked.
+
+#### Why a second agent rather than a wider first one
+
+`part.request_transfer` and `vehicle.propose_transfer` were withheld from
+`AGENT` with the reason *"not the band this agent is pointed at"* — an honest
+proposal held back until the assignments had run for a while. Moving them into
+`AGENT_GRANTS` would have been a two-line diff and the wrong answer.
+
+**The ladder is why.** One principal means one standing per pattern, so handing
+out enquiries and committing a part to a van would be judged on the dealership's
+willingness to accept *either*. A showroom that loves the reassignments and
+distrusts the transfers would have had no way to say so — and the whole argument
+for a ladder over a dial is that the dealership's actual behaviour decides, per
+pattern, rather than somebody's guess on the first afternoon.
+
+Two principals, two sets of patterns, two independent rungs. One can run
+unattended while the other stays at *pre-filled* for ever.
+
+#### What it cost, exactly
+
+- One line in the `Principal` union.
+- Eight grants in `STOCK_AGENT_GRANTS`.
+- Two hand-written refusals; the other thirteen inherited.
+- One optional parameter on `ceilingFor`, defaulted, so four call sites were
+  untouched.
+- One optional field on `standingFor`'s input, same reason.
+- One new file for the agent itself, and one for its verifier.
+
+**Nothing was re-earned.** The refusals it gets are the sentences already
+written for the first agent, because the objection was never about *which*
+agent — it was about what the act asserts, and *a model cannot make a phone
+call* does not become less true for a different model.
+
+#### The finding, and it is a good one
+
+> **The verifier caught the author of R-95 violating R-95.**
+
+The first version of `WITHHELD.STOCK_AGENT` had thirteen hand-written sentences
+saying what the first agent's already said, in slightly fewer words. That is
+precisely the drift R-95 exists to prevent, committed by the person implementing
+R-95, in the same hour.
+
+`verify:agents` §3 compares the two agents' sentences for every act they are
+both refused and failed on eight of them. **The fix was to share the strings,
+not to loosen the check** — `ANY_AGENT_REFUSAL` is now spread into both maps,
+and the sentences cannot diverge because there is one of each.
+
+> **And then the exemption went stale.** `VEHICLE_MARK_OFFERED` sat on the
+> check's expected-to-differ list. Once the reasons were genuinely shared it
+> stopped differing, and leaving it there would have been an exemption covering
+> nothing. Removed, which makes the check stricter than it was written.
+
+#### What is deliberately not shared
+
+The two runtimes. They differ in what they read, what they propose, and what a
+proposal *is* — one picks a person, the other picks a branch — and the common
+part is four lines of loop. Factoring that out produces an abstraction that has
+to be widened every time a third agent has a slightly different shape, which is
+how a two-agent runtime becomes a workflow engine nobody can predict. R-52's
+failure mode, one level up.
+
+What **is** shared is everything that matters: one door in `applyAction`, one
+permission table, one ladder function, one proposal ledger, one trace.
+
+#### What is granted and unused
+
+`vehicle.propose_transfer`. The queue does not yet carry which outlet wants a
+standing unit in a form the suggestion can read off, and re-deriving it here
+would be a second answer to a question the inventory classifier already answers.
+The grant is honest about what the agent *may* do; the gap is a queue field
+rather than a permission, and it is written down here so it is not rediscovered
+as a bug.
 

@@ -62,7 +62,7 @@ import {
   autonomyConsentsTable,
   type AutonomyConsentRow,
 } from "@workspace/db";
-import { may, whyNot, PERMISSION_FOR_ACTION, type RegistryActionId } from "./permissions";
+import { may, whyNot, type Principal, PERMISSION_FOR_ACTION, type RegistryActionId } from "./permissions";
 import type { ResolvedPolicy } from "./policy";
 import { precedentFor, precedentSentence, readPatternKey, type Precedent } from "./precedent";
 
@@ -143,7 +143,22 @@ export interface PatternStanding {
  * is `whyNot()`'s — already written, already reviewed, and mostly sentences
  * that do not lose force with time.
  */
-export function ceilingFor(action: string): { ceiling: Rung; reason: string | null } {
+export function ceilingFor(
+  action: string,
+  /**
+   * Which agent is asking (OBJ-29).
+   *
+   * The ceiling is a property of *this principal and this action*, not of the
+   * action alone. `PART_REQUEST_TRANSFER` is automatic for the stock agent and
+   * capped at pre-filled for the first one, and both answers come out of the
+   * same permission table — so the ladder cannot drift from the grants, and a
+   * second agent needed no second ladder.
+   *
+   * Defaulted, because every existing caller means the assignment agent and
+   * changing four call sites to say so would have been noise.
+   */
+  principal: Principal = "AGENT",
+): { ceiling: Rung; reason: string | null } {
   const permission = PERMISSION_FOR_ACTION[action as RegistryActionId];
   /*
    * Not a registry action at all.
@@ -164,8 +179,8 @@ export function ceilingFor(action: string): { ceiling: Rung; reason: string | nu
       reason: "There is no control for this, so there is nothing to fill in and nothing to do on its own.",
     };
   }
-  if (may("AGENT", permission)) return { ceiling: "AUTOMATIC", reason: null };
-  return { ceiling: "PREFILLED", reason: whyNot("AGENT", permission) };
+  if (may(principal, permission)) return { ceiling: "AUTOMATIC", reason: null };
+  return { ceiling: "PREFILLED", reason: whyNot(principal, permission) };
 }
 
 function lower(a: Rung, b: Rung): Rung {
@@ -242,6 +257,16 @@ export async function standingFor(input: {
   policy: ResolvedPolicy;
   /** Employee code → name, for the sentence. From `listStaff`, already loaded. */
   label?: (value: string) => string | null;
+  /**
+   * Which agent this standing is about (OBJ-29).
+   *
+   * The ceiling is a property of the principal, so two agents get two
+   * standings over the same decision log — and a dealership that has been
+   * accepting the first agent's assignments for a month has earned the second
+   * one nothing. That separation is the reason there are two principals rather
+   * than one wider set of grants.
+   */
+  principal?: Principal;
 }): Promise<Map<string, PatternStanding>> {
   const out = new Map<string, PatternStanding>();
   if (input.showroomIds.length === 0) return out;
@@ -333,7 +358,7 @@ export async function standingFor(input: {
       overrideCeiling,
     });
 
-    const { ceiling, reason } = ceilingFor(parts.action);
+    const { ceiling, reason } = ceilingFor(parts.action, input.principal ?? "AGENT");
     const consent = consentBy.get(key) ?? null;
 
     // Consent raises; evidence and the floor both cap. All three, in that order.

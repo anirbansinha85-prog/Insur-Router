@@ -24,6 +24,7 @@
     "verify:channels": "pnpm --filter @workspace/scripts run channels",
     "verify:trace": "pnpm --filter @workspace/scripts run trace",
     "verify:ledger": "pnpm --filter @workspace/scripts run ledger",
+    "verify:agents": "pnpm --filter @workspace/scripts run agents",
     "db:probe": "pnpm --filter @workspace/scripts run probe",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
