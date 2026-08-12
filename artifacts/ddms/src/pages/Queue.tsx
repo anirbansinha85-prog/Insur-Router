@@ -354,6 +354,9 @@ export default function Queue() {
                 be the product having an opinion it has not earned — precedent
                 informs and never decides (R-69) — and separating them is what
                 lets somebody overrule either one on the evidence. */}
+            {/* Gated on the sentence rather than on `learned`, because a rung
+                with a prefill and no settled habit has nothing to say here —
+                the prefill speaks for itself on the picker below. */}
             {current.learned?.sentence && (
               <div className="border border-sky-200 bg-sky-50/50 rounded-md px-3 py-2">
                 <div className="text-[10px] font-semibold uppercase tracking-wider text-sky-700 flex items-center gap-1">
@@ -423,6 +426,14 @@ export default function Queue() {
                   // because it is not. There is nothing to undo here.
                   currentEmpCode={null}
                   placeholder="Hand it to…"
+                  // Rung 2. The picker arrives on the proposed name and grows a
+                  // button; nothing is assigned until somebody presses it.
+                  prefill={current.learned?.prefill ?? null}
+                  prefillNote={
+                    current.learned?.prefill
+                      ? "Already selected by the agent. Change it or press Assign."
+                      : null
+                  }
                 />
               )}
 

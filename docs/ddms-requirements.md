@@ -86,15 +86,15 @@ refused, are in section 3b.*
 | # | Requirement | Status |
 |---|---|---|
 | R-51 | **A change of derived state is an event, and events are recorded.** Not a field diff — `classify()`'s answer moving from one state to another. A file that crossed into `RC_IN_DRAWER` at 3am must be knowable without anybody having opened a screen | ✅ |
-| R-52 | ✅ **Automation is one ordered list, it lives in code, and it is capped.** No rule builder, no per-dealership flows, and a stated ceiling on how many rules may exist. The failure mode being designed against is documented: orgs reach eighty automations on one object, page saves take eight seconds, and nobody can predict what a save will do | ○ |
+| R-52 | **Automation is one ordered list, it lives in code, and it is capped.** No rule builder, no per-dealership flows, and a stated ceiling on how many rules may exist. The failure mode being designed against is documented: orgs reach eighty automations on one object, page saves take eight seconds, and nobody can predict what a save will do | ✅ |
 | R-53 | **A dealership has people, and scope only ever narrows.** Roles inside an owner — advisor, RTO agent, accounts, manager — expressed as an *additional* predicate on top of the owner's, never an alternative one. A bug in the role layer must be able to hide rows and must not be able to reveal them | ✅ |
 | R-54 | **Work is routed by role and capacity, and never becomes unroutable.** Who can do it, who has room, and who is actually in today. When nothing matches, it degrades to a named queue rather than disappearing | ✅ the picker offers only staff still here, each with what they carry; unroutable work lands in the second band rather than vanishing |
 | R-55 | **One queue, worked one at a time.** Seven screens each holding a list is a reporting product. The capacity thesis needs a single ordered queue that can be worked start to finish without returning to a list | ✅ |
-| R-56 | ✅ *(the gate half; no rule writes a decision field yet, and OBJ-16 says why)* **Automation may write a decision field. Only the gate lets anything leave.** An automated mark is internal, reversible and logged. Anything outbound still passes `authoriseSend()`, unchanged — the line drawn in R-48 does not move because the caller stopped being a person | ○ |
-| R-57 | ✅ *(and it withdraws the draft it already raised)* **A chase stops when its goal state is reached.** The exit condition is a `classify()` state, not a reply or a click. A cadence that cannot stop itself is the mechanism by which automation becomes something a dealership apologises for | ○ |
-| R-58 | ✅ *nine of them, moved out of five classifiers* **Thresholds are dealer policy, not product logic.** Credit periods, ageing buckets, chase cadence, what counts as the RTO having gone quiet — per owner, stored, and changes to them audited. The rules stay in code; the numbers belong to the dealership | ○ |
+| R-56 | **Automation may write a decision field. Only the gate lets anything leave.** An automated mark is internal, reversible and logged. Anything outbound still passes `authoriseSend()`, unchanged — the line drawn in R-48 does not move because the caller stopped being a person | ✅ *(the gate half; no rule writes a decision field yet, and OBJ-16 says why)* |
+| R-57 | **A chase stops when its goal state is reached.** The exit condition is a `classify()` state, not a reply or a click. A cadence that cannot stop itself is the mechanism by which automation becomes something a dealership apologises for | ✅ *(and it withdraws the draft it already raised)* |
+| R-58 | **Thresholds are dealer policy, not product logic.** Credit periods, ageing buckets, chase cadence, what counts as the RTO having gone quiet — per owner, stored, and changes to them audited. The rules stay in code; the numbers belong to the dealership | ✅ *nine of them, moved out of five classifiers* |
 | R-59 | **The agent invokes the same action registry a person does.** One endpoint, one set of refusals, one decision log. A parallel agent-only path would have to re-earn every refusal and would eventually fail to | ✅ |
-| R-60 | ✅ **Every automated act is attributable and reversible.** `decision_log.userId` null reads as *the system did this*, never as *we lost track*. Anything a rule set, a person can unset | ○ |
+| R-60 | **Every automated act is attributable and reversible.** `decision_log.userId` null reads as *the system did this*, never as *we lost track*. Anything a rule set, a person can unset | ✅ |
 | R-61 | **A dealership's staff get their own logins, and a login is the dealership's own employee record.** *Locked 4 August.* A user carries an `empCode`, and that code is what already sits on the enquiries, registration files and job cards they are responsible for. Without that join, *my work* has no referent and the queue is only a differently sorted list | ✅ |
 | R-62 | **The mirror may revoke access. It may never grant it.** An owner creates a login and links it to an employee; the DMS saying that person has left closes it. Never the reverse — a name appearing in the staff master must not become a login. And the honest limit travels with it: revocation is only as fresh as the last sync | ✅ at sign-in, on every request, and in `app.session_user_id()` so it holds at the database |
 | R-63 | **See the outlet, act on what is yours or unowned.** A nine-person dealership covers for each other, so hiding a colleague's leads would be wrong and would hide the orphaned-work finding R-19 exists for. Visibility is the outlet; the write is yours, or nobody's | ✅ SELECT owner-scoped, writes narrowed |
@@ -107,13 +107,13 @@ at what this dealership actually did last time.*
 
 | # | Requirement | Status |
 |---|---|---|
-| R-65 | ✅ **Priority is dealer policy, not product logic.** The severity table decides what a short-staffed dealership does first, and it is currently one owner's judgement written by us into a file. It becomes per-owner data with the product's table as the default, editable by the owner or a showroom manager, with what changed and who changed it in the decision log. Same class as R-58: a bounded table of numbers, **not** a rule builder | ○ |
-| R-66 | **Memory is what people here actually did, and nothing else.** Only rows the decision log attributes to a *person* count as precedent. A mark the system made is excluded on purpose: an agent that re-reads its own output as evidence turns one early mistake into a settled belief, and the loop is invisible from inside. `decision_log.userId` already distinguishes the two, which is the whole reason R-60 insisted null means *the system did this* | ● |
-| R-67 | **Nothing is stored as memory that was not already stored as a fact.** Precedent is derived on read from `decision_log` and `record_events` — both append-only, both writable only through `applyAction`. No summarised memory, no free text, no ingestion surface. What cannot be written cannot be poisoned, and the commonest poisoning payload in the literature is a plausible-looking *preference* | ● |
-| R-68 | **Precedent carries its date and its count, or it is not shown.** "You did this 5 times of the last 6, most recently on 28 July" is a fact somebody can weigh. "You usually do this" is a claim with no way to tell a settled habit from something that stopped in March. Stale-but-true is the failure mode, and a date is the whole of the fix | ● |
-| R-69 | **Precedent informs a person or a default. It never authorises and never acts.** R-49 does not bend for memory: an agent that has seen a pattern still may not decide whether an action is permitted or a record in breach. What it may do is say what happened last time, next to the button — and propose a change to the *stored* priority for the owner to accept or refuse | ● |
-| R-70 | **Similarity is a small set of named features, not an embedding.** Module, state, and two or three things that actually differ between cases. A dealership has hundreds of open records and twelve action types; a vector index would be slower to explain than to build, and "why did it show me that one" has to have an answer in one sentence | ● |
-| R-71 | **A pattern that stops is a pattern that stops being shown.** Precedent reads a moving window, so a habit the dealership drops disappears from the product by itself rather than by somebody remembering to retire it | ● |
+| R-65 | **Priority is dealer policy, not product logic.** The severity table decides what a short-staffed dealership does first, and it is currently one owner's judgement written by us into a file. It becomes per-owner data with the product's table as the default, editable by the owner or a showroom manager, with what changed and who changed it in the decision log. Same class as R-58: a bounded table of numbers, **not** a rule builder | ✅ |
+| R-66 | **Memory is what people here actually did, and nothing else.** Only rows the decision log attributes to a *person* count as precedent. A mark the system made is excluded on purpose: an agent that re-reads its own output as evidence turns one early mistake into a settled belief, and the loop is invisible from inside. `decision_log.userId` already distinguishes the two, which is the whole reason R-60 insisted null means *the system did this* | ✅ `precedentFor` joins `decision_log` to `record_events` and counts only rows carrying a user id — `verify:autonomy` §3 drives an agent decision through and asserts it is not counted |
+| R-67 | **Nothing is stored as memory that was not already stored as a fact.** Precedent is derived on read from `decision_log` and `record_events` — both append-only, both writable only through `applyAction`. No summarised memory, no free text, no ingestion surface. What cannot be written cannot be poisoned, and the commonest poisoning payload in the literature is a plausible-looking *preference* | ✅ nothing is stored. Precedent is a join over two append-only tables at read time; there is no memory table to write to and therefore none to poison |
+| R-68 | **Precedent carries its date and its count, or it is not shown.** "You did this 5 times of the last 6, most recently on 28 July" is a fact somebody can weigh. "You usually do this" is a claim with no way to tell a settled habit from something that stopped in March. Stale-but-true is the failure mode, and a date is the whole of the fix | ✅ `precedentSentence()` cannot be built without a count and a date, and returns null rather than a hedge |
+| R-69 | **Precedent informs a person or a default. It never authorises and never acts.** R-49 does not bend for memory: an agent that has seen a pattern still may not decide whether an action is permitted or a record in breach. What it may do is say what happened last time, next to the button — and propose a change to the *stored* priority for the owner to accept or refuse | ✅ the ladder's ceiling is `may("AGENT", …)`, so no amount of precedent grants a permission. At rung 2 the value arrives selected and a person still presses Assign |
+| R-70 | **Similarity is a small set of named features, not an embedding.** Module, state, and two or three things that actually differ between cases. A dealership has hundreds of open records and twelve action types; a vector index would be slower to explain than to build, and "why did it show me that one" has to have an answer in one sentence | ✅ the feature set is `(module, state, action)` and one choice field. No embedding, no index |
+| R-71 | **A pattern that stops is a pattern that stops being shown.** Precedent reads a moving window, so a habit the dealership drops disappears from the product by itself rather than by somebody remembering to retire it | ✅ a 60-day moving window, so a habit that stops disappears without anybody retiring it |
 
 ### How it looks
 
@@ -1820,14 +1820,14 @@ and the one we lack.
 
 | # | Requirement | Status |
 |---|---|---|
-| R-76 | ✅ **DDMS creates nothing the DMS is the source of truth for.** The re-cut of the old non-goal. Deals, job cards, stock, enquiries and registration files stay mirror-only forever; notes, activities, tasks, quotations, price lists and internal costs are DDMS's outright — and owning them is what gives an agent anything legitimate to write | ○ |
+| R-76 | **DDMS creates nothing the DMS is the source of truth for.** The re-cut of the old non-goal. Deals, job cards, stock, enquiries and registration files stay mirror-only forever; notes, activities, tasks, quotations, price lists and internal costs are DDMS's outright — and owning them is what gives an agent anything legitimate to write | ✅ |
 | R-77 | ✅ **A journey is the unit of work, and a wait is a queue row.** Steps, forks, and four kinds of waiting — on a person, on the outside world, on another journey, on time. A stalled step *is* the queue entry rather than a sentence somebody wrote for that module | ✅ |
 | R-78 | ✅ **Forks are rules. A model may write a sentence inside a step; it may never choose an edge.** Almost every fork in every journey is knowable from data — is tax paid, is the part on the shelf, did the date pass. R-49 restated for the runtime, and the specific temptation a workflow library introduces | ✅ |
-| R-79 | **Autonomy is earned by evidence and can be lost the same way.** Precedent → repeated acceptance → consent, per pattern, with the threshold set by the dealership and demotion when acceptance falls. A dial somebody sets is a guess; a count is a fact | ● |
-| R-80 | **Graduation can never cross the floor.** Hard denials apply at every level of autonomy, and no amount of precedent promotes an action past them. Attested independently in three products | ● |
-| R-81 | **One door.** Nothing writes to the record except through the same call a person's button makes — not agents, not the process runtime, not any second service. It is what lets every question about roles and visibility be answered later in one place | ○ |
-| R-82 | **Precedent is scoped, and never crosses a dealer group.** One dealership's operating decisions must not inform another's. Within a group the owner sees everything, across groups nothing — which is where the boundary already is | ○ |
-| R-83 | **The intelligence store is read by the agent alone.** Whatever it surfaces leaves through a permission-checked surface, so the store needs partitioning by group and no permission model of its own | ○ |
+| R-79 | **Autonomy is earned by evidence and can be lost the same way.** Precedent → repeated acceptance → consent, per pattern, with the threshold set by the dealership and demotion when acceptance falls. A dial somebody sets is a guess; a count is a fact | ✅ OBJ-26. Four rungs off a moving window, consent stored for the fourth, demotion on a 20% override rate |
+| R-80 | **Graduation can never cross the floor.** Hard denials apply at every level of autonomy, and no amount of precedent promotes an action past them. Attested independently in three products | ✅ OBJ-26. `ceilingFor()` reads the permission table, so the floor caps the ladder rather than the ladder crossing it |
+| R-81 | **One door.** Nothing writes to the record except through the same call a person's button makes — not agents, not the process runtime, not any second service. It is what lets every question about roles and visibility be answered later in one place | ◑ the agent and the button share `applyAction`, attested by `verify:agent`, and outbound has its own single door in `authoriseSend`. What is *not* attested is that a second path cannot appear — nothing fails if somebody writes one |
+| R-82 | **Precedent is scoped, and never crosses a dealer group.** One dealership's operating decisions must not inform another's. Within a group the owner sees everything, across groups nothing — which is where the boundary already is | ✅ `precedentFor` is scoped to `ownerId` **and** the caller's visible showroom ids, and both tables are behind RLS besides |
+| R-83 | **The intelligence store is read by the agent alone.** Whatever it surfaces leaves through a permission-checked surface, so the store needs partitioning by group and no permission model of its own | ✅ satisfied by there being no store. Precedent derives from `decision_log` and `record_events`, which already carry the group boundary and the permission model — so there is nothing needing one of its own |
 | R-84 | ✅ **Ingestion varies; completion does not.** Direct fetch, report drop and document scan produce one canonical record, and the readiness check does not know which path a field arrived by  | ✅ |
 | R-85 | ✅ **Every ingested field carries its source and its confidence.** A value read off a mapped column is not the same fact as one an API returned, and nothing downstream may treat them alike  | ✅ |
 | R-86 | ✅ **A mapping is confirmed once by a person, then it is fixed.** The model reads unfamiliar column headings once; a person approves; extraction is deterministic thereafter. Model cost is per report type, not per row — and the same shape as graduation  | ✅ |
@@ -1854,6 +1854,10 @@ and the one we lack.
 | 27 | **dm-concierge — messages out, replies in** | no | 22 | the Outbox has no transport at all. Inbound is the larger half: a reply is a fact the DMS will never hold |
 | 28 | **The trace and the stand-down** | no | 23, 26 | you cannot supervise what you cannot watch, and cost belongs here |
 | 29 | **More agents** | yes | all | last, and only once there is a model that admits new principals, a ladder to place them on, records they may write, and a trace to watch them in |
+
+*Objectives 30 to 33 are in section 3d; 34 and 35 in section 3e. They are
+numbered in one sequence and planned in three, which is what the reconciliation
+on 12 August was for.*
 
 > **24 has no dependencies and the strongest commercial argument.** It can be
 > taken out of order whenever reaching more dealers matters more than deepening
@@ -2466,7 +2470,7 @@ superseded list to exist.
 > *rather than when somebody opens a screen* actually buys: a timestamped record
 > that the deal became ready, written with nobody signed in.
 
-### OBJ-26 — Autonomy: the ladder and graduation
+### OBJ-26 — Autonomy: the ladder and graduation  ✅ **done 11 Aug**
 *Covers R-79, R-80, and R-66 to R-71. Absorbs OBJ-19. Needs 21 and 23.*
 
 Watching, then recall, then pre-filled, then consent. Per pattern, with
@@ -2664,19 +2668,30 @@ unattended, the dealership owns its numbers, and an agent operates two of the
 twelve registry actions. Six of §3b's seven are done; OBJ-19 was deferred by
 decision and is absorbed into §3c's OBJ-26.
 
-**What it cannot do yet, and it is again one thing.** DDMS understands a
-*record* and has never understood a *journey*. A vehicle sold is one thing
-moving through the building and the product shows it as ten unrelated rows on
-four screens. Nothing can wait — not on the RTO for three weeks, not on another
-journey, not on a person until Tuesday. That is what **section 3c** is for, and
-it is the difference between a product that orders a dealership's problems and
-one that runs its processes.
+**Section 3c closed that one too.** It said DDMS understood a *record* and
+had never understood a *journey* — that a vehicle sold was one thing moving
+through the building shown as ten unrelated rows on four screens, and that
+nothing could wait. The journey model, its four kinds of waiting, the invoice
+the product issues and the ladder it earns autonomy on are all built.
+
+**What it cannot do yet, as of 12 August, and it is three things.** It cannot
+*deliver* — every message it composes still stops at the outbox, because no
+WhatsApp or mail account is connected (OBJ-27). It cannot be *watched* — there
+is a decision log per record and no trace across a run, and nothing meters what
+an agent costs (OBJ-28). And it cannot answer *how is the business doing*
+without somebody opening seven screens and adding up (OBJ-35, and it is the
+one of the three that is blocked on nothing).
 
 **The blocker before a customer is gone.** Sign-in exists in all three
 products, the database enforces the boundary rather than trusting the code to,
 and since OBJ-8 the server holds no credential that could bypass it — it refuses
-to start with one. What is left is not a safety question any more; it is the
-queue, and the rules that fill it.
+to start with one. What is left is not a safety question any more.
+
+**Eight verifiers, and each states a claim it could fail.** Permissions,
+records, agent, journey, ingest, invoice, autonomy and `typecheck`.
+The rule they are held to was learnt the expensive way in OBJ-30: *a verifier
+that can fail for a reason it does not name will one day pass for a reason it
+does not name.*
 
 ---
 
@@ -2809,8 +2824,8 @@ DDMS at all — and OBJ-24's `DOCUMENT` path already reads those.
 
 | # | Requirement | Status |
 |---|---|---|
-| R-96 | **The invoice generator must work without a mirror.** A dealer with no DMS is the customer it exists for, and requiring a mirrored deal row excludes exactly him. Facts may come from a mirror, a scan or a form; nothing downstream of the facts may know which | ● |
-| R-97 | **A figure that reaches a statutory return was confirmed by a person or returned by an API.** A model's read is a proposal. This is R-49 applied where being wrong is a filing offence rather than a bad morning | ◐ |
+| R-96 | **The invoice generator must work without a mirror.** A dealer with no DMS is the customer it exists for, and requiring a mirrored deal row excludes exactly him. Facts may come from a mirror, a scan or a form; nothing downstream of the facts may know which | ✅ OBJ-30. `SaleFacts` from a mirrored deal or a typed form; the same sale issued both ways produces identical money in all thirteen columns |
+| R-97 | **A figure that reaches a statutory return was confirmed by a person or returned by an API.** A model's read is a proposal. This is R-49 applied where being wrong is a filing offence rather than a bad morning | ✅ OBJ-30. `doubtful()` refuses a tax invoice or sale confirmation carrying a sub-0.7 model read, and warns on a quotation — the gate is on the consequence, not on the provenance |
 | R-98 | **The ledger is a feeder before it is a book of record.** It produces vouchers for whatever the dealership already keeps, and becomes the record only once its numbers have reconciled against that system for an agreed period. Graduation, applied to a product decision | ○ |
 | R-99 | **The deliverable is the file the CA files.** A ledger that produces nothing lodgeable has added a system rather than replaced one | ○ |
 | R-100 | **Accounting arithmetic is deterministic, tested, and has no model anywhere near it.** R-78 restated where the consequence is statutory | ○ |
@@ -2834,7 +2849,7 @@ DDMS at all — and OBJ-24's `DOCUMENT` path already reads those.
 > replacement, and OBJ-27 is also what delivers the invoice to the customer's
 > phone, which is half of what the Gemini plan was actually for.
 
-### What OBJ-30 turned out to be
+### OBJ-30 — The generator without a mirror  ✅ **done 11 Aug**
 
 Built. Two seams and a gate, and the generator lost its only reason to know
 about the mirror.
@@ -2889,4 +2904,98 @@ are the three that should.
 > would duplicate OBJ-24 and OBJ-25 and give two answers about one sale. A
 > Next.js dashboard: DDMS is React and Vite and there is no reason for a second
 > framework in one monorepo.
+
+## 3e. Reconciled 12 August — the register against what was built
+
+Three sessions of work landed with no objective attached to it, two finished
+objectives were never marked, seven rows carried a ✅ in their text and a ○ in
+their status column, and four things Anirban has asked for had nowhere in this
+file to live. None of that changed the product; all of it made the register
+lie about the product, which is worse, because the register is what the next
+plan is built from.
+
+This section is the reconciliation. The corrections were made in place —
+sections 2, 3c and 3d now read true — and what follows is only the part that
+needed new numbers.
+
+### What was built and never registered
+
+| commit | what it was | why it had no number |
+|---|---|---|
+| `15189f7` | the invoice you can open and print | OBJ-25 issued documents and gave nobody a way to look at one. Found by using the product, not by reading the plan |
+| `c04d9f2` | the document written for the customer | a disclaimer that could be false — became **R-104** |
+| `86105d0` | `sample-reports/`, eight exports per outlet | scaffolding for OBJ-24's report path; no objective owns test data |
+| `0448af9` `731d845` | ingestion for all seven modules | OBJ-24 shipped the seam and one module through it. Widening it to seven is **OBJ-34** |
+| `1225593` | the import screen in the trade's vocabulary | became **R-105** |
+
+Two of those five are requirements the product now holds to, and one is an
+objective. The other two were always going to be somebody's afternoon and are
+fine unregistered — but they are listed, because *"the plan does not mention
+it"* stopped being evidence that a thing was not built.
+
+### New requirements
+
+| # | Requirement | Status |
+|---|---|---|
+| R-104 | **A document has two readers, and only one of them may see the provenance.** The customer gets a document; we keep a copy that says where each figure came from and how sure of it we were. Printing the second is how a dealership hands a buyer a page admitting a model read 55% of it. And the halves must each be true *on their own*: a sale confirmation saying *the tax invoice number is shown above* is a lie on every copy where there is no number, and a document that can lie about itself is worse than one that says nothing | ✅ |
+| R-105 | **Where the trade has a word, use the trade's word.** *Data type*, *import*, *import history*, *column mapping* — a dealership's administrator and an implementation consultant both already have vocabulary for this, and inventing friendlier terms makes the product read as though nobody who built it had done the job. Write plainly everywhere the trade has no word | ✅ |
+| R-106 | **Every outside credential is the dealership's own.** The model key, the WhatsApp number, the mail account, the DMS login, the document store. DDMS holds none of them, meters none of them, and cannot spend one dealership's key on another's work. It is the honest answer to *where does our data go* and it is what makes per-run model cost somebody else's line item — but it is a constraint on the architecture before it is a pricing position, and it has to be true in the code or it must not be said | ○ |
+| R-107 | **One view answers *how is the business doing* without opening a module.** Seven screens each holding a list is the reporting product R-55 already refused; the queue fixed it for the person doing the work and left the owner with nothing. Derived on read like R-12, and every figure on it opens the rows underneath — a number you cannot walk into is a report, and R-20 says this product is not one | ○ |
+| R-108 | **What a prospect is shown first is a report about their own dealership.** Point the read-only mirror at their data and hand back what is falling through: orphaned work, money past its credit period, files the RTO has gone quiet on. It must be the *same artifact* the owner opens every morning after they buy — a diagnostic built only to sell is a brochure, and it stops being true the week after it is produced | ○ |
+
+### New objectives
+
+| # | Objective | Model? | Depends on | Why here |
+|---|---|---|---|---|
+| 34 | ~~**Ingestion for all seven modules**~~ ✅ | at the mapping step only | 24 | registered after the fact. OBJ-24 proved one seam on one module; a dealership does not export only its deals |
+| 35 | **The overall view, and the report that sells it** | no | 18, 23, 24, 26 | R-107 and R-108 are one build. It needs nothing new — it aggregates seven classifiers, the journeys, the queue bands and the ladder — and it is the second half of the one-line description of what DDMS is |
+
+> **Why 35 goes before 27 and before the ledger.** Anirban's own sentence for
+> this product is *it automates your routine tasks and gives you a dashboard
+> with the overall view.* The first half has been the whole of the work since
+> 3 August and the second half has never been built. It also costs the least
+> per unit of value in the queue, because every figure on it already exists and
+> is already permission-checked — this is a read, an assembly and a screen, not
+> a new capability. OBJ-27 stays next after it, unchanged, and the §3d
+> sequencing note still holds: the ledger does not jump ahead of the ability to
+> send a message.
+
+### What OBJ-34 turned out to be
+
+The seam held. `Source<T>` was written for deals in OBJ-24 and six more modules
+went through it without changing its shape — which is the only real evidence
+that a seam was cut in the right place.
+
+What did have to be generalised was everything *around* the seam. Field
+definitions and column synonyms became per-data-type (`FIELDS_FOR`,
+`SYNONYMS_FOR`, `vocabularyFor`), and `extract` builds its record from the
+vocabulary rather than from a hard-coded deal shape. Three source shapes cover
+all seven modules: the whole list in one call, a summary list with a fetch per
+record, and a report the dealership dropped.
+
+**The disappearance guard is the one thing that is not symmetric.** An API
+lists the outlet's whole book on every call, so a record that stops appearing
+has genuinely gone. A report covering one month says nothing about the other
+eleven, and a path-blind sync that does not ask would mark a year of records
+vanished because somebody dropped July's file. `source.listIsComplete` is the
+question, and every one of the six syncs asks it before marking anything gone.
+
+The proof: all seven exports from `sample-reports/` dropped through
+`POST /dms/ingest/report`. **Every heading matched by name — `model: false` on
+all seven.** The model exists on that path for headings nobody anticipated, and
+on a dealership's own export of its own registers it was not needed once.
+
+### What is parked, and by whose decision
+
+**Remote-desktop access.** Anirban has said it comes later; R-44 currently
+rules it out as an integration route and §5 lists it as a non-goal. Those can
+both be true — *support and onboarding* is a different thing from *how the data
+gets in* — but which one it is has not been settled, and the rules that follow
+differ enough that guessing would be worse than waiting. **Parked by decision
+on 12 August.** R-44 and the non-goal stand until it is answered.
+
+**Insurance issuance.** Named by Anirban as a routine task on the same footing
+as invoicing. Its executors are stubs, and unlike everything else in the queue
+the blocker is not build time — it is an insurer credential and a contract.
+Sequenced when that exists, not before.
 

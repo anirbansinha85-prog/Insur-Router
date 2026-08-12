@@ -228,6 +228,24 @@ export function ContactButtons({
  * exists, and offering their name would reproduce the bug. Each option carries
  * what that person is already holding, because handing an orphaned lead to
  * whoever is busiest is a decision this product would have made worse.
+ *
+ * ## Two controls in one, and the second only appears at rung 2
+ *
+ * With no `prefill` this is a one-gesture control: choosing a name assigns it,
+ * because there is nothing to confirm — the choice *is* the decision.
+ *
+ * Pass a `prefill` and it becomes a two-gesture control: the proposed name is
+ * already selected and a button has to be pressed. That difference is the whole
+ * of R-69. A prefill that assigned on render would be the product acting on a
+ * pattern it was only ever allowed to *inform* with, and the person whose name
+ * ends up in the decision log would not have chosen anything. Rung 3 is where
+ * acting without asking becomes permitted, it requires written consent, and it
+ * is the scheduler's job rather than this screen's.
+ *
+ * A prefill naming somebody not in the list is dropped rather than shown. The
+ * standing is computed from a 60-day window and the staff list is today's, so
+ * the pattern can outlive the person — and a pre-selected departed salesman
+ * beside an Assign button is the exact bug `currentEmpCode={null}` exists for.
  */
 export function AssignPicker({
   action,
@@ -236,6 +254,8 @@ export function AssignPicker({
   currentEmpCode,
   currentLabel,
   placeholder = "Reassign to…",
+  prefill,
+  prefillNote,
 }: {
   action: DmsActionInputAction
   target: ActionTarget
@@ -243,6 +263,10 @@ export function AssignPicker({
   currentEmpCode?: string | null
   currentLabel?: string | null
   placeholder?: string
+  /** An emp code to arrive already selected. Rung 2 and above (OBJ-26). */
+  prefill?: string | null
+  /** One line saying who proposed it, shown under the control. */
+  prefillNote?: string | null
 }) {
   const qc = useQueryClient()
   const mutation = useApplyDmsAction()
@@ -253,6 +277,17 @@ export function AssignPicker({
     query: { queryKey: ["/api/dms/staff", params] },
   })
   const staff: StaffMember[] = data?.staff ?? []
+
+  /*
+   * The proposal only survives if the person it names is still on the list.
+   *
+   * `staff` arrives asynchronously, so this is recomputed on every render
+   * rather than seeded into state — seeding it would capture the empty list
+   * from the first paint and the prefill would never appear.
+   */
+  const proposed = prefill && staff.some((s) => s.empCode === prefill) ? prefill : null
+  const [chosen, setChosen] = useState<string | null>(null)
+  const selected = chosen ?? proposed ?? ""
 
   const assign = (empCode: string) => {
     setError(null)
@@ -295,26 +330,51 @@ export function AssignPicker({
 
   return (
     <div>
-      <select
-        defaultValue=""
-        onChange={(e) => e.target.value && assign(e.target.value)}
-        disabled={mutation.isPending}
-        className="text-xs h-7 px-2 rounded-md border border-amber-200 text-amber-700 bg-white
-                   hover:bg-amber-50 focus:outline-none focus:ring-2 focus:ring-amber-500/30 disabled:opacity-50"
-      >
-        <option value="" disabled>
-          {placeholder}
-        </option>
-        {staff.length === 0 ? (
-          <option disabled>nobody active at this outlet</option>
-        ) : (
-          staff.map((s) => (
-            <option key={s.empCode} value={s.empCode}>
-              {s.empName} · {s.carrying} open
-            </option>
-          ))
+      <div className="flex items-center gap-1.5">
+        <select
+          value={selected}
+          onChange={(e) => {
+            // Without a proposal on screen, choosing is deciding. With one, the
+            // select only moves the candidate and the button commits it.
+            if (proposed) setChosen(e.target.value)
+            else if (e.target.value) assign(e.target.value)
+          }}
+          disabled={mutation.isPending}
+          className="text-xs h-7 px-2 rounded-md border border-amber-200 text-amber-700 bg-white
+                     hover:bg-amber-50 focus:outline-none focus:ring-2 focus:ring-amber-500/30 disabled:opacity-50"
+        >
+          <option value="" disabled>
+            {placeholder}
+          </option>
+          {staff.length === 0 ? (
+            <option disabled>nobody active at this outlet</option>
+          ) : (
+            staff.map((s) => (
+              <option key={s.empCode} value={s.empCode}>
+                {s.empName} · {s.carrying} open
+              </option>
+            ))
+          )}
+        </select>
+
+        {proposed && (
+          <button
+            onClick={() => selected && assign(selected)}
+            disabled={mutation.isPending || !selected}
+            className="text-xs font-semibold h-7 px-2.5 rounded-md bg-amber-600 text-white
+                       hover:bg-amber-700 disabled:opacity-50"
+          >
+            Assign
+          </button>
         )}
-      </select>
+      </div>
+
+      {/* Said out loud, because a name that is already in the box looks like a
+          name somebody chose. Whoever presses the button is accountable for it
+          and is entitled to know it was not their own selection. */}
+      {proposed && prefillNote && (
+        <div className="text-[11px] text-slate-500 mt-1 max-w-xs">{prefillNote}</div>
+      )}
       {error && <div className="text-[11px] text-red-600 mt-1 max-w-xs">{error}</div>}
     </div>
   )
