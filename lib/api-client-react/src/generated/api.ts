@@ -55,6 +55,7 @@ import type {
   GenerateDocumentInput,
   GenerateSaleDocument201,
   GetDmsPolicy200,
+  GetGstr1Params,
   GetInventoryWorklist200,
   GetInventoryWorklistParams,
   GetLeadWorklist200,
@@ -71,7 +72,10 @@ import type {
   GetShowroomWorklistParams,
   GetSparesWorklist200,
   GetSparesWorklistParams,
+  GetTallyFeedParams,
   GrantAutonomyConsent201,
+  Gstr1,
+  HandedOverInput,
   HealthStatus,
   IncompleteDealError,
   IngestPushInput,
@@ -79,6 +83,7 @@ import type {
   IngestResult,
   IngestSourceInput,
   JourneyTrace,
+  LedgerAccountPatch,
   ListApplicationsParams,
   ListAutonomy200,
   ListAutonomyProposals200,
@@ -95,6 +100,7 @@ import type {
   ListIngestSourcesParams,
   ListInvoiceReadiness200,
   ListInvoiceReadinessParams,
+  ListLedgerAccounts200,
   ListPriceLists200,
   ListPriceListsParams,
   ListRecordActivities200,
@@ -103,10 +109,12 @@ import type {
   ListSaleDocumentsParams,
   ListShowroomStaff200,
   ListShowroomStaffParams,
+  ListVouchers200,
   LoginInput,
   MappingConfirmInput,
   MappingConfirmResult,
   MarkReplyRead200,
+  MarkTallyHandedOver200,
   MessageEditInput,
   MessageNoteInput,
   MessageWithGate,
@@ -117,15 +125,20 @@ import type {
   Policy,
   PolicyResetInput,
   PolicySetInput,
+  PostToLedgerInput,
+  PostedVoucher,
   Provider,
   ProviderInput,
   ProviderUpdate,
   QueueResult,
   RecentApplication,
+  RenameLedgerAccount200,
   ReportDropInput,
   ReportDropResult,
   ResetDmsPolicy200,
   RetractRecordActivity200,
+  ReverseVoucher200,
+  ReverseVoucherInput,
   RevokeAutonomyConsent200,
   RunDetail,
   RunList,
@@ -139,6 +152,7 @@ import type {
   ShowroomSummary,
   SubmissionLog,
   SyncShowroomDms200,
+  TallyFeed,
   TaskCloseInput,
   TaskInput,
   UpdateOcrEnginesInput,
@@ -4436,6 +4450,630 @@ export function useListDmsEvents<TData = Awaited<ReturnType<typeof listDmsEvents
 
 
 
+
+export const getListLedgerAccountsUrl = () => {
+
+
+
+
+  return `/api/dms/ledger/accounts`
+}
+
+/**
+ * Shaped like Tally's, because that is where the numbers are going. R-98 says the ledger is a feeder before it is a book of record — it produces vouchers for whatever the dealership already keeps — and a chart invented from first principles would be elegant and would not map onto the one their accountant has used for eleven years.
+ * `isSystem` marks the accounts a posting rule names by code. Those may be renamed and remapped and may not be deleted: a rule that cannot find its account has no honest behaviour left, because posting to a substitute misstates the books silently and skipping the line produces a voucher that does not balance.
+ * @summary The dealership's chart of accounts
+ */
+export const listLedgerAccounts = async ( options?: Parameters<typeof customFetch>[1]): Promise<ListLedgerAccounts200> => {
+
+  return customFetch<ListLedgerAccounts200>(getListLedgerAccountsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListLedgerAccountsQueryKey = () => {
+    return [
+    `/api/dms/ledger/accounts`
+    ] as const;
+    }
+
+
+export const getListLedgerAccountsQueryOptions = <TData = Awaited<ReturnType<typeof listLedgerAccounts>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listLedgerAccounts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListLedgerAccountsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listLedgerAccounts>>> = ({ signal }) => listLedgerAccounts({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listLedgerAccounts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListLedgerAccountsQueryResult = NonNullable<Awaited<ReturnType<typeof listLedgerAccounts>>>
+export type ListLedgerAccountsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary The dealership's chart of accounts
+ */
+
+export function useListLedgerAccounts<TData = Awaited<ReturnType<typeof listLedgerAccounts>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listLedgerAccounts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListLedgerAccountsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getRenameLedgerAccountUrl = (code: string,) => {
+
+
+
+
+  return `/api/dms/ledger/accounts/${code}`
+}
+
+/**
+ * @summary Point an account at the name their own books use
+ */
+export const renameLedgerAccount = async (code: string,
+    ledgerAccountPatch: LedgerAccountPatch, options?: Parameters<typeof customFetch>[1]): Promise<RenameLedgerAccount200> => {
+
+  return customFetch<RenameLedgerAccount200>(getRenameLedgerAccountUrl(code),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(ledgerAccountPatch)
+  }
+);}
+
+
+
+
+
+export const getRenameLedgerAccountMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof renameLedgerAccount>>, TError,{code: string;data: BodyType<LedgerAccountPatch>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof renameLedgerAccount>>, TError,{code: string;data: BodyType<LedgerAccountPatch>}, TContext> => {
+
+const mutationKey = ['renameLedgerAccount'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof renameLedgerAccount>>, {code: string;data: BodyType<LedgerAccountPatch>}> = (props) => {
+          const {code,data} = props ?? {};
+
+          return  renameLedgerAccount(code,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RenameLedgerAccountMutationResult = NonNullable<Awaited<ReturnType<typeof renameLedgerAccount>>>
+    export type RenameLedgerAccountMutationBody = BodyType<LedgerAccountPatch>
+    export type RenameLedgerAccountMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Point an account at the name their own books use
+ */
+export const useRenameLedgerAccount = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof renameLedgerAccount>>, TError,{code: string;data: BodyType<LedgerAccountPatch>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof renameLedgerAccount>>,
+        TError,
+        {code: string;data: BodyType<LedgerAccountPatch>},
+        TContext
+      > => {
+      return useMutation(getRenameLedgerAccountMutationOptions(options));
+    }
+
+export const getPostToLedgerUrl = () => {
+
+
+
+
+  return `/api/dms/ledger/post`
+}
+
+/**
+ * The input is a `sale_document`, not a PDF. DDMS already produces the invoice; the ledger posts what DDMS issued, so there is exactly one thing to post from.
+ * Two things it refuses to guess. A charge whose label nothing recognises goes to **suspense, never to income** — the failure R-103 is written against is overstating turnover, so the default has to fall the other way. And a vehicle that cannot be found in stock gets **no invented cost**: the revenue posts, the cost relief does not, and the warning says that until it does the whole selling price reads as margin.
+ * `warnings` is part of a successful response. Refusing the posting would deny a sale that happened; making the gap loud is the honest version.
+ * One document posts once (R-101). A second attempt answers 409 — a corrected invoice is reversed and re-issued, never edited.
+ * @summary Post an issued sale document as double entry
+ */
+export const postToLedger = async (postToLedgerInput: PostToLedgerInput, options?: Parameters<typeof customFetch>[1]): Promise<PostedVoucher> => {
+
+  return customFetch<PostedVoucher>(getPostToLedgerUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(postToLedgerInput)
+  }
+);}
+
+
+
+
+
+export const getPostToLedgerMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postToLedger>>, TError,{data: BodyType<PostToLedgerInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof postToLedger>>, TError,{data: BodyType<PostToLedgerInput>}, TContext> => {
+
+const mutationKey = ['postToLedger'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof postToLedger>>, {data: BodyType<PostToLedgerInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  postToLedger(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PostToLedgerMutationResult = NonNullable<Awaited<ReturnType<typeof postToLedger>>>
+    export type PostToLedgerMutationBody = BodyType<PostToLedgerInput>
+    export type PostToLedgerMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Post an issued sale document as double entry
+ */
+export const usePostToLedger = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postToLedger>>, TError,{data: BodyType<PostToLedgerInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof postToLedger>>,
+        TError,
+        {data: BodyType<PostToLedgerInput>},
+        TContext
+      > => {
+      return useMutation(getPostToLedgerMutationOptions(options));
+    }
+
+export const getListVouchersUrl = () => {
+
+
+
+
+  return `/api/dms/ledger/vouchers`
+}
+
+/**
+ * @summary The books, newest first
+ */
+export const listVouchers = async ( options?: Parameters<typeof customFetch>[1]): Promise<ListVouchers200> => {
+
+  return customFetch<ListVouchers200>(getListVouchersUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListVouchersQueryKey = () => {
+    return [
+    `/api/dms/ledger/vouchers`
+    ] as const;
+    }
+
+
+export const getListVouchersQueryOptions = <TData = Awaited<ReturnType<typeof listVouchers>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVouchers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListVouchersQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listVouchers>>> = ({ signal }) => listVouchers({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listVouchers>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListVouchersQueryResult = NonNullable<Awaited<ReturnType<typeof listVouchers>>>
+export type ListVouchersQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary The books, newest first
+ */
+
+export function useListVouchers<TData = Awaited<ReturnType<typeof listVouchers>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVouchers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListVouchersQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getReverseVoucherUrl = (id: number,) => {
+
+
+
+
+  return `/api/dms/ledger/vouchers/${id}/reverse`
+}
+
+/**
+ * Never an edit and never a delete. The original stays, marked `REVERSED`, and a new voucher carries the same lines with debit and credit swapped. A set of books whose entries can be changed after the fact is not evidence of anything, and the month it was closed on is already inside somebody's return.
+ * Dated today rather than back-dated to the original. Reversing an April entry in September is a September event; back-dating it would silently reopen a month that has been filed on.
+ * A reason is required — a reversal without one is an unexplained hole in a set of books, and whoever made it will not remember in March.
+ * @summary Undo an entry by posting its mirror
+ */
+export const reverseVoucher = async (id: number,
+    reverseVoucherInput: ReverseVoucherInput, options?: Parameters<typeof customFetch>[1]): Promise<ReverseVoucher200> => {
+
+  return customFetch<ReverseVoucher200>(getReverseVoucherUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(reverseVoucherInput)
+  }
+);}
+
+
+
+
+
+export const getReverseVoucherMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reverseVoucher>>, TError,{id: number;data: BodyType<ReverseVoucherInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reverseVoucher>>, TError,{id: number;data: BodyType<ReverseVoucherInput>}, TContext> => {
+
+const mutationKey = ['reverseVoucher'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reverseVoucher>>, {id: number;data: BodyType<ReverseVoucherInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  reverseVoucher(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReverseVoucherMutationResult = NonNullable<Awaited<ReturnType<typeof reverseVoucher>>>
+    export type ReverseVoucherMutationBody = BodyType<ReverseVoucherInput>
+    export type ReverseVoucherMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Undo an entry by posting its mirror
+ */
+export const useReverseVoucher = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reverseVoucher>>, TError,{id: number;data: BodyType<ReverseVoucherInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reverseVoucher>>,
+        TError,
+        {id: number;data: BodyType<ReverseVoucherInput>},
+        TContext
+      > => {
+      return useMutation(getReverseVoucherMutationOptions(options));
+    }
+
+export const getGetGstr1Url = (params: GetGstr1Params,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/dms/ledger/gstr1?${stringifiedParams}` : `/api/dms/ledger/gstr1`
+}
+
+/**
+ * R-99 — a ledger that produces nothing lodgeable has added a system rather than replaced one.
+ * B2B and B2C are different shapes rather than a flag, because they are different filings. A registered buyer's invoice is reported line by line, since their input credit depends on it and the portal matches the two; everybody else's sales are aggregated by place of supply and rate. Getting that wrong does not produce a wrong total — it produces a return the portal accepts and a buyer who cannot claim their credit, which the dealership hears about three months later.
+ * Nothing here recomputes tax. The rate and the split were decided when the invoice was priced and printed on a document a customer holds; a return is not the place to discover the product has two answers.
+ * `problems` is part of a successful response. A return with three rows missing a place of supply is still worth having in front of somebody.
+ * @summary The file the CA files
+ */
+export const getGstr1 = async (params: GetGstr1Params, options?: Parameters<typeof customFetch>[1]): Promise<Gstr1> => {
+
+  return customFetch<Gstr1>(getGetGstr1Url(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetGstr1QueryKey = (params?: GetGstr1Params,) => {
+    return [
+    `/api/dms/ledger/gstr1`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetGstr1QueryOptions = <TData = Awaited<ReturnType<typeof getGstr1>>, TError = ErrorType<ErrorResponse>>(params: GetGstr1Params, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGstr1>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetGstr1QueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getGstr1>>> = ({ signal }) => getGstr1(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getGstr1>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetGstr1QueryResult = NonNullable<Awaited<ReturnType<typeof getGstr1>>>
+export type GetGstr1QueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary The file the CA files
+ */
+
+export function useGetGstr1<TData = Awaited<ReturnType<typeof getGstr1>>, TError = ErrorType<ErrorResponse>>(
+ params: GetGstr1Params, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGstr1>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetGstr1QueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetTallyFeedUrl = (params: GetTallyFeedParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/dms/ledger/tally?${stringifiedParams}` : `/api/dms/ledger/tally`
+}
+
+/**
+ * R-98's first rung — **be additive before asking to be trusted.** This does not replace anybody's books: it produces vouchers Tally imports, the dealership brings them in beside what they already keep, and the two are reconciled for an agreed period. Only then is there a conversation about which one is the record.
+ * `LEDGERNAME` uses each account's `tallyName` where the dealership has set one, which is what makes the import land in *their* chart rather than in twenty-six new ledgers named after ours.
+ * Building the file and marking it handed over are two calls on purpose. A download that failed halfway would otherwise leave vouchers marked exported that nobody received, and the next feed would skip them — which is how a month goes missing with nothing anywhere reporting it.
+ * @summary Vouchers in the shape Tally imports
+ */
+export const getTallyFeed = async (params: GetTallyFeedParams, options?: Parameters<typeof customFetch>[1]): Promise<TallyFeed> => {
+
+  return customFetch<TallyFeed>(getGetTallyFeedUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTallyFeedQueryKey = (params?: GetTallyFeedParams,) => {
+    return [
+    `/api/dms/ledger/tally`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetTallyFeedQueryOptions = <TData = Awaited<ReturnType<typeof getTallyFeed>>, TError = ErrorType<ErrorResponse>>(params: GetTallyFeedParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTallyFeed>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTallyFeedQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTallyFeed>>> = ({ signal }) => getTallyFeed(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTallyFeed>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTallyFeedQueryResult = NonNullable<Awaited<ReturnType<typeof getTallyFeed>>>
+export type GetTallyFeedQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Vouchers in the shape Tally imports
+ */
+
+export function useGetTallyFeed<TData = Awaited<ReturnType<typeof getTallyFeed>>, TError = ErrorType<ErrorResponse>>(
+ params: GetTallyFeedParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTallyFeed>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTallyFeedQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getMarkTallyHandedOverUrl = () => {
+
+
+
+
+  return `/api/dms/ledger/tally/handed-over`
+}
+
+/**
+ * @summary Record that a feed actually reached their books
+ */
+export const markTallyHandedOver = async (handedOverInput: HandedOverInput, options?: Parameters<typeof customFetch>[1]): Promise<MarkTallyHandedOver200> => {
+
+  return customFetch<MarkTallyHandedOver200>(getMarkTallyHandedOverUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(handedOverInput)
+  }
+);}
+
+
+
+
+
+export const getMarkTallyHandedOverMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markTallyHandedOver>>, TError,{data: BodyType<HandedOverInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof markTallyHandedOver>>, TError,{data: BodyType<HandedOverInput>}, TContext> => {
+
+const mutationKey = ['markTallyHandedOver'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markTallyHandedOver>>, {data: BodyType<HandedOverInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  markTallyHandedOver(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MarkTallyHandedOverMutationResult = NonNullable<Awaited<ReturnType<typeof markTallyHandedOver>>>
+    export type MarkTallyHandedOverMutationBody = BodyType<HandedOverInput>
+    export type MarkTallyHandedOverMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Record that a feed actually reached their books
+ */
+export const useMarkTallyHandedOver = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markTallyHandedOver>>, TError,{data: BodyType<HandedOverInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof markTallyHandedOver>>,
+        TError,
+        {data: BodyType<HandedOverInput>},
+        TContext
+      > => {
+      return useMutation(getMarkTallyHandedOverMutationOptions(options));
+    }
 
 export const getListRunsUrl = () => {
 

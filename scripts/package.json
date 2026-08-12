@@ -23,7 +23,8 @@
     "autonomy": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-autonomy.ts",
     "overview": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-overview.ts",
     "channels": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-channels.ts",
-    "trace": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-trace.ts"
+    "trace": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-trace.ts",
+    "ledger": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-ledger.ts"
   },
   "dependencies": {
     "@workspace/db": "workspace:*",

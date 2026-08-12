@@ -935,6 +935,132 @@ export interface QueueResult {
   byModule: QueueResultByModuleItem[];
 }
 
+export type LedgerAccountGroup = typeof LedgerAccountGroup[keyof typeof LedgerAccountGroup];
+
+
+export const LedgerAccountGroup = {
+  ASSET: 'ASSET',
+  LIABILITY: 'LIABILITY',
+  INCOME: 'INCOME',
+  EXPENSE: 'EXPENSE',
+  EQUITY: 'EQUITY',
+} as const;
+
+export type LedgerAccountIsSystem = typeof LedgerAccountIsSystem[keyof typeof LedgerAccountIsSystem];
+
+
+export const LedgerAccountIsSystem = {
+  Y: 'Y',
+  N: 'N',
+} as const;
+
+export interface LedgerAccount {
+  id: number;
+  code: string;
+  name: string;
+  /** @nullable */
+  tallyName: string | null;
+  group: LedgerAccountGroup;
+  isSystem: LedgerAccountIsSystem;
+}
+
+export interface LedgerAccountPatch {
+  name?: string;
+  tallyName?: string;
+}
+
+export interface PostToLedgerInput {
+  documentId: number;
+}
+
+export interface ReverseVoucherInput {
+  /** Required. It goes on the voucher and stays there. */
+  reason: string;
+}
+
+export interface VoucherLine {
+  seq: number;
+  accountCode: string;
+  accountName: string;
+  debit: string;
+  credit: string;
+  /** @nullable */
+  narration: string | null;
+  /** @nullable */
+  partyName: string | null;
+}
+
+export type VoucherStatus = typeof VoucherStatus[keyof typeof VoucherStatus];
+
+
+export const VoucherStatus = {
+  POSTED: 'POSTED',
+  REVERSED: 'REVERSED',
+} as const;
+
+export interface Voucher {
+  id: number;
+  kind: string;
+  voucherNo: string;
+  voucherDate: string;
+  financialYear: string;
+  /** @nullable */
+  narration: string | null;
+  status: VoucherStatus;
+  totalDebit: string;
+  totalCredit: string;
+  /** What the posting could not do, and why. Never silent. */
+  warnings: string[];
+  /** @nullable */
+  exportedAt: string | null;
+  /** @nullable */
+  reversalOfId: number | null;
+  lines: VoucherLine[];
+}
+
+export interface PostedVoucher {
+  voucher?: Voucher;
+  warnings: string[];
+}
+
+export type Gstr1B2bItem = { [key: string]: unknown };
+
+export type Gstr1B2csItem = { [key: string]: unknown };
+
+export type Gstr1HsnItem = { [key: string]: unknown };
+
+export type Gstr1Totals = {
+  invoices: number;
+  taxableValue: number;
+  tax: number;
+};
+
+export interface Gstr1 {
+  /** @nullable */
+  gstin: string | null;
+  financialYear: string;
+  period: string;
+  /** Invoice-wise, as the portal requires for a registered buyer. */
+  b2b: Gstr1B2bItem[];
+  /** Aggregated by place of supply and rate, for everybody else. */
+  b2cs: Gstr1B2csItem[];
+  hsn: Gstr1HsnItem[];
+  problems: string[];
+  totals: Gstr1Totals;
+}
+
+export interface TallyFeed {
+  vouchers: number;
+  voucherIds: number[];
+  problems: string[];
+  xml: string;
+}
+
+export interface HandedOverInput {
+  voucherIds: number[];
+  batch?: string;
+}
+
 export type AgentRunTrigger = typeof AgentRunTrigger[keyof typeof AgentRunTrigger];
 
 
@@ -4026,6 +4152,60 @@ limit?: number;
 
 export type ListDmsEvents200 = {
   rows: RecordEvent[];
+};
+
+export type ListLedgerAccounts200 = {
+  accounts: LedgerAccount[];
+};
+
+export type RenameLedgerAccount200 = {
+  account: LedgerAccount;
+};
+
+export type ListVouchers200 = {
+  vouchers: Voucher[];
+};
+
+export type ReverseVoucher200 = {
+  voucher: Voucher;
+};
+
+export type GetGstr1Params = {
+/**
+ * `YYYY-MM`. Returns are monthly.
+ */
+period: string;
+format?: GetGstr1Format;
+};
+
+export type GetGstr1Format = typeof GetGstr1Format[keyof typeof GetGstr1Format];
+
+
+export const GetGstr1Format = {
+  json: 'json',
+  csv: 'csv',
+} as const;
+
+export type GetTallyFeedParams = {
+from: string;
+to: string;
+format?: GetTallyFeedFormat;
+/**
+ * `true` to include vouchers already handed over.
+ */
+all?: string;
+};
+
+export type GetTallyFeedFormat = typeof GetTallyFeedFormat[keyof typeof GetTallyFeedFormat];
+
+
+export const GetTallyFeedFormat = {
+  json: 'json',
+  xml: 'xml',
+} as const;
+
+export type MarkTallyHandedOver200 = {
+  marked: number;
 };
 
 export type ListChannels200 = {

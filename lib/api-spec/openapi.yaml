@@ -2134,6 +2134,314 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /dms/ledger/accounts:
+    get:
+      operationId: listLedgerAccounts
+      tags: [dms]
+      summary: The dealership's chart of accounts
+      description: >
+        Shaped like Tally's, because that is where the numbers are going. R-98
+        says the ledger is a feeder before it is a book of record — it produces
+        vouchers for whatever the dealership already keeps — and a chart
+        invented from first principles would be elegant and would not map onto
+        the one their accountant has used for eleven years.
+
+        `isSystem` marks the accounts a posting rule names by code. Those may be
+        renamed and remapped and may not be deleted: a rule that cannot find its
+        account has no honest behaviour left, because posting to a substitute
+        misstates the books silently and skipping the line produces a voucher
+        that does not balance.
+      responses:
+        "200":
+          description: Every account, by code
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accounts:
+                    type: array
+                    items: { $ref: "#/components/schemas/LedgerAccount" }
+                required: [accounts]
+        "403":
+          description: This role may not read the ledger
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /dms/ledger/accounts/{code}:
+    put:
+      operationId: renameLedgerAccount
+      tags: [dms]
+      summary: Point an account at the name their own books use
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LedgerAccountPatch"
+      responses:
+        "200":
+          description: Renamed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  account: { $ref: "#/components/schemas/LedgerAccount" }
+                required: [account]
+        "404":
+          description: No such account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /dms/ledger/post:
+    post:
+      operationId: postToLedger
+      tags: [dms]
+      summary: Post an issued sale document as double entry
+      description: >
+        The input is a `sale_document`, not a PDF. DDMS already produces the
+        invoice; the ledger posts what DDMS issued, so there is exactly one
+        thing to post from.
+
+        Two things it refuses to guess. A charge whose label nothing recognises
+        goes to **suspense, never to income** — the failure R-103 is written
+        against is overstating turnover, so the default has to fall the other
+        way. And a vehicle that cannot be found in stock gets **no invented
+        cost**: the revenue posts, the cost relief does not, and the warning
+        says that until it does the whole selling price reads as margin.
+
+        `warnings` is part of a successful response. Refusing the posting would
+        deny a sale that happened; making the gap loud is the honest version.
+
+        One document posts once (R-101). A second attempt answers 409 — a
+        corrected invoice is reversed and re-issued, never edited.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PostToLedgerInput"
+      responses:
+        "200":
+          description: Posted, possibly with warnings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostedVoucher"
+        "409":
+          description: Already posted, not issued, or it does not balance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /dms/ledger/vouchers:
+    get:
+      operationId: listVouchers
+      tags: [dms]
+      summary: The books, newest first
+      responses:
+        "200":
+          description: Vouchers with their lines
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  vouchers:
+                    type: array
+                    items: { $ref: "#/components/schemas/Voucher" }
+                required: [vouchers]
+        "403":
+          description: This role may not read the ledger
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /dms/ledger/vouchers/{id}/reverse:
+    post:
+      operationId: reverseVoucher
+      tags: [dms]
+      summary: Undo an entry by posting its mirror
+      description: >
+        Never an edit and never a delete. The original stays, marked `REVERSED`,
+        and a new voucher carries the same lines with debit and credit swapped.
+        A set of books whose entries can be changed after the fact is not
+        evidence of anything, and the month it was closed on is already inside
+        somebody's return.
+
+        Dated today rather than back-dated to the original. Reversing an April
+        entry in September is a September event; back-dating it would silently
+        reopen a month that has been filed on.
+
+        A reason is required — a reversal without one is an unexplained hole in
+        a set of books, and whoever made it will not remember in March.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReverseVoucherInput"
+      responses:
+        "200":
+          description: The reversing voucher
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  voucher: { $ref: "#/components/schemas/Voucher" }
+                required: [voucher]
+        "400":
+          description: No reason given
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Already reversed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /dms/ledger/gstr1:
+    get:
+      operationId: getGstr1
+      tags: [dms]
+      summary: The file the CA files
+      description: >
+        R-99 — a ledger that produces nothing lodgeable has added a system
+        rather than replaced one.
+
+        B2B and B2C are different shapes rather than a flag, because they are
+        different filings. A registered buyer's invoice is reported line by
+        line, since their input credit depends on it and the portal matches the
+        two; everybody else's sales are aggregated by place of supply and rate.
+        Getting that wrong does not produce a wrong total — it produces a return
+        the portal accepts and a buyer who cannot claim their credit, which the
+        dealership hears about three months later.
+
+        Nothing here recomputes tax. The rate and the split were decided when
+        the invoice was priced and printed on a document a customer holds; a
+        return is not the place to discover the product has two answers.
+
+        `problems` is part of a successful response. A return with three rows
+        missing a place of supply is still worth having in front of somebody.
+      parameters:
+        - name: period
+          in: query
+          required: true
+          schema: { type: string }
+          description: "`YYYY-MM`. Returns are monthly."
+        - name: format
+          in: query
+          required: false
+          schema: { type: string, enum: [json, csv] }
+      responses:
+        "200":
+          description: The return, or its CSV
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Gstr1"
+        "400":
+          description: Bad period
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /dms/ledger/tally:
+    get:
+      operationId: getTallyFeed
+      tags: [dms]
+      summary: Vouchers in the shape Tally imports
+      description: >
+        R-98's first rung — **be additive before asking to be trusted.** This
+        does not replace anybody's books: it produces vouchers Tally imports,
+        the dealership brings them in beside what they already keep, and the two
+        are reconciled for an agreed period. Only then is there a conversation
+        about which one is the record.
+
+        `LEDGERNAME` uses each account's `tallyName` where the dealership has
+        set one, which is what makes the import land in *their* chart rather
+        than in twenty-six new ledgers named after ours.
+
+        Building the file and marking it handed over are two calls on purpose.
+        A download that failed halfway would otherwise leave vouchers marked
+        exported that nobody received, and the next feed would skip them — which
+        is how a month goes missing with nothing anywhere reporting it.
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema: { type: string }
+        - name: to
+          in: query
+          required: true
+          schema: { type: string }
+        - name: format
+          in: query
+          required: false
+          schema: { type: string, enum: [json, xml] }
+        - name: all
+          in: query
+          required: false
+          schema: { type: string }
+          description: "`true` to include vouchers already handed over."
+      responses:
+        "200":
+          description: The XML and what is in it
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TallyFeed"
+        "400":
+          description: Bad dates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /dms/ledger/tally/handed-over:
+    post:
+      operationId: markTallyHandedOver
+      tags: [dms]
+      summary: Record that a feed actually reached their books
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HandedOverInput"
+      responses:
+        "200":
+          description: How many were marked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  marked: { type: integer }
+                required: [marked]
+
   /dms/runs:
     get:
       operationId: listRuns
@@ -4112,6 +4420,138 @@ components:
               count: { type: integer }
             required: [module, count]
       required: [items, total, mine, unassigned, outlet, byModule]
+
+    LedgerAccount:
+      type: object
+      properties:
+        id: { type: integer }
+        code: { type: string }
+        name: { type: string }
+        tallyName: { type: ["string", "null"] }
+        group: { type: string, enum: [ASSET, LIABILITY, INCOME, EXPENSE, EQUITY] }
+        isSystem: { type: string, enum: [Y, N] }
+      required: [id, code, name, tallyName, group, isSystem]
+
+    LedgerAccountPatch:
+      type: object
+      properties:
+        name: { type: string }
+        tallyName: { type: string }
+
+    PostToLedgerInput:
+      type: object
+      properties:
+        documentId: { type: integer }
+      required: [documentId]
+
+    ReverseVoucherInput:
+      type: object
+      properties:
+        reason:
+          type: string
+          description: Required. It goes on the voucher and stays there.
+      required: [reason]
+
+    VoucherLine:
+      type: object
+      properties:
+        seq: { type: integer }
+        accountCode: { type: string }
+        accountName: { type: string }
+        debit: { type: string }
+        credit: { type: string }
+        narration: { type: ["string", "null"] }
+        partyName: { type: ["string", "null"] }
+      required: [seq, accountCode, accountName, debit, credit, narration, partyName]
+
+    Voucher:
+      type: object
+      properties:
+        id: { type: integer }
+        kind: { type: string }
+        voucherNo: { type: string }
+        voucherDate: { type: string }
+        financialYear: { type: string }
+        narration: { type: ["string", "null"] }
+        status: { type: string, enum: [POSTED, REVERSED] }
+        totalDebit: { type: string }
+        totalCredit: { type: string }
+        warnings:
+          type: array
+          items: { type: string }
+          description: What the posting could not do, and why. Never silent.
+        exportedAt: { type: ["string", "null"] }
+        reversalOfId: { type: ["integer", "null"] }
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/VoucherLine" }
+      required: [id, kind, voucherNo, voucherDate, financialYear, narration, status, totalDebit, totalCredit, warnings, exportedAt, reversalOfId, lines]
+
+    PostedVoucher:
+      type: object
+      properties:
+        voucher: { $ref: "#/components/schemas/Voucher" }
+        warnings:
+          type: array
+          items: { type: string }
+      required: [warnings]
+
+    Gstr1:
+      type: object
+      properties:
+        gstin: { type: ["string", "null"] }
+        financialYear: { type: string }
+        period: { type: string }
+        b2b:
+          type: array
+          description: Invoice-wise, as the portal requires for a registered buyer.
+          items:
+            type: object
+            additionalProperties: true
+        b2cs:
+          type: array
+          description: Aggregated by place of supply and rate, for everybody else.
+          items:
+            type: object
+            additionalProperties: true
+        hsn:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        problems:
+          type: array
+          items: { type: string }
+        totals:
+          type: object
+          properties:
+            invoices: { type: integer }
+            taxableValue: { type: number }
+            tax: { type: number }
+          required: [invoices, taxableValue, tax]
+      required: [gstin, financialYear, period, b2b, b2cs, hsn, problems, totals]
+
+    TallyFeed:
+      type: object
+      properties:
+        vouchers: { type: integer }
+        voucherIds:
+          type: array
+          items: { type: integer }
+        problems:
+          type: array
+          items: { type: string }
+        xml: { type: string }
+      required: [vouchers, voucherIds, problems, xml]
+
+    HandedOverInput:
+      type: object
+      properties:
+        voucherIds:
+          type: array
+          items: { type: integer }
+        batch: { type: string }
+      required: [voucherIds]
 
     AgentRun:
       type: object

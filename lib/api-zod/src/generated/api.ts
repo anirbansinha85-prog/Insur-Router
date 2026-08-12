@@ -2088,6 +2088,219 @@ export const ListDmsEventsResponse = zod.object({
 
 
 /**
+ * Shaped like Tally's, because that is where the numbers are going. R-98 says the ledger is a feeder before it is a book of record — it produces vouchers for whatever the dealership already keeps — and a chart invented from first principles would be elegant and would not map onto the one their accountant has used for eleven years.
+ * `isSystem` marks the accounts a posting rule names by code. Those may be renamed and remapped and may not be deleted: a rule that cannot find its account has no honest behaviour left, because posting to a substitute misstates the books silently and skipping the line produces a voucher that does not balance.
+ * @summary The dealership's chart of accounts
+ */
+export const ListLedgerAccountsResponse = zod.object({
+  "accounts": zod.array(zod.object({
+  "id": zod.number().int(),
+  "code": zod.string(),
+  "name": zod.string(),
+  "tallyName": zod.string().nullable(),
+  "group": zod.enum(['ASSET', 'LIABILITY', 'INCOME', 'EXPENSE', 'EQUITY']),
+  "isSystem": zod.enum(['Y', 'N'])
+}))
+})
+
+
+/**
+ * @summary Point an account at the name their own books use
+ */
+export const RenameLedgerAccountParams = zod.object({
+  "code": zod.coerce.string()
+})
+
+export const RenameLedgerAccountBody = zod.object({
+  "name": zod.string().optional(),
+  "tallyName": zod.string().optional()
+})
+
+export const RenameLedgerAccountResponse = zod.object({
+  "account": zod.object({
+  "id": zod.number().int(),
+  "code": zod.string(),
+  "name": zod.string(),
+  "tallyName": zod.string().nullable(),
+  "group": zod.enum(['ASSET', 'LIABILITY', 'INCOME', 'EXPENSE', 'EQUITY']),
+  "isSystem": zod.enum(['Y', 'N'])
+})
+})
+
+
+/**
+ * The input is a `sale_document`, not a PDF. DDMS already produces the invoice; the ledger posts what DDMS issued, so there is exactly one thing to post from.
+ * Two things it refuses to guess. A charge whose label nothing recognises goes to **suspense, never to income** — the failure R-103 is written against is overstating turnover, so the default has to fall the other way. And a vehicle that cannot be found in stock gets **no invented cost**: the revenue posts, the cost relief does not, and the warning says that until it does the whole selling price reads as margin.
+ * `warnings` is part of a successful response. Refusing the posting would deny a sale that happened; making the gap loud is the honest version.
+ * One document posts once (R-101). A second attempt answers 409 — a corrected invoice is reversed and re-issued, never edited.
+ * @summary Post an issued sale document as double entry
+ */
+export const PostToLedgerBody = zod.object({
+  "documentId": zod.number().int()
+})
+
+export const PostToLedgerResponse = zod.object({
+  "voucher": zod.object({
+  "id": zod.number().int(),
+  "kind": zod.string(),
+  "voucherNo": zod.string(),
+  "voucherDate": zod.string(),
+  "financialYear": zod.string(),
+  "narration": zod.string().nullable(),
+  "status": zod.enum(['POSTED', 'REVERSED']),
+  "totalDebit": zod.string(),
+  "totalCredit": zod.string(),
+  "warnings": zod.array(zod.string()).describe('What the posting could not do, and why. Never silent.'),
+  "exportedAt": zod.string().nullable(),
+  "reversalOfId": zod.number().int().nullable(),
+  "lines": zod.array(zod.object({
+  "seq": zod.number().int(),
+  "accountCode": zod.string(),
+  "accountName": zod.string(),
+  "debit": zod.string(),
+  "credit": zod.string(),
+  "narration": zod.string().nullable(),
+  "partyName": zod.string().nullable()
+}))
+}).optional(),
+  "warnings": zod.array(zod.string())
+})
+
+
+/**
+ * @summary The books, newest first
+ */
+export const ListVouchersResponse = zod.object({
+  "vouchers": zod.array(zod.object({
+  "id": zod.number().int(),
+  "kind": zod.string(),
+  "voucherNo": zod.string(),
+  "voucherDate": zod.string(),
+  "financialYear": zod.string(),
+  "narration": zod.string().nullable(),
+  "status": zod.enum(['POSTED', 'REVERSED']),
+  "totalDebit": zod.string(),
+  "totalCredit": zod.string(),
+  "warnings": zod.array(zod.string()).describe('What the posting could not do, and why. Never silent.'),
+  "exportedAt": zod.string().nullable(),
+  "reversalOfId": zod.number().int().nullable(),
+  "lines": zod.array(zod.object({
+  "seq": zod.number().int(),
+  "accountCode": zod.string(),
+  "accountName": zod.string(),
+  "debit": zod.string(),
+  "credit": zod.string(),
+  "narration": zod.string().nullable(),
+  "partyName": zod.string().nullable()
+}))
+}))
+})
+
+
+/**
+ * Never an edit and never a delete. The original stays, marked `REVERSED`, and a new voucher carries the same lines with debit and credit swapped. A set of books whose entries can be changed after the fact is not evidence of anything, and the month it was closed on is already inside somebody's return.
+ * Dated today rather than back-dated to the original. Reversing an April entry in September is a September event; back-dating it would silently reopen a month that has been filed on.
+ * A reason is required — a reversal without one is an unexplained hole in a set of books, and whoever made it will not remember in March.
+ * @summary Undo an entry by posting its mirror
+ */
+export const ReverseVoucherParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const ReverseVoucherBody = zod.object({
+  "reason": zod.string().describe('Required. It goes on the voucher and stays there.')
+})
+
+export const ReverseVoucherResponse = zod.object({
+  "voucher": zod.object({
+  "id": zod.number().int(),
+  "kind": zod.string(),
+  "voucherNo": zod.string(),
+  "voucherDate": zod.string(),
+  "financialYear": zod.string(),
+  "narration": zod.string().nullable(),
+  "status": zod.enum(['POSTED', 'REVERSED']),
+  "totalDebit": zod.string(),
+  "totalCredit": zod.string(),
+  "warnings": zod.array(zod.string()).describe('What the posting could not do, and why. Never silent.'),
+  "exportedAt": zod.string().nullable(),
+  "reversalOfId": zod.number().int().nullable(),
+  "lines": zod.array(zod.object({
+  "seq": zod.number().int(),
+  "accountCode": zod.string(),
+  "accountName": zod.string(),
+  "debit": zod.string(),
+  "credit": zod.string(),
+  "narration": zod.string().nullable(),
+  "partyName": zod.string().nullable()
+}))
+})
+})
+
+
+/**
+ * R-99 — a ledger that produces nothing lodgeable has added a system rather than replaced one.
+ * B2B and B2C are different shapes rather than a flag, because they are different filings. A registered buyer's invoice is reported line by line, since their input credit depends on it and the portal matches the two; everybody else's sales are aggregated by place of supply and rate. Getting that wrong does not produce a wrong total — it produces a return the portal accepts and a buyer who cannot claim their credit, which the dealership hears about three months later.
+ * Nothing here recomputes tax. The rate and the split were decided when the invoice was priced and printed on a document a customer holds; a return is not the place to discover the product has two answers.
+ * `problems` is part of a successful response. A return with three rows missing a place of supply is still worth having in front of somebody.
+ * @summary The file the CA files
+ */
+export const GetGstr1QueryParams = zod.object({
+  "period": zod.coerce.string().describe('`YYYY-MM`. Returns are monthly.'),
+  "format": zod.enum(['json', 'csv']).optional()
+})
+
+export const GetGstr1Response = zod.object({
+  "gstin": zod.string().nullable(),
+  "financialYear": zod.string(),
+  "period": zod.string(),
+  "b2b": zod.array(zod.record(zod.string(), zod.unknown())).describe('Invoice-wise, as the portal requires for a registered buyer.'),
+  "b2cs": zod.array(zod.record(zod.string(), zod.unknown())).describe('Aggregated by place of supply and rate, for everybody else.'),
+  "hsn": zod.array(zod.record(zod.string(), zod.unknown())),
+  "problems": zod.array(zod.string()),
+  "totals": zod.object({
+  "invoices": zod.number().int(),
+  "taxableValue": zod.number(),
+  "tax": zod.number()
+})
+})
+
+
+/**
+ * R-98's first rung — **be additive before asking to be trusted.** This does not replace anybody's books: it produces vouchers Tally imports, the dealership brings them in beside what they already keep, and the two are reconciled for an agreed period. Only then is there a conversation about which one is the record.
+ * `LEDGERNAME` uses each account's `tallyName` where the dealership has set one, which is what makes the import land in *their* chart rather than in twenty-six new ledgers named after ours.
+ * Building the file and marking it handed over are two calls on purpose. A download that failed halfway would otherwise leave vouchers marked exported that nobody received, and the next feed would skip them — which is how a month goes missing with nothing anywhere reporting it.
+ * @summary Vouchers in the shape Tally imports
+ */
+export const GetTallyFeedQueryParams = zod.object({
+  "from": zod.coerce.string(),
+  "to": zod.coerce.string(),
+  "format": zod.enum(['json', 'xml']).optional(),
+  "all": zod.coerce.string().optional().describe('`true` to include vouchers already handed over.')
+})
+
+export const GetTallyFeedResponse = zod.object({
+  "vouchers": zod.number().int(),
+  "voucherIds": zod.array(zod.number().int()),
+  "problems": zod.array(zod.string()),
+  "xml": zod.string()
+})
+
+
+/**
+ * @summary Record that a feed actually reached their books
+ */
+export const MarkTallyHandedOverBody = zod.object({
+  "voucherIds": zod.array(zod.number().int()),
+  "batch": zod.string().optional()
+})
+
+export const MarkTallyHandedOverResponse = zod.object({
+  "marked": zod.number().int()
+})
+
+
+/**
  * The decision log answers *what happened to this record* and answers it well. It cannot answer *what did the agent do at half past two*, because a run is a narrative across records — it looked at a hundred and forty, suggested eleven, was refused on two and called a model four times — and that shape exists in no per-record table. You cannot supervise what you cannot watch.
  * `costPaise` is an estimate from the provider's own token counts times a rate table in code. It is not an invoice, and what it is for is noticing that today cost forty times yesterday, and for the daily ceiling.
  * `standingDown` is set only while a stand-down is still the newest thing that happened. One three days ago followed by six good runs is history, not a state, and a banner nothing ever clears is a banner people learn to ignore.

@@ -2,7 +2,7 @@ import { Link, useLocation } from "wouter"
 import {
   Users, ListChecks, Wrench, LayoutDashboard, ShieldCheck, Bell,
   ExternalLink, LogOut, IdCard, Boxes, Send, Wallet, Bike, ListTodo, SlidersHorizontal,
-  ReceiptText, Sparkles, Gauge, Radio, Activity,
+  ReceiptText, Sparkles, Gauge, Radio, Activity, BookOpen,
 } from "lucide-react"
 import type { SessionUser } from "@workspace/api-client-react"
 import { cn } from "@/lib/utils"
@@ -75,6 +75,7 @@ const GROUPS: NavGroup[] = [
       // Gated on DEAL, which is what an invoice is about. A technician reading
       // job cards has no business seeing what a customer paid.
       { href: "/invoices", label: "Invoicing", icon: ReceiptText, module: "DEAL" },
+      { href: "/books", label: "The books", icon: BookOpen, module: "RECEIVABLE" },
     ],
   },
   {

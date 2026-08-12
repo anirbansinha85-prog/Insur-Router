@@ -31,6 +31,12 @@ export const ROUTE_MODULE: Record<string, string> = {
   "/receivables": "RECEIVABLE",
   "/inventory": "VEHICLE",
   "/outbox": "OUTBOX",
+  // The books hang off RECEIVABLE rather than a module of their own: that is
+  // what a role needs to see money in this product, and the accounts are where
+  // that money ends up. A second answer to one question is how two answers
+  // come to disagree.
+  "/books": "RECEIVABLE",
+  "/invoices": "DEAL",
 }
 
 /** Where each module lives, for sending somebody somewhere they can work. */

@@ -201,7 +201,7 @@ pnpm run typecheck:libs                         # before checking leaf packages
 
 ## Data model
 
-Forty-one tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
+Forty-four tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
 which of them `ddms_app` may read, and on what terms, is in `lib/db/sql/rls.sql`.
 
 **The owner tier** — who the data belongs to:
@@ -823,6 +823,89 @@ older of which is the point.
 > every module-less permission, so a service advisor asking about an invoice was
 > told they may not set thresholds. And a correlated subquery through the ORM's
 > SQL template silently returned 1 for a list holding six.
+
+## The books, the return and the feeder
+
+`lib/dms/ledger/` and three tables (OBJ-31 to OBJ-33, R-98 to R-103). The first
+thing in this product where being wrong is a filing offence rather than a bad
+morning.
+
+**No model is anywhere near it and there is nowhere one could go.** R-100
+restates R-78 where the consequence is statutory. Every branch in `post.ts` is a
+comparison against a stored value or a lookup in a table declared above it.
+
+**The input is a `sale_document`, not a PDF.** DDMS already produces the
+invoice; the ledger posts what DDMS issued. A dealership whose invoices never
+pass through DDMS arrives at the same place through OBJ-24's `DOCUMENT` path, so
+there is exactly one thing to post from.
+
+```
+  Dr  Sundry Debtors                    total on the invoice
+      Cr  Vehicle Sales                 taxable value
+      Cr  Output CGST / SGST / IGST     the split as printed
+      Cr  Road Tax / Registration /     R-103 — collected for somebody else
+          Insurance Premium Payable
+      Cr  Suspense                      unrecognised, never income
+  Dr  Cost of Goods Sold                R-102 — the bike has left the floor
+      Cr  Vehicle Stock
+```
+
+**R-103 is worth a number.** On an ₹84,000 sale this dealership collects ₹17,750
+for the RTO and an insurer. Crediting it to income reports turnover **21% higher
+than it is** — and that error escapes the books: turnover drives the tax on it,
+the GST registration thresholds and the OEM's slabs. A charge whose label
+nothing recognises goes to **suspense, never income**, because overstating
+turnover is the failure being designed against and the default has to fall the
+other way.
+
+**R-102's honest failure.** A chassis not in stock gets no invented cost. The
+revenue posts, the relief does not, and the warning says *until it is, the whole
+selling price reads as margin.* Refusing would deny a sale that happened.
+
+**R-101 is an index.** Partial unique on `(sourceKind, sourceId) where status =
+'POSTED'`, so a concurrent retry loses at the database rather than both winning.
+Correction is **reverse and re-issue** — the original stays `REVERSED`, a new
+voucher carries every line mirrored, dated today because reversing an April
+entry in September is a September event and back-dating reopens a filed month.
+
+**The chart is Tally-shaped and `tallyName` is theirs to change.** One invented
+from first principles would not map onto the one their CA has used for eleven
+years. `isSystem` accounts rename and do not delete: a rule that cannot find its
+account has no honest behaviour — a substitute misstates silently, a skipped
+line will not balance.
+
+**The OEM scheme is deliberately not posted.** Whether it is income or a
+reduction of cost is the dealership's CA's judgement, and R-98 says feed their
+books rather than decide their policy. Named in the warnings, worked on the
+claims screen.
+
+### GSTR-1 and Tally share one file
+
+They are one claim about the same numbers; if they disagreed nobody could tell
+which was wrong. **Nothing in either recomputes tax** — the rate and split were
+decided when the invoice was priced and printed on a document a customer holds.
+
+B2B is invoice-wise and B2C is aggregated because they are different filings.
+Getting it wrong produces a return the portal accepts and a buyer who cannot
+claim their credit, which the dealership hears about three months later.
+
+Building the feed and marking it handed over are **two calls**: a download that
+failed halfway would leave vouchers marked exported that nobody received, and
+the next feed would skip them.
+
+`grant select on vouchers to ddms_worker` and nothing more — nothing unattended
+posts to a dealership's accounts. `/books` has no edit control and will not get
+one. `pnpm run verify:ledger`, thirty checks.
+
+> **A `date` column and `like` do not meet.** The verifier's independent
+> cross-check filtered a month with `voucher_date like '2026-08%'` and Postgres
+> refused it outright. Worth noting because it failed *loudly* — the same
+> comparison against a `text` column runs and quietly matches nothing.
+
+> **`db:push` without `db:rls` behind it broke six verifiers at once.** The rule
+> is at the top of this file and this is exactly why: a push resets policy state,
+> `record_activities` began refusing its own inserts, and it read as six
+> unrelated regressions rather than one missing command.
 
 ## Three ways in, one record
 
@@ -1786,7 +1869,7 @@ assignment (`VAR=x cmd`) and depends on `$REPLIT_EXPO_DEV_DOMAIN`,
 
 DDMS (`artifacts/ddms/src/pages/`): `Queue` (`/`), `Overview` (`/overview`),
 `Leads` (`/enquiries`), `Worklist` (`/worklist`), `Numbers` (`/numbers`),
-`Channels` (`/channels`), `Runs` (`/runs`),
+`Channels` (`/channels`), `Runs` (`/runs`), `Books` (`/books`),
 `Registrations` (`/registrations`), `ServiceWorklist` (`/service`),
 `Spares` (`/spares`), `Receivables` (`/receivables`), `Inventory`
 (`/inventory`), `Outbox` (`/outbox`), `Dossier` (`/who/:entityId`,

@@ -16,6 +16,7 @@ import Numbers from '@/pages/Numbers';
 import Learned from '@/pages/Learned';
 import Channels from '@/pages/Channels';
 import Runs from '@/pages/Runs';
+import Books from '@/pages/Books';
 import Invoice from '@/pages/Invoice';
 import Leads from '@/pages/Leads';
 import Worklist from '@/pages/Worklist';
@@ -139,6 +140,11 @@ function Gate() {
               editing what an unattended process recorded about itself is the
               one change that would make the whole table worthless. */}
           <Route path="/runs"><Runs /></Route>
+          {/* Gated on the ledger module — RECEIVABLE, because that is what a
+              role needs to see money here and the accounts are where it ends
+              up. A second LEDGER module would be a second answer to one
+              question. */}
+          <Route path="/books">{guard(u, "/books", <Books />)}</Route>
           <Route path="/enquiries">{guard(u, "/enquiries", <Leads />)}</Route>
           <Route path="/worklist">{guard(u, "/worklist", <Worklist />)}</Route>
           <Route path="/registrations">{guard(u, "/registrations", <Registrations />)}</Route>

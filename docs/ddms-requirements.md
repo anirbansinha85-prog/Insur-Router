@@ -2688,9 +2688,9 @@ products, the database enforces the boundary rather than trusting the code to,
 and since OBJ-8 the server holds no credential that could bypass it — it refuses
 to start with one. What is left is not a safety question any more.
 
-**Eleven verifiers, and each states a claim it could fail.** Permissions,
-records, agent, journey, ingest, invoice, autonomy, overview, channels, trace
-and `typecheck`.
+**Twelve verifiers, and each states a claim it could fail.** Permissions,
+records, agent, journey, ingest, invoice, autonomy, overview, channels, trace,
+ledger and `typecheck`.
 The rule they are held to was learnt the expensive way in OBJ-30: *a verifier
 that can fail for a reason it does not name will one day pass for a reason it
 does not name.*
@@ -2828,21 +2828,21 @@ DDMS at all — and OBJ-24's `DOCUMENT` path already reads those.
 |---|---|---|
 | R-96 | **The invoice generator must work without a mirror.** A dealer with no DMS is the customer it exists for, and requiring a mirrored deal row excludes exactly him. Facts may come from a mirror, a scan or a form; nothing downstream of the facts may know which | ✅ OBJ-30. `SaleFacts` from a mirrored deal or a typed form; the same sale issued both ways produces identical money in all thirteen columns |
 | R-97 | **A figure that reaches a statutory return was confirmed by a person or returned by an API.** A model's read is a proposal. This is R-49 applied where being wrong is a filing offence rather than a bad morning | ✅ OBJ-30. `doubtful()` refuses a tax invoice or sale confirmation carrying a sub-0.7 model read, and warns on a quotation — the gate is on the consequence, not on the provenance |
-| R-98 | **The ledger is a feeder before it is a book of record.** It produces vouchers for whatever the dealership already keeps, and becomes the record only once its numbers have reconciled against that system for an agreed period. Graduation, applied to a product decision | ○ |
-| R-99 | **The deliverable is the file the CA files.** A ledger that produces nothing lodgeable has added a system rather than replaced one | ○ |
-| R-100 | **Accounting arithmetic is deterministic, tested, and has no model anywhere near it.** R-78 restated where the consequence is statutory | ○ |
-| R-101 | **A voucher names the document it came from, and one document posts once.** Re-posting a corrected invoice reverses and re-issues; it never edits a posted voucher | ○ |
-| R-102 | **Selling a vehicle relieves inventory.** A ledger that credits revenue and never credits stock reports the ex-showroom price as margin | ○ |
-| R-103 | **Money collected on somebody else's behalf is a liability, not revenue.** Road tax, RTO fees and the insurance premium pass through the dealership; treating them as income overstates turnover and the tax on it | ○ |
+| R-98 | **The ledger is a feeder before it is a book of record.** It produces vouchers for whatever the dealership already keeps, and becomes the record only once its numbers have reconciled against that system for an agreed period. Graduation, applied to a product decision | ✅ OBJ-33. Vouchers into Tally in their own chart's names, and the screen says *feeder, not your book of record* in those words. `ddms_worker` holds select and nothing else |
+| R-99 | **The deliverable is the file the CA files.** A ledger that produces nothing lodgeable has added a system rather than replaced one | ✅ OBJ-32. GSTR-1 as B2B, B2CS and HSN with the portal's own column headings, and `problems` alongside the result rather than instead of it |
+| R-100 | **Accounting arithmetic is deterministic, tested, and has no model anywhere near it.** R-78 restated where the consequence is statutory | ✅ OBJ-31. Every branch in `post.ts` is a comparison or a table lookup. `verify:ledger` compares each figure against the document rather than against another number the same code produced |
+| R-101 | **A voucher names the document it came from, and one document posts once.** Re-posting a corrected invoice reverses and re-issues; it never edits a posted voucher | ✅ OBJ-31. A partial unique index, so a concurrent retry loses at the database. Correction reverses and re-issues; nothing edits a posted voucher |
+| R-102 | **Selling a vehicle relieves inventory.** A ledger that credits revenue and never credits stock reports the ex-showroom price as margin | ✅ OBJ-31. Matched on chassis. No match posts the revenue, refuses to invent a cost, and warns that the whole selling price reads as margin until it is relieved |
+| R-103 | **Money collected on somebody else's behalf is a liability, not revenue.** Road tax, RTO fees and the insurance premium pass through the dealership; treating them as income overstates turnover and the tax on it | ✅ OBJ-31. Three named liability accounts, and an unrecognised label goes to suspense rather than income — ₹17,750 of an ₹84,000 sale, which is turnover 21% overstated if it lands the other way |
 
 ### New objectives
 
 | # | Objective | Model? | Depends on | Why here |
 |---|---|---|---|---|
 | 30 | ~~**The generator without a mirror**~~ ✅ | no | 25 | one change, and it is what makes the product sellable to the dealer it was designed for |
-| 31 | **The ledger** — accounts, vouchers, posting rules | **no** | 30 | the genuinely new half. Deterministic, tested, and the first thing in this product where being wrong is a filing offence |
-| 32 | **The CA's file** — GSTR-1 out, invoice-wise for B2B and aggregated for B2C | no | 31 | the deliverable. Without it nothing has been replaced |
-| 33 | **The feeder** — vouchers into Tally or ERPNext | no | 31 | R-98's first rung: be additive before asking to be trusted |
+| 31 | ~~**The ledger** — accounts, vouchers, posting rules~~ ✅ | **no** | 30 | the genuinely new half. Deterministic, tested, and the first thing in this product where being wrong is a filing offence |
+| 32 | ~~**The CA's file** — GSTR-1 out, invoice-wise for B2B and aggregated for B2C~~ ✅ | no | 31 | the deliverable. Without it nothing has been replaced |
+| 33 | ~~**The feeder** — vouchers into Tally or ERPNext~~ ✅ | no | 31 | R-98's first rung: be additive before asking to be trusted |
 
 > **Sequencing against what is already queued.** OBJ-30 is an afternoon and
 > unblocks the standalone pitch, so it can go whenever. OBJ-31 to 33 are a
@@ -3281,4 +3281,112 @@ and the daily ceiling would become three ceilings.
 what an unattended process recorded about itself is the single change that would
 make the whole table worthless, and the grant carries the refusal rather than
 the route being careful.
+
+### What OBJ-31 to OBJ-33 turned out to be
+
+Built on 12 August, and the three are one build. Separating them would have
+meant a ledger with nothing lodgeable coming out of it, which R-99 names as
+having added a system rather than replaced one.
+
+**No model is anywhere near any of it, and there is nowhere one could go.**
+R-100 restates R-78 where the consequence is statutory. Every branch in
+`post.ts` is a comparison against a stored value or a lookup in a table declared
+above it. The single place a judgement could have crept in — deciding what an
+unrecognised charge *is* — deliberately does not make one.
+
+#### The three requirements, and what each cost
+
+**R-103 — money collected for somebody else.** On this dealership's own
+invoice, ₹17,750 of an ₹84,000 sale belongs to the RTO and an insurer. A ledger
+that credited it to income would report turnover **21% higher than it is**, and
+that error escapes the books entirely: turnover drives the tax on it, the GST
+registration thresholds, and the OEM's own slabs. Three named liability
+accounts, and the classification is a closed table of regular expressions
+against the labels a dealership actually prints.
+
+The interesting half is the default. A charge whose label nothing recognises
+goes to **suspense, never to income** — the failure being designed against is
+overstating turnover, so the default has to fall the other way, and a suspense
+account somebody's accountant clears is ordinary practice.
+
+**R-102 — selling a vehicle relieves stock.** Matched on the chassis number,
+which is the only identifier the document and the stock mirror share. No match
+means either a sub-dealer with no DMS — the customer OBJ-30 exists for — or a
+chassis typed differently on one of them. **The revenue posts, the cost does
+not, and the warning says what that means**: *until it is, the whole selling
+price reads as margin.* Refusing the posting would deny a sale that happened;
+inventing a cost would put a fabricated figure inside a set of books.
+
+**R-101 — one document posts once.** A partial unique index on
+`(sourceKind, sourceId) where status = 'POSTED'`, so a concurrent second attempt
+loses at the database rather than both winning. A check-then-insert posts the
+same invoice twice under a retry and overstates the month by the price of a
+motorcycle — the error nobody notices until a return is filed.
+
+Correction is **reverse and re-issue**, never an edit. The original stays marked
+`REVERSED` and a new voucher carries every line with debit and credit swapped.
+Dated today rather than back-dated: reversing an April entry in September is a
+September event, and back-dating would silently reopen a month already filed on.
+
+#### Two decisions that are the dealership's, not ours
+
+**The chart is Tally-shaped and `tallyName` is a column.** A chart invented from
+first principles would be elegant and would not map onto the one their CA has
+used for eleven years. `isSystem` accounts may be renamed and remapped and not
+deleted — a posting rule that cannot find its account has no honest behaviour
+available: posting to a substitute misstates the books silently, and skipping
+the line produces a voucher that does not balance.
+
+**The OEM scheme is deliberately not posted.** R-88 says the claim is owed
+whatever the customer was told, so there is a receivable from the manufacturer
+behind every sale carrying one. Whether that is income or a reduction of cost is
+a genuine accounting judgement belonging to the dealership's CA, and R-98's
+posture is to feed their books rather than decide their policy. The amount is
+named in the warnings so it is not lost, and the claims screen is where it is
+worked.
+
+#### Why GSTR-1 and the Tally feed share a file
+
+They are one claim about the same numbers. If they ever disagreed, one would be
+wrong and nobody could tell which — so neither is allowed its own idea of what a
+sale was, and **nothing in either recomputes tax**. The rate and the split were
+decided when the invoice was priced and printed on a document a customer holds;
+a statutory return is not the place to discover the product has two answers.
+
+B2B and B2C are different shapes rather than a flag, because they are different
+filings. Getting that wrong does not produce a wrong total — it produces a
+return the portal accepts and a buyer who cannot claim their input credit, which
+the dealership hears about from the buyer three months later.
+
+**Building the feed and marking it handed over are two calls.** A download that
+failed halfway would otherwise leave vouchers marked exported that nobody
+received, and the next feed would skip them — which is how a month goes missing
+from somebody's books with nothing anywhere reporting it.
+
+#### The findings
+
+> **A `date` column and `like` do not meet.** The verifier's independent
+> cross-check filtered the month with `voucher_date like '2026-08%'` and Postgres
+> answered *no operator matches the given name and argument types*. Cast, and it
+> is worth noting because it failed loudly — the same comparison written against
+> a `text` column would have run and quietly matched nothing.
+
+> **`db:push` without `db:rls` behind it broke six verifiers at once.** The rule
+> has been in CLAUDE.md since OBJ-8 and it is there because this is exactly what
+> happens: a push resets policy state, `record_activities` started refusing its
+> own inserts, and the failures looked like six unrelated regressions rather than
+> one missing command.
+
+#### What is deliberately not built
+
+**No receipts, no purchases, no payroll.** The voucher kinds exist in the enum
+and only `SALES` and `JOURNAL` are produced. A ledger that posts everything is a
+book of record, and R-98 is explicit that this is a feeder first — it earns the
+rest by reconciling for a few months against what the dealership already keeps.
+
+**Nothing unattended posts.** `ddms_worker` holds select on all three tables and
+nothing else, asserted by `verify:ledger` §8. An entry appearing in a
+dealership's accounts with nobody signed in is not a thing this product does.
+
+**No edit control on the screen, and there will not be one.**
 

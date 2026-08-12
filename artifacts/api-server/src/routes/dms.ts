@@ -110,6 +110,19 @@ import {
 } from "../lib/dms/channels";
 import { markRead, unreadReplies } from "../lib/dms/channels/inbound";
 import { recentRuns, stepsFor } from "../lib/dms/trace";
+import {
+  chartFor,
+  ensureChart,
+  gstr1Csv,
+  gstr1For,
+  markExported,
+  postSaleDocument,
+  renameAccount,
+  reverseVoucher,
+  tallyFeed,
+} from "../lib/dms/ledger";
+import { and as sqlAnd, desc as sqlDesc, eq as sqlEq, inArray as sqlIn } from "drizzle-orm";
+import { vouchersTable, voucherLinesTable } from "@workspace/db";
 import { describeRules, MAX_RULES } from "../lib/dms/rules";
 import {
   standingFor,
@@ -1620,6 +1633,250 @@ router.get("/dms/events", async (req, res): Promise<void> => {
  * process recorded about itself is the single change that would make the whole
  * table worthless. The grant carries the same refusal.
  */
+/**
+ * The books (OBJ-31 to OBJ-33, R-98 to R-103).
+ *
+ * ## Gated on the ledger module, not on a new one
+ *
+ * `RECEIVABLE` is what a role needs to see money in this product, and the
+ * accounts are where that money ends up. Inventing a `LEDGER` module would have
+ * meant a second answer to *may this person see what the dealership earns*, and
+ * two answers to one question is how they come to disagree.
+ *
+ * ## Posting is a person's act, always
+ *
+ * There is no scheduled posting and the worker credential holds select only.
+ * An entry appearing in a dealership's accounts with nobody signed in is not
+ * something this product does — R-98's posture is to feed their books, and a
+ * feeder that writes unattended has stopped being additive.
+ */
+router.get("/dms/ledger/accounts", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  if (!assertModuleAccess(req, res, "RECEIVABLE")) return;
+  await ensureChart(user.ownerId);
+  res.json({ accounts: await chartFor(user.ownerId) });
+});
+
+router.put("/dms/ledger/accounts/:code", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  if (!assertModuleAccess(req, res, "RECEIVABLE")) return;
+  if (!may(user.role, "policy.set")) {
+    res.status(403).json({ error: whyNot(user.role, "policy.set") });
+    return;
+  }
+  const body = req.body as Record<string, unknown>;
+  const row = await renameAccount(user.ownerId, req.params.code!, {
+    ...(typeof body.name === "string" ? { name: body.name } : {}),
+    ...(typeof body.tallyName === "string" ? { tallyName: body.tallyName } : {}),
+  });
+  if (!row) {
+    res.status(404).json({ error: `No account ${req.params.code}` });
+    return;
+  }
+  res.json({ account: row });
+});
+
+router.post("/dms/ledger/post", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  if (!assertModuleAccess(req, res, "RECEIVABLE")) return;
+
+  const documentId = Number((req.body as Record<string, unknown>).documentId);
+  if (!Number.isInteger(documentId)) {
+    res.status(400).json({ error: "documentId must be an integer" });
+    return;
+  }
+
+  const result = await postSaleDocument({
+    ownerId: user.ownerId,
+    documentId,
+    userId: user.userId,
+  });
+  if (!result.ok) {
+    res.status(409).json({ error: result.error, warnings: result.warnings });
+    return;
+  }
+  res.json({ voucher: result.voucher, warnings: result.warnings });
+});
+
+router.post("/dms/ledger/vouchers/:id/reverse", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  if (!assertModuleAccess(req, res, "RECEIVABLE")) return;
+
+  const reason = String((req.body as Record<string, unknown>).reason ?? "").trim();
+  if (!reason) {
+    // Required, because a reversal with no reason is an unexplained hole in a
+    // set of books and the person who made it will not remember in March.
+    res.status(400).json({ error: "A reversal needs a reason. It goes on the voucher." });
+    return;
+  }
+
+  const result = await reverseVoucher({
+    ownerId: user.ownerId,
+    voucherId: Number(req.params.id),
+    reason,
+    userId: user.userId,
+  });
+  if (!result.ok) {
+    res.status(409).json({ error: result.error });
+    return;
+  }
+  res.json({ voucher: result.voucher });
+});
+
+router.get("/dms/ledger/vouchers", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  if (!assertModuleAccess(req, res, "RECEIVABLE")) return;
+
+  const owned = await ownedShowroomIds(user.ownerId);
+  const visible =
+    user.showroomId !== null && !seesEveryOutlet(user.role) ? [user.showroomId] : owned;
+
+  const rows = await db
+    .select()
+    .from(vouchersTable)
+    .where(sqlAnd(sqlEq(vouchersTable.ownerId, user.ownerId), sqlIn(vouchersTable.showroomId, visible)))
+    .orderBy(sqlDesc(vouchersTable.voucherDate), sqlDesc(vouchersTable.id))
+    .limit(200);
+
+  const lines = rows.length
+    ? await db
+        .select()
+        .from(voucherLinesTable)
+        .where(
+          sqlIn(
+            voucherLinesTable.voucherId,
+            rows.map((r) => r.id),
+          ),
+        )
+        .orderBy(voucherLinesTable.voucherId, voucherLinesTable.seq)
+    : [];
+
+  res.json({
+    vouchers: rows.map((v) => ({
+      id: v.id,
+      kind: v.kind,
+      voucherNo: v.voucherNo,
+      voucherDate: v.voucherDate,
+      financialYear: v.financialYear,
+      narration: v.narration,
+      status: v.status,
+      totalDebit: v.totalDebit,
+      totalCredit: v.totalCredit,
+      warnings: v.warnings,
+      exportedAt: v.exportedAt?.toISOString() ?? null,
+      reversalOfId: v.reversalOfId,
+      lines: lines
+        .filter((l) => l.voucherId === v.id)
+        .map((l) => ({
+          seq: l.seq,
+          accountCode: l.accountCode,
+          accountName: l.accountName,
+          debit: l.debit,
+          credit: l.credit,
+          narration: l.narration,
+          partyName: l.partyName,
+        })),
+    })),
+  });
+});
+
+/**
+ * The file the CA files (OBJ-32, R-99).
+ *
+ * A ledger that produces nothing lodgeable has added a system rather than
+ * replaced one. `problems` is part of the response and not an error: a return
+ * with three rows missing a place of supply is still worth having in front of
+ * somebody, and refusing to produce it would leave them with nothing to fix.
+ */
+router.get("/dms/ledger/gstr1", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  if (!assertModuleAccess(req, res, "RECEIVABLE")) return;
+
+  const period = String(req.query.period ?? "");
+  if (!/^\d{4}-\d{2}$/.test(period)) {
+    res.status(400).json({ error: "period must be YYYY-MM" });
+    return;
+  }
+
+  const owned = await ownedShowroomIds(user.ownerId);
+  const visible =
+    user.showroomId !== null && !seesEveryOutlet(user.role) ? [user.showroomId] : owned;
+
+  const result = await gstr1For({ ownerId: user.ownerId, showroomIds: visible, period });
+
+  if (req.query.format === "csv") {
+    const csv = gstr1Csv(result);
+    res.type("text/plain").send(
+      [
+        `# GSTR-1 ${period} — ${result.gstin ?? "no GSTIN recorded"}`,
+        ...(result.problems.length ? ["#", ...result.problems.map((p) => `# ${p}`)] : []),
+        "",
+        "## b2b",
+        csv.b2b,
+        "",
+        "## b2cs",
+        csv.b2cs,
+        "",
+        "## hsn",
+        csv.hsn,
+        "",
+      ].join("\n"),
+    );
+    return;
+  }
+
+  res.json(result);
+});
+
+/**
+ * Vouchers into Tally (OBJ-33, R-98).
+ *
+ * Building the file and marking it handed over are two calls on purpose. A
+ * download that failed halfway would otherwise leave vouchers marked exported
+ * that nobody received, and the next feed would skip them — which is how a
+ * month goes missing from somebody's books with nothing anywhere reporting it.
+ */
+router.get("/dms/ledger/tally", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  if (!assertModuleAccess(req, res, "RECEIVABLE")) return;
+
+  const owned = await ownedShowroomIds(user.ownerId);
+  const visible =
+    user.showroomId !== null && !seesEveryOutlet(user.role) ? [user.showroomId] : owned;
+
+  const from = String(req.query.from ?? "");
+  const to = String(req.query.to ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    res.status(400).json({ error: "from and to must be YYYY-MM-DD" });
+    return;
+  }
+
+  const feed = await tallyFeed({
+    ownerId: user.ownerId,
+    showroomIds: visible,
+    from,
+    to,
+    unexportedOnly: req.query.all !== "true",
+  });
+
+  if (req.query.format === "xml") {
+    res.type("application/xml").send(feed.xml);
+    return;
+  }
+  res.json({ vouchers: feed.vouchers, voucherIds: feed.voucherIds, problems: feed.problems, xml: feed.xml });
+});
+
+router.post("/dms/ledger/tally/handed-over", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  if (!assertModuleAccess(req, res, "RECEIVABLE")) return;
+
+  const body = req.body as Record<string, unknown>;
+  const ids = Array.isArray(body.voucherIds) ? body.voucherIds.map(Number).filter(Number.isInteger) : [];
+  const batch = String(body.batch ?? new Date().toISOString());
+
+  res.json({ marked: await markExported({ ownerId: user.ownerId, voucherIds: ids, batch }) });
+});
+
 router.get("/dms/runs", async (req, res): Promise<void> => {
   const user = req.sessionUser!;
   const owned = await ownedShowroomIds(user.ownerId);

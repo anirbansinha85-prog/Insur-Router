@@ -437,6 +437,65 @@ create policy outbound_messages_own on public.outbound_messages
   with check (owner_id = app.current_owner_id());
 
 /*
+ * The books (OBJ-31, R-98 to R-103).
+ *
+ * Owner-scoped, and readable only by the roles that have any business in a
+ * ledger: an owner, a manager, and accounts. A service advisor can see a job
+ * card and has no reason to see what the dealership's margin on a bike was —
+ * which is the same argument that keeps them out of the receivables module,
+ * applied to the place those figures end up.
+ *
+ * **Insert but no update and no delete on vouchers**, and that is the whole of
+ * R-101 expressed as a grant. A posted voucher is never edited: it is reversed
+ * by a second voucher carrying its mirror. A set of books whose entries can be
+ * changed after the fact is not evidence of anything, and the month it was
+ * closed on is already inside somebody's return.
+ *
+ * The one update permitted is `exported_at`, which is bookkeeping about the
+ * handover rather than about the entry, and it is granted column-wise below.
+ */
+drop policy if exists ledger_accounts_own on public.ledger_accounts;
+create policy ledger_accounts_own on public.ledger_accounts
+  for all to ddms_app
+  using (owner_id = app.current_owner_id() and app.can_read('RECEIVABLE'))
+  with check (
+    owner_id = app.current_owner_id()
+    and app.current_role() in ('OWNER','MANAGER','ACCOUNTS')
+  );
+
+drop policy if exists vouchers_own on public.vouchers;
+create policy vouchers_own on public.vouchers
+  for all to ddms_app
+  using (owner_id = app.current_owner_id() and app.can_read('RECEIVABLE'))
+  with check (owner_id = app.current_owner_id() and app.can_read('RECEIVABLE'));
+
+/*
+ * Lines have no owner column, deliberately.
+ *
+ * The voucher carries the tenancy and a line belongs to exactly one voucher,
+ * so denormalising `owner_id` here would create a second place for the boundary
+ * to be wrong. The cost is a subquery on read; the benefit is that a line
+ * cannot disagree with its voucher about whose books it is in.
+ */
+drop policy if exists voucher_lines_own on public.voucher_lines;
+create policy voucher_lines_own on public.voucher_lines
+  for all to ddms_app
+  using (
+    exists (
+      select 1 from public.vouchers v
+      where v.id = voucher_lines.voucher_id
+        and v.owner_id = app.current_owner_id()
+        and app.can_read('RECEIVABLE')
+    )
+  )
+  with check (
+    exists (
+      select 1 from public.vouchers v
+      where v.id = voucher_lines.voucher_id and v.owner_id = app.current_owner_id()
+    )
+  );
+
+/*
  * What ran unattended, and what it cost (OBJ-28, R-92, R-93).
  *
  * Readable by anybody in the group, on the same argument as the dealership's
@@ -1049,6 +1108,24 @@ create policy outbound_worker on public.outbound_messages
  * Inbound it may write, because the webhook runs here — there is nobody signed
  * in when a customer's phone talks to the server.
  */
+/*
+ * The scheduler does not post. It is granted read so a future nightly
+ * reconciliation can compare the books against the mirror without a second
+ * credential, and nothing more — posting an entry into a dealership's accounts
+ * with nobody signed in is not a thing this product does.
+ */
+drop policy if exists ledger_worker on public.vouchers;
+create policy ledger_worker on public.vouchers
+  for select to ddms_worker using (true);
+
+drop policy if exists ledger_lines_worker on public.voucher_lines;
+create policy ledger_lines_worker on public.voucher_lines
+  for select to ddms_worker using (true);
+
+drop policy if exists ledger_accounts_worker on public.ledger_accounts;
+create policy ledger_accounts_worker on public.ledger_accounts
+  for select to ddms_worker using (true);
+
 drop policy if exists agent_runs_worker on public.agent_runs;
 create policy agent_runs_worker on public.agent_runs
   for all to ddms_worker using (true) with check (true);
@@ -1111,6 +1188,14 @@ grant select, insert, update on public.outbound_messages to ddms_app;
 -- product keeping a credential they revoked.
 -- Select only. A person may read what an unattended process did and may not
 -- edit it, which is the whole value of the record.
+grant select, insert, update on public.ledger_accounts to ddms_app;
+-- No update and no delete on a posted entry (R-101). `exported_at` is the one
+-- thing that changes after posting, and it is bookkeeping about the handover
+-- rather than about the entry, so it is granted column-wise.
+grant select, insert on public.vouchers to ddms_app;
+grant update (exported_at, export_batch, status, reversed_by_voucher_id, reversal_reason)
+  on public.vouchers to ddms_app;
+grant select, insert on public.voucher_lines to ddms_app;
 grant select on public.agent_runs to ddms_app;
 grant select on public.agent_run_steps to ddms_app;
 grant select, insert, update, delete on public.channel_credentials to ddms_app;
@@ -1253,6 +1338,9 @@ grant select on public.applications, public.policies to ddms_worker;
 -- it. What a draft may *do* is still `authoriseSend()`'s to decide.
 grant select, insert, update on public.outbound_messages to ddms_worker;
 -- No insert: an unattended process may not connect an account.
+grant select on public.ledger_accounts to ddms_worker;
+grant select on public.vouchers to ddms_worker;
+grant select on public.voucher_lines to ddms_worker;
 grant select, insert, update on public.agent_runs to ddms_worker;
 grant select, insert on public.agent_run_steps to ddms_worker;
 grant select, update on public.channel_credentials to ddms_worker;
