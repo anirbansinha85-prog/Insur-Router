@@ -37,6 +37,7 @@
 
 import { and, eq, sql } from "drizzle-orm";
 import { db, ingestMappingsTable, type IngestMappingRow } from "@workspace/db";
+import { askModel, modelAvailable } from "../model";
 import { logger } from "../../logger";
 import { DEAL_FIELDS, FIELDS_FOR, type DataType, type DealRecord, type FieldSpec } from "./types";
 import { fingerprintOf, toAmount, toDate, toText } from "./table";
@@ -305,100 +306,77 @@ async function proposeWithModel(
   alreadyPlaced: FieldMapping,
   dataType: DataType,
 ): Promise<{ mapping: FieldMapping; model: string | null }> {
-  const key = process.env["GEMINI_API_KEY"];
-  if (!key || process.env["INGEST_MAPPING_MODEL"] === "off") {
-    return { mapping: {}, model: null };
-  }
+  if (!modelAvailable("INGEST_MAPPING_MODEL")) return { mapping: {}, model: null };
 
   const takenColumns = new Set(Object.values(alreadyPlaced).map((m) => m.column));
   const open = headings.filter((h) => !takenColumns.has(h));
   const wanted = vocabularyFor(dataType).fields.filter((f) => !alreadyPlaced[f.field]);
   if (open.length === 0 || wanted.length === 0) return { mapping: {}, model: null };
 
-  const model = process.env["INGEST_MAPPING_MODEL"] || "gemini-flash-latest";
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 20_000);
-
-  try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-goog-api-key": key },
-        signal: controller.signal,
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: MAPPING_SYSTEM }] },
-          generationConfig: {
-            temperature: 0,
-            responseMimeType: "application/json",
-            maxOutputTokens: 2_000,
-          },
-          contents: [
-            {
-              role: "user",
-              parts: [
-                {
-                  text: [
+  /*
+   * Through the one door (OBJ-28), and `json: true` is not cosmetic.
+   *
+   * It constrains the model to emit a valid object and removes the commonest
+   * parse failure — prose or markdown fences around it. The fence-stripping
+   * below stays anyway, because a belt that costs two `replace` calls is
+   * cheaper than an onboarding that fails on its first afternoon.
+   */
+  const answer = await askModel({
+    purpose: "map-headings",
+    modelEnvVar: "INGEST_MAPPING_MODEL",
+    system: MAPPING_SYSTEM,
+    temperature: 0,
+    maxOutputTokens: 2_000,
+    timeoutMs: 20_000,
+    json: true,
+    user: [
                     "Fields still to place:",
                     ...wanted.map((f) => `  ${f.field} — ${f.what}`),
                     "",
                     "Headings still unclaimed:",
                     ...open.map((h) => `  ${h}`),
-                  ].join("\n"),
-                },
-              ],
-            },
-          ],
-        }),
-      },
-    );
+    ].join("\n"),
+  });
 
-    if (!res.ok) {
-      logger.warn({ status: res.status }, "Mapping model refused; name matches stand alone");
-      return { mapping: {}, model: null };
-    }
+  if (!answer.ok) return { mapping: {}, model: null };
 
-    const body = (await res.json()) as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-    };
-    const text = body.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
-    const parsed = JSON.parse(text.replace(/^```json\s*/i, "").replace(/```$/, "")) as FieldMapping;
-
-    /*
-     * Everything the model said, checked before it is kept.
-     *
-     * A named column that is not in the file is the failure that matters: it
-     * produces a mapping which extracts nothing and a confirmation screen that
-     * looks complete. Same class of check as `checkRewrite` — the model may
-     * propose, and what it proposes is verified against the thing it was
-     * describing.
-     */
-    const known = new Set(headings);
-    const valid: FieldMapping = {};
-    const fields = new Set(vocabularyFor(dataType).fields.map((f) => f.field));
-    for (const [field, m] of Object.entries(parsed)) {
-      if (!fields.has(field) || alreadyPlaced[field]) continue;
-      if (!m || typeof m.column !== "string" || !known.has(m.column)) continue;
-      if (takenColumns.has(m.column)) continue;
-      takenColumns.add(m.column);
-      valid[field] = {
-        column: m.column,
-        // Capped below the name matches. A model reading a heading it has never
-        // seen is a good guess and not the same kind of fact as `Chassis No`
-        // meaning the chassis number, and the confirmation screen sorts by this.
-        confidence: Math.min(0.8, Math.max(0.1, Number(m.confidence) || 0.5)),
-      };
-    }
-    return { mapping: valid, model };
-  } catch (err) {
-    logger.warn(
-      { err: err instanceof Error ? err.message : String(err) },
-      "Mapping model failed; name matches stand alone",
-    );
+  const model = process.env["INGEST_MAPPING_MODEL"] || "gemini-flash-latest";
+  let parsed: FieldMapping;
+  try {
+    parsed = JSON.parse(
+      answer.text.replace(/^```json\s*/i, "").replace(/```$/, ""),
+    ) as FieldMapping;
+  } catch {
+    logger.warn("Mapping model returned something that is not JSON; name matches stand alone");
     return { mapping: {}, model: null };
-  } finally {
-    clearTimeout(timer);
   }
+
+  /*
+   * Everything the model said, checked before it is kept.
+   *
+   * A named column that is not in the file is the failure that matters: it
+   * produces a mapping which extracts nothing and a confirmation screen that
+   * looks complete. Same class of check as `checkRewrite` — the model may
+   * propose, and what it proposes is verified against the thing it was
+   * describing.
+   */
+  const known = new Set(headings);
+  const valid: FieldMapping = {};
+  const fields = new Set(vocabularyFor(dataType).fields.map((f) => f.field));
+  for (const [field, m] of Object.entries(parsed)) {
+    if (!fields.has(field) || alreadyPlaced[field]) continue;
+    if (!m || typeof m.column !== "string" || !known.has(m.column)) continue;
+    if (takenColumns.has(m.column)) continue;
+    takenColumns.add(m.column);
+    valid[field] = {
+      column: m.column,
+      // Capped below the name matches. A model reading a heading it has never
+      // seen is a good guess and not the same kind of fact as `Chassis No`
+      // meaning the chassis number, and the confirmation screen sorts by this.
+      confidence: Math.min(0.8, Math.max(0.1, Number(m.confidence) || 0.5)),
+    };
+  }
+  return { mapping: valid, model };
 }
 
 // ── The three steps ─────────────────────────────────────────────────────────

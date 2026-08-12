@@ -15,6 +15,7 @@ import Overview from '@/pages/Overview';
 import Numbers from '@/pages/Numbers';
 import Learned from '@/pages/Learned';
 import Channels from '@/pages/Channels';
+import Runs from '@/pages/Runs';
 import Invoice from '@/pages/Invoice';
 import Leads from '@/pages/Leads';
 import Worklist from '@/pages/Worklist';
@@ -133,6 +134,11 @@ function Gate() {
               visibility question — it decides what this product may say to
               customers on the dealership's behalf. */}
           <Route path="/channels"><Channels permissions={u.permissions ?? []} /></Route>
+          {/* Readable by everybody, and read-only for everybody. A run is
+              opened and closed by the thing doing the running; a person
+              editing what an unattended process recorded about itself is the
+              one change that would make the whole table worthless. */}
+          <Route path="/runs"><Runs /></Route>
           <Route path="/enquiries">{guard(u, "/enquiries", <Leads />)}</Route>
           <Route path="/worklist">{guard(u, "/worklist", <Worklist />)}</Route>
           <Route path="/registrations">{guard(u, "/registrations", <Registrations />)}</Route>

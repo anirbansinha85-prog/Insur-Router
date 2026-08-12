@@ -83,6 +83,7 @@ import type { QueueItem } from "./queue";
 import type { Evidence } from "./tools";
 import { standingFor, type PatternStanding } from "./autonomy";
 import { patternKey } from "./precedent";
+import { step } from "./trace";
 import { markActed, recordProposals, type ProposalToRecord } from "./proposals";
 
 /**
@@ -456,6 +457,13 @@ export async function runAgentForShowroom(
     });
   }
   result.proposed = await recordProposals(toRecord);
+  if (result.proposed > 0) {
+    await step({
+      kind: "PROPOSE",
+      detail: `Offered ${result.proposed} suggestion(s) at ${showroomId}, written down whatever the switch says.`,
+      payload: { patterns: [...new Set(toRecord.map((r) => r.patternKey))] },
+    });
+  }
 
   // The master switch. Off, the dealership gets suggestions and nothing acts.
   if (!result.enabled) return result;
@@ -509,6 +517,16 @@ export async function runAgentForShowroom(
       // it is the sentence that says why a record somebody is waiting on is
       // still sitting there — and one bad record must not stop the rest.
       result.refused.push({ recordKey: item.recordKey, reason: applied.error });
+      // On the trace as well as in the log (OBJ-28). A refusal is the sentence
+      // that answers *why is this record still sitting there*, and a log line
+      // is not somewhere a dealership can read it.
+      await step({
+        kind: "REFUSED",
+        module: item.module,
+        recordKey: item.recordKey,
+        action: s.action,
+        detail: applied.error,
+      });
       logger.info(
         { action: s.action, recordKey: item.recordKey, reason: applied.error },
         "Agent was refused, exactly as a person would have been",
@@ -529,6 +547,23 @@ export async function runAgentForShowroom(
       module: item.module,
       recordKey: item.recordKey,
       action: s.action,
+    });
+
+    /*
+     * The trace names the decision; it does not repeat it.
+     *
+     * `decision_log` stays the authoritative record of what happened to the
+     * record, and this points at it. Two tables telling the story of one write
+     * is how they come to disagree, and the one somebody would trust is not
+     * necessarily the one somebody reads.
+     */
+    await step({
+      kind: "ACT",
+      module: item.module,
+      recordKey: item.recordKey,
+      action: s.action,
+      detail: detail.reason,
+      decisionId: applied.decisionId,
     });
 
     result.assigned++;

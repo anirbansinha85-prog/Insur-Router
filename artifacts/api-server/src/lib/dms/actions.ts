@@ -110,7 +110,21 @@ export interface ApplyActionInput {
 }
 
 export type ApplyResult =
-  | { ok: true; module: ActionModule; changed: Record<string, unknown> }
+  | {
+      ok: true;
+      module: ActionModule;
+      changed: Record<string, unknown>;
+      /**
+       * The row this write produced in `decision_log` (OBJ-28).
+       *
+       * Returned so a trace can *name* the decision instead of describing it
+       * again. The decision log stays the authoritative record of what
+       * happened to a record; two tables telling the story of one write is how
+       * they come to disagree, and the one somebody reads is not necessarily
+       * the one they would trust.
+       */
+      decisionId: number;
+    }
   | { ok: false; status: 400 | 404 | 409; error: string };
 
 const MODULE_OF: Record<ActionId, ActionModule> = {
@@ -529,7 +543,7 @@ export async function applyAction(input: ApplyActionInput): Promise<ApplyResult>
       return { ok: false, status: 400, error: `Unhandled action ${String(input.action)}` };
   }
 
-  await db.insert(decisionLogTable).values({
+  const [decision] = await db.insert(decisionLogTable).values({
     ownerId: input.ownerId,
     showroomId: input.showroomId,
     userId: input.userId,
@@ -539,14 +553,14 @@ export async function applyAction(input: ApplyActionInput): Promise<ApplyResult>
     previousValue: previous,
     newValue: changed,
     note: input.note ?? null,
-  });
+  }).returning({ id: decisionLogTable.id });
 
   logger.info(
     { action: input.action, clear, module, recordKey: input.recordKey, userId: input.userId },
     "Decision recorded",
   );
 
-  return { ok: true, module, changed };
+  return { ok: true, module, changed, decisionId: decision!.id };
 }
 
 // ── The picker ──────────────────────────────────────────────────────────────

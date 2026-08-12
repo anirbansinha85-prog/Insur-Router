@@ -2,7 +2,7 @@ import { Link, useLocation } from "wouter"
 import {
   Users, ListChecks, Wrench, LayoutDashboard, ShieldCheck, Bell,
   ExternalLink, LogOut, IdCard, Boxes, Send, Wallet, Bike, ListTodo, SlidersHorizontal,
-  ReceiptText, Sparkles, Gauge, Radio,
+  ReceiptText, Sparkles, Gauge, Radio, Activity,
 } from "lucide-react"
 import type { SessionUser } from "@workspace/api-client-react"
 import { cn } from "@/lib/utils"
@@ -99,6 +99,7 @@ const GROUPS: NavGroup[] = [
       // reading what the product has picked up from watching them, and the
       // thresholds that decide it live on the screen next door.
       { href: "/learned", label: "What it has learned", icon: Sparkles },
+      { href: "/runs", label: "What ran on its own", icon: Activity },
     ],
   },
 ]

@@ -37,6 +37,7 @@
  * was already allowed to see.
  */
 
+import { askModel } from "./model";
 import { logger } from "../logger";
 import {
   recordState,
@@ -368,85 +369,44 @@ async function narrate(
   deterministic: string[],
   evidence: Evidence[],
 ): Promise<{ text: string | null; rejected: string | null }> {
-  const key = process.env["GEMINI_API_KEY"];
-  if (!key || process.env["EXPLAIN_MODEL"] === "off") return { text: null, rejected: null };
+  /*
+   * Through the one door (OBJ-28), and the budget is the interesting part.
+   *
+   * Four times the composer's, because this prompt is four times the size and
+   * the budget covers the model's reasoning as well as its reply. At 1,000
+   * every single narration came back `MAX_TOKENS` and the panel silently ran
+   * on rules alone — which looks exactly like a model that had nothing to add.
+   */
+  const answer = await askModel({
+    purpose: "narrate",
+    modelEnvVar: "EXPLAIN_MODEL",
+    system: NARRATE_SYSTEM,
+    temperature: 0.2,
+    maxOutputTokens: 4_000,
+    user: [
+      "Findings:",
+      ...deterministic.map((d) => `- ${d}`),
+      "",
+      "Supporting rows:",
+      // Trimmed, and the findings above are the real input. The rows are here
+      // so a figure in them can be recognised, not so the model can go looking
+      // for a story in them.
+      JSON.stringify(evidence).slice(0, 3_000),
+    ].join("\n"),
+  });
 
-  const model = process.env["EXPLAIN_MODEL"] || "gemini-flash-latest";
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15_000);
+  if (!answer.ok) return { text: null, rejected: null };
 
-  try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-goog-api-key": key },
-        signal: controller.signal,
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: NARRATE_SYSTEM }] },
-          generationConfig: {
-            temperature: 0.2,
-            // Four times the composer's, because this prompt is four times the
-            // size and the budget covers the model's reasoning as well as its
-            // reply. At 1,000 every single narration came back `MAX_TOKENS`
-            // and the panel silently ran on rules alone — which looked exactly
-            // like a model that had nothing to add.
-            maxOutputTokens: 4_000,
-          },
-          contents: [
-            {
-              role: "user",
-              parts: [
-                {
-                  text: [
-                    "Findings:",
-                    ...deterministic.map((d) => `- ${d}`),
-                    "",
-                    "Supporting rows:",
-                    // Trimmed, and the findings above are the real input. The
-                    // rows are here so a figure in them can be recognised, not
-                    // so the model can go looking for a story in them.
-                    JSON.stringify(evidence).slice(0, 3_000),
-                  ].join("\n"),
-                },
-              ],
-            },
-          ],
-        }),
-      },
-    );
-
-    if (!res.ok) {
-      const body = (await res.text()).slice(0, 300);
-      logger.warn({ status: res.status, body }, "Explanation narration unavailable");
-      return { text: null, rejected: null };
-    }
-
-    const json = (await res.json()) as {
-      candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[];
-    };
-    const text = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-    const finish = json.candidates?.[0]?.finishReason;
-    if (!text) return { text: null, rejected: null };
-    if (finish && finish !== "STOP") {
-      return { text: null, rejected: "the model ran out of room before it finished" };
-    }
-
-    const check = citationsHold(text, evidence, deterministic);
-    if (!check.ok) {
-      logger.warn({ problem: check.problem }, "Explanation narration rejected");
-      return { text: null, rejected: check.problem };
-    }
-    return { text, rejected: null };
-  } catch (err) {
-    logger.warn(
-      { err: err instanceof Error ? err.message : String(err) },
-      "Explanation narration threw",
-    );
-    return { text: null, rejected: null };
-  } finally {
-    clearTimeout(timer);
+  if (answer.finishReason && answer.finishReason !== "STOP") {
+    return { text: null, rejected: "the model ran out of room before it finished" };
   }
+
+  const check = citationsHold(answer.text, evidence, deterministic);
+  if (!check.ok) {
+    logger.warn({ problem: check.problem }, "Explanation narration rejected");
+    return { text: null, rejected: check.problem };
+  }
+  return { text: answer.text, rejected: null };
 }
 
 // ── The panel ───────────────────────────────────────────────────────────────

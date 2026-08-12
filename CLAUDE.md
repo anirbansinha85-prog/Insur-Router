@@ -201,7 +201,7 @@ pnpm run typecheck:libs                         # before checking leaf packages
 
 ## Data model
 
-Thirty-nine tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
+Forty-one tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
 which of them `ddms_app` may read, and on what terms, is in `lib/db/sql/rls.sql`.
 
 **The owner tier** — who the data belongs to:
@@ -1103,6 +1103,92 @@ cancelled the draft and picked up the phone, and the Outbox stopped being used.
 Rules run in the scheduler after detection, on `ddms_worker` — which is why that
 role now holds the outbox and the decision log.
 
+## Watching what runs on its own
+
+`lib/dms/trace.ts`, `lib/dms/model.ts` and two tables (OBJ-28, R-92 to R-94).
+
+> **You cannot supervise what you cannot watch.**
+
+`decision_log` answers *what happened to this record* and answers it well. It
+cannot answer *what did the agent do at half past two*, because a run is a
+narrative **across** records — a hundred and forty looked at, eleven offered,
+two refused, one acted on, four model calls — and that shape lives in no
+per-record table. Reconstructing it meant sorting the decision log by timestamp
+and guessing where a pass began.
+
+**The trace is ambient, for the same reason the database handle is.** `withRun`
+opens a run into an `AsyncLocalStorage` and everything underneath records
+against it by calling `step()`. The alternative was threading a run id through
+four signatures that do not care about it, and a fifth call site that forgets.
+**Outside a run every function is a no-op** — a person pressing a button is not
+a trace and must not become one, or the steps table becomes a second logger
+inside the database.
+
+**A step that produced a write names its `decision_log` row rather than
+repeating it.** Two tables telling the story of one write is how they come to
+disagree, and the one somebody reads is not necessarily the one they would
+trust. `applyAction` returns `decisionId` for exactly this.
+
+### One door for model calls
+
+There were three near-identical fetches — the composer's rewrite, the
+explanation's narration, the ingest mapping's heading reader — with error
+handling that had drifted apart and **no single place that could count what any
+of it cost**. A ceiling that knows about two of three call sites is not a
+ceiling. `askModel()` is the one door, metering is by construction, and a
+fourth call site is metered without whoever adds it remembering.
+
+Cost uses the provider's own `usageMetadata` token counts times a rate table in
+code, so the only inaccuracy is the rate — correctable in one place rather than
+compounding per call. **It is an estimate and is called one** everywhere it is
+shown. An unknown model bills at the top of the table: the failure that matters
+is a ceiling that lets a run through because nobody added its model.
+
+Metering happens on **every** exit including failures. A run where nine calls in
+ten fail is exactly what somebody needs to see; recording only the successes
+produces a tidy trace of a broken pass.
+
+### The stand-down
+
+`AGENT.DAILY_COST_CAP_PAISE` (₹50) and `AGENT.STAND_DOWN_PCT` (40), both the
+dealership's. Two reasons to stop and they differ in kind. **Money** is
+arithmetic and is the only defence against a loop that would spend all night.
+**Being overruled** is the interesting one: it is the ladder coming down, one
+level up. The ladder demotes a *pattern* people keep overruling; this pauses the
+*agent* when it is being overruled broadly, because a product that keeps
+proposing while a dealership keeps saying no is one they stop reading and then
+stop trusting.
+
+The rate is computed across every pattern, not per pattern — one pattern going
+badly should demote that pattern, not silence everything — and the ceiling sits
+above `AUTONOMY.OVERRIDE_CEILING_PCT` for the same reason.
+
+**It recovers by itself.** Acceptance improves inside the window, or the day
+turns over. A pause needing a person to clear it is an outage, not a safety
+mechanism. And **nothing a person presses is affected**: a cap on unattended
+spending is not a reason to stop somebody doing their job.
+
+A stand-down is written as a run with outcome `STOOD_DOWN`, because *the agent
+chose not to act* and *nothing was scheduled* are different facts and only one
+needs looking into. The banner clears itself the moment a good run follows —
+a warning nothing ever clears is one people learn to ignore.
+
+`/runs` is the screen: read-only for everybody, including owners. A run is
+opened and closed by the thing doing the running, and a person editing what an
+unattended process recorded about itself is the single change that would make
+the table worthless. `grant select on agent_runs to ddms_app` carries the
+refusal.
+
+> **A verifier that ignores a return value will one day pass while doing
+> nothing.** `verify:trace` set the cost ceiling to 1 paisa and never checked
+> what `setPolicy` said. The registry's floor for that key is 100, so the write
+> was refused — correctly, by the closed policy registry doing its job — the cap
+> stayed at its default, and two checks failed for a reason unrelated to the
+> ceiling. It now lowers the cap to the registry's own floor, asserts the write
+> succeeded, and spends past it for real.
+
+`pnpm run verify:trace`.
+
 ## Autonomy is earned, not set
 
 `lib/dms/precedent.ts`, `lib/dms/autonomy.ts`, `lib/dms/proposals.ts` and two
@@ -1700,7 +1786,7 @@ assignment (`VAR=x cmd`) and depends on `$REPLIT_EXPO_DEV_DOMAIN`,
 
 DDMS (`artifacts/ddms/src/pages/`): `Queue` (`/`), `Overview` (`/overview`),
 `Leads` (`/enquiries`), `Worklist` (`/worklist`), `Numbers` (`/numbers`),
-`Channels` (`/channels`),
+`Channels` (`/channels`), `Runs` (`/runs`),
 `Registrations` (`/registrations`), `ServiceWorklist` (`/service`),
 `Spares` (`/spares`), `Receivables` (`/receivables`), `Inventory`
 (`/inventory`), `Outbox` (`/outbox`), `Dossier` (`/who/:entityId`,

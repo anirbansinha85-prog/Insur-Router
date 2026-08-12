@@ -197,6 +197,61 @@ const AUTONOMY_KEYS_REGISTRY: PolicyKey[] = [
     max: 90,
     unit: "percent",
   },
+  {
+    /*
+     * The day's money, and the only defence against a loop.
+     *
+     * R-92 asks for a per-run cost, a daily ceiling and attribution. This is
+     * the ceiling, and it is the dealership's number rather than ours: what a
+     * five-person showroom is willing to spend on this in a day is not a
+     * product decision. Reached, the agent stands down and says so; anything a
+     * person presses still works, because a cap on unattended spending is not
+     * a reason to stop somebody doing their job.
+     *
+     * The default is ₹50, which at Flash prices is thousands of calls. It is
+     * set where a runaway loop trips it and ordinary use never comes near.
+     */
+    key: "AGENT.DAILY_COST_CAP_PAISE",
+    group: "THRESHOLD",
+    section: "The agent",
+    label: "Most the agent may spend in a day",
+    help:
+      "In paise. Everything unattended stops once the day's model calls reach it, and the " +
+      "screen says why. Anything a person presses is unaffected. The figure is an estimate " +
+      "from token counts rather than a bill.",
+    default: 5_000,
+    min: 100,
+    max: 500_000,
+    unit: "count",
+  },
+  {
+    /*
+     * When the agent should stop proposing (R-94).
+     *
+     * The counterpart to the ladder coming down, one level up. The ladder
+     * demotes a *pattern* people keep overruling; this pauses the *agent* when
+     * it is being overruled broadly — because a product that keeps suggesting
+     * while a dealership keeps saying no is one they stop reading, and then
+     * stop trusting.
+     *
+     * Higher than `AUTONOMY.OVERRIDE_CEILING_PCT` on purpose. One pattern going
+     * wrong should demote that pattern, not silence everything; it takes the
+     * dealership disagreeing with most of what it sees before the agent
+     * concludes the problem is itself.
+     */
+    key: "AGENT.STAND_DOWN_PCT",
+    group: "THRESHOLD",
+    section: "The agent",
+    label: "The agent pauses itself when this share is overruled",
+    help:
+      "Across every pattern, in the same window the ladder reads. It resumes on its own " +
+      "once acceptance recovers — nobody has to switch it back on, because a pause that " +
+      "needs clearing by hand is an outage.",
+    default: 40,
+    min: 10,
+    max: 100,
+    unit: "percent",
+  },
 ];
 
 /**

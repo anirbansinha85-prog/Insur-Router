@@ -1836,10 +1836,10 @@ and the one we lack.
 | R-89 | ✅ **A document must say what it is.** If it is not a tax invoice it must not look like one. Same instinct as *held — nothing was delivered* and the `SIM-` prefix | ✅ |
 | R-90 | ✅ **Only one system may hold the tax-invoice series.** Which one is a per-dealer setting; two systems issuing from one sequential series produces gaps or duplicates, and both are audit findings | ✅ |
 | R-91 | **A person may ask the agent to act, under their name and their permissions.** The third mode, and the safest, because accountability is unambiguous from the start | ◑ the mechanism is there — an agent already acts through `applyAction` under a principal — and there is still no screen where a person asks it to do something under *their* name |
-| R-92 | **An agent run has a cost and a cap.** Per-run cost, a daily ceiling, and attribution. wrrk quotes $0.01–$0.05 a run and caps at 50/org/day **[Documented]**; DDMS meters nothing | ○ |
-| R-93 | **A run is a trace, not a row.** The decision log answers *what happened to this record*. A multi-agent run is a narrative across records and agents, and nothing today can show it as one thing | ○ |
+| R-92 | **An agent run has a cost and a cap.** Per-run cost, a daily ceiling, and attribution. wrrk quotes $0.01–$0.05 a run and caps at 50/org/day **[Documented]**; DDMS meters nothing | ✅ OBJ-28. Per-run cost from the provider's own token counts, a daily ceiling that is the dealership's number, and attribution on every run. An unknown model bills at the top of the rate table |
+| R-93 | **A run is a trace, not a row.** The decision log answers *what happened to this record*. A multi-agent run is a narrative across records and agents, and nothing today can show it as one thing | ✅ OBJ-28. `agent_runs` and `agent_run_steps`, ambient through an `AsyncLocalStorage` so nothing threads a run id. A step naming a write points at its `decision_log` row rather than repeating it |
 | R-95 | ✅ **One table answers every permission question, and the agent is a principal in it.** Verb-scoped `namespace.verb`, not tiered roles. The agent holds grants like any role rather than being a special case beside the table, so a second agent is a principal and a set of grants and nothing else changes. Withheld permissions carry a written reason where there is one worth writing — *a model cannot make a phone call* is a fact about the world, not about the grant | ✅ |
-| R-94 | **The agent may stand down.** When its proposals are being rejected it pauses itself rather than continuing to propose. wrrk auto-pauses a campaign on acceptance-rate decay **[Documented]**; DDMS has no version of this | ○ |
+| R-94 | **The agent may stand down.** When its proposals are being rejected it pauses itself rather than continuing to propose. wrrk auto-pauses a campaign on acceptance-rate decay **[Documented]**; DDMS has no version of this | ✅ OBJ-28. Two reasons — the day's money, or being overruled across every pattern — recorded as a run with outcome `STOOD_DOWN`, and it resumes on its own |
 
 ### The revised order
 
@@ -1852,7 +1852,7 @@ and the one we lack.
 | 25 | ~~**The invoice DDMS produces**~~ ✅ | no | 22, 23, 24 | the first document the product issues, and the first record it holds *before* the DMS knows anything |
 | 26 | ~~**Autonomy: the ladder and graduation**~~ ✅ | recall only | 21, 23 | needs journeys running long enough to have history to cite. Absorbs OBJ-19 |
 | 27 | ~~**dm-concierge — messages out, replies in**~~ ✅ | no | 22 | the Outbox has no transport at all. Inbound is the larger half: a reply is a fact the DMS will never hold |
-| 28 | **The trace and the stand-down** | no | 23, 26 | you cannot supervise what you cannot watch, and cost belongs here |
+| 28 | ~~**The trace and the stand-down**~~ ✅ | no | 23, 26 | you cannot supervise what you cannot watch, and cost belongs here |
 | 29 | **More agents** | yes | all | last, and only once there is a model that admits new principals, a ladder to place them on, records they may write, and a trace to watch them in |
 
 *Objectives 30 to 33 are in section 3d; 34 and 35 in section 3e. They are
@@ -2688,9 +2688,9 @@ products, the database enforces the boundary rather than trusting the code to,
 and since OBJ-8 the server holds no credential that could bypass it — it refuses
 to start with one. What is left is not a safety question any more.
 
-**Ten verifiers, and each states a claim it could fail.** Permissions,
-records, agent, journey, ingest, invoice, autonomy, overview, channels and
-`typecheck`.
+**Eleven verifiers, and each states a claim it could fail.** Permissions,
+records, agent, journey, ingest, invoice, autonomy, overview, channels, trace
+and `typecheck`.
 The rule they are held to was learnt the expensive way in OBJ-30: *a verifier
 that can fail for a reason it does not name will one day pass for a reason it
 does not name.*
@@ -3190,4 +3190,95 @@ number that is not already on consumer WhatsApp, and a permanent access token.
 None of that is code and none of it is ours to do. The product is ready for the
 numbers; adding them is the dealership's afternoon with their own Meta account,
 and `/channels` is written to be that afternoon's screen.
+
+### What OBJ-28 turned out to be
+
+Built on 12 August, and the largest part of it was a refactor nobody asked for.
+
+**R-92 could not be satisfied without one door for model calls.** There were
+three near-identical fetches — the composer's rewrite, the explanation's
+narration, the ingest mapping's heading reader — with error handling that had
+drifted apart and no single place that could count what any of them cost. A
+daily ceiling that knows about two of three call sites is not a ceiling, and
+would have been the worst kind of feature: one that reports a number and is
+quietly wrong about it. `askModel()` is the door, and metering is now by
+construction rather than by whoever adds the fourth call site remembering.
+
+The refactor paid for itself immediately. Cost uses the provider's own
+`usageMetadata` token counts, so the only inaccuracy is the rate table — one
+number, correctable in one place, instead of a guess compounding per call.
+
+**The trace is ambient, and that was the second decision.** `withRun` puts a run
+into an `AsyncLocalStorage` exactly as `sessionScope` does with the request's
+connection, and everything underneath calls `step()` knowing nothing about run
+ids. Threading one through `runAgentForShowroom` → `suggestForItems` →
+`composeFor` → `rewriteWithModel` would have been four signatures changed to
+carry something none of them care about, and a fifth call site that forgets and
+silently records nothing. `lib/db/src/scope.ts` makes the same argument about
+the connection and it applies here unchanged.
+
+Outside a run every function is a no-op, deliberately. A person pressing a
+button is not a trace: the decision log already answers for that, and a steps
+table that fills up with request handling is a second logger inside the database
+and then a retention problem.
+
+**A step names the decision it produced rather than repeating it.**
+`applyAction` gained a `decisionId` in its result for this. Two tables telling
+the story of one write is how they come to disagree, and the one somebody reads
+is not necessarily the one they would trust.
+
+#### The stand-down is the ladder, one level up
+
+The ladder demotes a *pattern* people keep overruling. This pauses the *agent*
+when it is being overruled broadly, because a product that keeps proposing while
+a dealership keeps saying no is one they stop reading and then stop trusting.
+
+Two things worth writing down about its shape. The rate is computed **across
+every pattern rather than per pattern** — one pattern going badly should demote
+that pattern, not silence everything — and the ceiling sits above
+`AUTONOMY.OVERRIDE_CEILING_PCT` for the same reason.
+
+And it **recovers by itself**: acceptance improves inside the window, or the day
+turns over. A pause that needs a person to clear it is an outage rather than a
+safety mechanism, and it would be one nobody understood how to clear. Likewise
+the money ceiling stops only what runs unattended — a cap that also broke
+somebody's button would be a product that goes down when it gets busy, and it is
+one line in the wrong function away.
+
+It is recorded as a run with outcome `STOOD_DOWN`, because *the agent chose not
+to act* and *nothing was scheduled* are different facts and only one of them
+needs looking into. The banner clears itself the moment a good run follows — a
+warning that nothing ever clears is a warning people learn to ignore.
+
+#### The finding
+
+> **A verifier that ignores a return value will one day pass while doing
+> nothing at all.**
+
+`verify:trace` set the daily cost ceiling to 1 paisa and never looked at what
+`setPolicy` said. The registry's floor for that key is 100, so the write was
+refused — correctly, by the closed policy registry doing its job — the ceiling
+stayed at its default, and two checks failed for a reason that had nothing to do
+with the ceiling. Had the defaults been slightly different it would have failed
+the other way: passing, having tested nothing.
+
+It now reads the floor out of the registry, asserts the write succeeded, and
+spends past it with a real metered call sized from that same floor. Nothing in
+that section is a number typed twice.
+
+#### What it deliberately did not do
+
+**No severity column on a step, and five kinds, closed.** A steps table with a
+`DEBUG` level becomes a second logger inside the database within a month. Each
+kind corresponds to something a person would want to see on a screen, and
+nothing writes a step to say a function was entered.
+
+**No per-outlet runs.** The agent reads the group's queue once and the standing
+is a property of the owner, so three runs would each tell a third of one story
+and the daily ceiling would become three ceilings.
+
+**`/runs` is read-only for everybody, including the owner.** A person editing
+what an unattended process recorded about itself is the single change that would
+make the whole table worthless, and the grant carries the refusal rather than
+the route being careful.
 

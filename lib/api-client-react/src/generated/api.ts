@@ -127,6 +127,8 @@ import type {
   ResetDmsPolicy200,
   RetractRecordActivity200,
   RevokeAutonomyConsent200,
+  RunDetail,
+  RunList,
   SearchEntities200,
   SearchEntitiesParams,
   SendDmsMessage200,
@@ -4423,6 +4425,165 @@ export function useListDmsEvents<TData = Awaited<ReturnType<typeof listDmsEvents
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListDmsEventsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListRunsUrl = () => {
+
+
+
+
+  return `/api/dms/runs`
+}
+
+/**
+ * The decision log answers *what happened to this record* and answers it well. It cannot answer *what did the agent do at half past two*, because a run is a narrative across records — it looked at a hundred and forty, suggested eleven, was refused on two and called a model four times — and that shape exists in no per-record table. You cannot supervise what you cannot watch.
+ * `costPaise` is an estimate from the provider's own token counts times a rate table in code. It is not an invoice, and what it is for is noticing that today cost forty times yesterday, and for the daily ceiling.
+ * `standingDown` is set only while a stand-down is still the newest thing that happened. One three days ago followed by six good runs is history, not a state, and a banner nothing ever clears is a banner people learn to ignore.
+ * @summary What ran on its own, what it cost, and whether it stood down
+ */
+export const listRuns = async ( options?: Parameters<typeof customFetch>[1]): Promise<RunList> => {
+
+  return customFetch<RunList>(getListRunsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListRunsQueryKey = () => {
+    return [
+    `/api/dms/runs`
+    ] as const;
+    }
+
+
+export const getListRunsQueryOptions = <TData = Awaited<ReturnType<typeof listRuns>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRuns>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListRunsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listRuns>>> = ({ signal }) => listRuns({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listRuns>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListRunsQueryResult = NonNullable<Awaited<ReturnType<typeof listRuns>>>
+export type ListRunsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary What ran on its own, what it cost, and whether it stood down
+ */
+
+export function useListRuns<TData = Awaited<ReturnType<typeof listRuns>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRuns>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListRunsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetRunUrl = (id: number,) => {
+
+
+
+
+  return `/api/dms/runs/${id}`
+}
+
+/**
+ * Five kinds of step, closed: READ looked at something, PROPOSE offered a value, ACT wrote one, REFUSED was told no and by what, MODEL called a model and what it cost. Deliberately not application logging — a steps table with a severity column becomes a second logger inside the database within a month.
+ * A step that produced a write **names** its `decision_log` row rather than repeating it. The authoritative record of what happened to a record stays in one place; two tables telling the story of one write is how they come to disagree.
+ * @summary One run, step by step
+ */
+export const getRun = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<RunDetail> => {
+
+  return customFetch<RunDetail>(getGetRunUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRunQueryKey = (id: number,) => {
+    return [
+    `/api/dms/runs/${id}`
+    ] as const;
+    }
+
+
+export const getGetRunQueryOptions = <TData = Awaited<ReturnType<typeof getRun>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRun>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRunQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRun>>> = ({ signal }) => getRun(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRun>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRunQueryResult = NonNullable<Awaited<ReturnType<typeof getRun>>>
+export type GetRunQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary One run, step by step
+ */
+
+export function useGetRun<TData = Awaited<ReturnType<typeof getRun>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRun>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRunQueryOptions(id,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

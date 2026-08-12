@@ -935,6 +935,103 @@ export interface QueueResult {
   byModule: QueueResultByModuleItem[];
 }
 
+export type AgentRunTrigger = typeof AgentRunTrigger[keyof typeof AgentRunTrigger];
+
+
+export const AgentRunTrigger = {
+  SCHEDULER: 'SCHEDULER',
+  PERSON: 'PERSON',
+  WEBHOOK: 'WEBHOOK',
+} as const;
+
+export type AgentRunOutcome = typeof AgentRunOutcome[keyof typeof AgentRunOutcome];
+
+
+export const AgentRunOutcome = {
+  RUNNING: 'RUNNING',
+  COMPLETED: 'COMPLETED',
+  FAILED: 'FAILED',
+  STOOD_DOWN: 'STOOD_DOWN',
+} as const;
+
+export interface AgentRun {
+  id: number;
+  kind: string;
+  actor: string;
+  trigger: AgentRunTrigger;
+  outcome: AgentRunOutcome;
+  /** @nullable */
+  reason: string | null;
+  startedAt: string;
+  /** @nullable */
+  finishedAt: string | null;
+  /** @nullable */
+  durationMs: number | null;
+  considered: number;
+  proposed: number;
+  acted: number;
+  refused: number;
+  modelCalls: number;
+  costPaise: number;
+}
+
+export type RunStepKind = typeof RunStepKind[keyof typeof RunStepKind];
+
+
+export const RunStepKind = {
+  READ: 'READ',
+  PROPOSE: 'PROPOSE',
+  ACT: 'ACT',
+  REFUSED: 'REFUSED',
+  MODEL: 'MODEL',
+} as const;
+
+export interface RunStep {
+  seq: number;
+  kind: RunStepKind;
+  /** @nullable */
+  module: string | null;
+  /** @nullable */
+  recordKey: string | null;
+  /** @nullable */
+  action: string | null;
+  /** @nullable */
+  detail: string | null;
+  /**
+     * The decision_log row this produced. Named, never copied.
+     * @nullable
+     */
+  decisionId: number | null;
+  /** @nullable */
+  model: string | null;
+  /** @nullable */
+  costPaise: number | null;
+  /** @nullable */
+  ms: number | null;
+  at: string;
+}
+
+/**
+ * @nullable
+ */
+export type RunListStandingDown = {
+  reason: string;
+  at: string;
+} | null;
+
+export interface RunList {
+  runs: AgentRun[];
+  spentTodayPaise: number;
+  capPaise: number;
+  /** @nullable */
+  standingDown: RunListStandingDown;
+}
+
+export interface RunDetail {
+  run: AgentRun;
+  steps: RunStep[];
+}
+
 export type ChannelStatusChannel = typeof ChannelStatusChannel[keyof typeof ChannelStatusChannel];
 
 

@@ -26,6 +26,7 @@ import { syncShowroom } from "./sync";
 import { syncShowroomReceivables } from "./receivables-worklist";
 import { syncShowroomInventory } from "./inventory-worklist";
 import { detectStateChanges, showroomIdsForOwner } from "./events";
+import { recordStandDown, shouldStandDown, step, withRun } from "./trace";
 import { runRules } from "./rules";
 import { advanceJourneys } from "./journeys";
 import { runAgentForShowroom } from "./agent";
@@ -329,17 +330,73 @@ async function runAgentPass(
   // decision log the same question three times.
   const standing = await standingFor({ ownerId, showroomIds: visible, policy });
 
+  /*
+   * Whether to run at all, and it is the agent's own decision (OBJ-28, R-94).
+   *
+   * Two reasons to stop, different in kind. **Money**: today's runs have
+   * reached the dealership's ceiling, which is the only defence against a loop
+   * that would otherwise spend all night. **Being overruled**: people here have
+   * been rejecting most of what was suggested, and a product that keeps
+   * proposing while a dealership keeps saying no is one they stop reading and
+   * then stop trusting.
+   *
+   * The second is the counterpart to the ladder coming down, one level up. The
+   * ladder demotes a *pattern* somebody keeps overruling; this pauses the whole
+   * agent. And it recovers by itself — acceptance improves inside the window,
+   * or the day turns over — because a pause that needs a person to clear it is
+   * an outage rather than a safety mechanism.
+   *
+   * The rate is computed across every pattern rather than per pattern: one
+   * pattern going badly should demote that pattern, not silence everything.
+   */
+  const patterns = [...standing.values()];
+  const offeredTotal = patterns.reduce((n, p) => n + p.offered, 0);
+  const overriddenTotal = patterns.reduce((n, p) => n + p.overridden, 0);
+  const overrideRatePct =
+    offeredTotal === 0 ? null : Math.round((overriddenTotal / offeredTotal) * 100);
+
+  const standDown = await shouldStandDown({ ownerId, policy, overrideRatePct });
+  if (standDown.standDown) {
+    // Written down as a run, because *the agent chose not to act* and *nothing
+    // was scheduled* are different facts and only one of them needs looking
+    // into. It is also what the screen reads to explain a quiet afternoon.
+    await recordStandDown({
+      ownerId,
+      trigger: "SCHEDULER",
+      kind: "assign-orphans",
+      reason: standDown.reason!,
+    });
+    return;
+  }
+
   let proposed = 0;
   let assigned = 0;
   const held: Array<{ patternKey: string; rung: string; because: string }> = [];
   const refused: Array<{ recordKey: string; reason: string }> = [];
-  for (const showroomId of visible) {
-    const r = await runAgentForShowroom(ownerId, showroomId, queue.items, policy, standing);
-    proposed += r.proposed;
-    assigned += r.assigned;
-    held.push(...r.held);
-    refused.push(...r.refused);
-  }
+
+  /*
+   * One run for the owner, spanning every outlet in the pass.
+   *
+   * Per-outlet runs would have split a single decision — the agent looked at
+   * the group's queue once and the standing is a property of the owner — into
+   * three traces that each tell a third of the story, and would have made the
+   * daily cost ceiling three ceilings.
+   */
+  await withRun({ ownerId, trigger: "SCHEDULER", kind: "assign-orphans" }, async () => {
+    for (const showroomId of visible) {
+      const r = await runAgentForShowroom(ownerId, showroomId, queue.items, policy, standing);
+      proposed += r.proposed;
+      assigned += r.assigned;
+      held.push(...r.held);
+      refused.push(...r.refused);
+    }
+    await step({
+      kind: "READ",
+      detail:
+        `Considered ${queue.items.length} queue items across ${visible.length} outlet(s); ` +
+        `offered ${proposed}, acted on ${assigned}, refused ${refused.length}.`,
+    });
+  });
 
   const due = [...standing.values()].filter((p) => p.consentDue);
   if (due.length > 0) {

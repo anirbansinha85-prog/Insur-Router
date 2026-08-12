@@ -437,6 +437,43 @@ create policy outbound_messages_own on public.outbound_messages
   with check (owner_id = app.current_owner_id());
 
 /*
+ * What ran unattended, and what it cost (OBJ-28, R-92, R-93).
+ *
+ * Readable by anybody in the group, on the same argument as the dealership's
+ * own numbers and the ladder: **an automation layer nobody can see is where an
+ * automation layer nobody can predict begins.** A trace hidden from the people
+ * whose work it touches is a trace that exists for us rather than for them.
+ *
+ * Not writable from the request path at all. A run is opened and closed by the
+ * thing doing the running, which is the scheduler, and a person editing what an
+ * unattended process recorded about itself is the one thing that would make the
+ * whole table worthless. The grants below carry the same refusal, so it fails
+ * at the database rather than because nobody wrote the update.
+ */
+drop policy if exists agent_runs_read on public.agent_runs;
+create policy agent_runs_read on public.agent_runs
+  for select to ddms_app
+  using (owner_id = app.current_owner_id());
+
+/*
+ * Steps have no owner column of their own, deliberately.
+ *
+ * The run carries the tenancy and the step belongs to exactly one run, so
+ * denormalising  here would create a second place for the boundary to
+ * be wrong. The cost is a subquery on read; the benefit is that a step cannot
+ * disagree with its run about whose it is.
+ */
+drop policy if exists agent_run_steps_read on public.agent_run_steps;
+create policy agent_run_steps_read on public.agent_run_steps
+  for select to ddms_app
+  using (
+    exists (
+      select 1 from public.agent_runs r
+      where r.id = agent_run_steps.run_id and r.owner_id = app.current_owner_id()
+    )
+  );
+
+/*
  * The dealership's own account on somebody else's network (OBJ-27, R-106).
  *
  * Owner-scoped like everything else, and narrowed again to the two roles that
@@ -1012,6 +1049,14 @@ create policy outbound_worker on public.outbound_messages
  * Inbound it may write, because the webhook runs here — there is nobody signed
  * in when a customer's phone talks to the server.
  */
+drop policy if exists agent_runs_worker on public.agent_runs;
+create policy agent_runs_worker on public.agent_runs
+  for all to ddms_worker using (true) with check (true);
+
+drop policy if exists agent_run_steps_worker on public.agent_run_steps;
+create policy agent_run_steps_worker on public.agent_run_steps
+  for all to ddms_worker using (true) with check (true);
+
 drop policy if exists channel_credentials_worker on public.channel_credentials;
 create policy channel_credentials_worker on public.channel_credentials
   for all to ddms_worker using (true) with check (true);
@@ -1064,6 +1109,10 @@ grant select, insert, update on public.outbound_messages to ddms_app;
 -- dealership deciding this product may no longer speak for them, and leaving
 -- an encrypted token behind after somebody pressed Disconnect would be the
 -- product keeping a credential they revoked.
+-- Select only. A person may read what an unattended process did and may not
+-- edit it, which is the whole value of the record.
+grant select on public.agent_runs to ddms_app;
+grant select on public.agent_run_steps to ddms_app;
 grant select, insert, update, delete on public.channel_credentials to ddms_app;
 -- No delete. A customer's message is not something a dealership gets to make
 -- never have happened.
@@ -1204,6 +1253,8 @@ grant select on public.applications, public.policies to ddms_worker;
 -- it. What a draft may *do* is still `authoriseSend()`'s to decide.
 grant select, insert, update on public.outbound_messages to ddms_worker;
 -- No insert: an unattended process may not connect an account.
+grant select, insert, update on public.agent_runs to ddms_worker;
+grant select, insert on public.agent_run_steps to ddms_worker;
 grant select, update on public.channel_credentials to ddms_worker;
 grant select, insert, update on public.inbound_messages to ddms_worker;
 grant select, insert on public.decision_log to ddms_worker;

@@ -29,6 +29,7 @@
  * calls a model and never will.
  */
 
+import { askModel } from "./model";
 import { logger } from "../logger";
 import type { LeadWorklistRow } from "./lead-worklist";
 import type { RegistrationWorklistRow } from "./registration-worklist";
@@ -180,113 +181,62 @@ async function rewriteWithModel(
   facts: Record<string, unknown>,
   audience: MessageAudience,
 ): Promise<{ body: string; draftedBy: "RULE" | "AGENT" }> {
-  const key = process.env["GEMINI_API_KEY"];
-  if (!key || process.env["OUTBOUND_DRAFT_MODEL"] === "off") {
+  /*
+   * One door for every model call in this product (OBJ-28).
+   *
+   * This used to be its own fetch, and so did the explanation's narration —
+   * same endpoint, same envelope, two sets of error handling that had drifted
+   * apart, and no single place that could count what either cost. R-92 wants a
+   * per-run cost and a daily ceiling, and a ceiling that knows about two of
+   * three call sites is not a ceiling.
+   *
+   * What is kept from the old version is the *budget*, and the reason for it.
+   * On a thinking model this covers the reasoning as well as the output, so the
+   * 300 it started at bought a paragraph of deliberation and half a sentence of
+   * message — which is how the first draft this composer ever produced went out
+   * reading "Dear Mr Satish Verma, your HF Deluxe" and nothing else.
+   */
+  const answer = await askModel({
+    purpose: "compose",
+    modelEnvVar: "OUTBOUND_DRAFT_MODEL",
+    system: REWRITE_SYSTEM,
+    temperature: 0.3,
+    maxOutputTokens: 1_000,
+    user: [
+      `Audience: ${audience === "CUSTOMER" ? "the customer" : "a member of staff"}.`,
+      `Facts (the only figures you may use): ${JSON.stringify(facts)}`,
+      "",
+      "Current wording:",
+      ruleDraft,
+    ].join("\n"),
+  });
+
+  if (!answer.ok) return { body: ruleDraft, draftedBy: "RULE" };
+
+  const text = answer.text;
+  if (text.length > 1_200) return { body: ruleDraft, draftedBy: "RULE" };
+
+  // The model itself says when it ran out of room. Cheaper and more certain
+  // than inferring it from the text, though `checkRewrite` infers it too —
+  // one of these is a guess and the other is not, and both are wanted.
+  if (answer.finishReason && answer.finishReason !== "STOP") {
+    logger.warn({ finish: answer.finishReason, audience }, "Model rewrite rejected — it did not finish");
     return { body: ruleDraft, draftedBy: "RULE" };
   }
 
-  const model = process.env["OUTBOUND_DRAFT_MODEL"] || "gemini-flash-latest";
-  const controller = new AbortController();
-  // Long enough to be worth waiting for, short enough that composing still
-  // feels like pressing a button. Affordable because drafting is a deliberate
-  // action rather than something a screen does while it loads — and because
-  // the deadline expiring costs nothing but the template wording.
-  const timer = setTimeout(() => controller.abort(), 15_000);
-
-  try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-goog-api-key": key },
-        signal: controller.signal,
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: REWRITE_SYSTEM }] },
-          generationConfig: {
-            temperature: 0.3,
-            // Generous on purpose. On a thinking model this budget covers the
-            // reasoning *and* the output, so the 300 it started at bought a
-            // paragraph of deliberation and half a sentence of message — which
-            // is how the first draft this composer ever produced went out
-            // reading "Dear Mr Satish Verma, your HF Deluxe" and nothing else.
-            //
-            // `thinkingConfig: { thinkingBudget: 0 }` would be the direct fix
-            // and `gemini-flash-latest` rejects it with a bare 400, so the
-            // budget does the work instead.
-            maxOutputTokens: 1_000,
-          },
-          contents: [
-            {
-              role: "user",
-              parts: [
-                {
-                  text: [
-                    `Audience: ${audience === "CUSTOMER" ? "the customer" : "a member of staff"}.`,
-                    `Facts (the only figures you may use): ${JSON.stringify(facts)}`,
-                    "",
-                    "Current wording:",
-                    ruleDraft,
-                  ].join("\n"),
-                },
-              ],
-            },
-          ],
-        }),
-      },
-    );
-
-    if (!res.ok) {
-      // Logged rather than swallowed, and that is not fussiness. A malformed
-      // request made this whole path inert for a while — every draft came back
-      // `RULE`, which is exactly what a healthy fallback looks like, so nothing
-      // about the output said the model was never being reached. A silent
-      // fallback and a silent failure are indistinguishable unless one of them
-      // says so.
-      logger.warn(
-        { status: res.status, body: (await res.text()).slice(0, 300) },
-        "Model rewrite unavailable — the rule draft was used instead",
-      );
-      return { body: ruleDraft, draftedBy: "RULE" };
-    }
-
-    const json = (await res.json()) as {
-      candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[];
-    };
-    const text = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-    const finish = json.candidates?.[0]?.finishReason;
-    if (!text || text.length > 1_200) {
-      return { body: ruleDraft, draftedBy: "RULE" };
-    }
-    // The model itself says when it ran out of room. Cheaper and more certain
-    // than inferring it from the text, though `checkRewrite` infers it too —
-    // one of these is a guess and the other is not, and both are wanted.
-    if (finish && finish !== "STOP") {
-      logger.warn({ finish, audience }, "Model rewrite rejected — it did not finish");
-      return { body: ruleDraft, draftedBy: "RULE" };
-    }
-
-    const check = checkRewrite(text, ruleDraft, facts);
-    if (!check.ok) {
-      // Worth a log line rather than a silent fallback: a model that keeps
-      // failing this is a signal about the prompt, and the alternative is
-      // discovering it only when somebody notices the wording never improves.
-      logger.warn(
-        { problem: check.problem, audience },
-        "Model rewrite rejected — the rule draft was used instead",
-      );
-      return { body: ruleDraft, draftedBy: "RULE" };
-    }
-
-    return { body: text, draftedBy: "AGENT" };
-  } catch (err) {
+  const check = checkRewrite(text, ruleDraft, facts);
+  if (!check.ok) {
+    // Worth a log line rather than a silent fallback: a model that keeps
+    // failing this is a signal about the prompt, and the alternative is
+    // discovering it only when somebody notices the wording never improves.
     logger.warn(
-      { err: err instanceof Error ? err.message : String(err) },
-      "Model rewrite threw — the rule draft was used instead",
+      { problem: check.problem, audience },
+      "Model rewrite rejected — the rule draft was used instead",
     );
     return { body: ruleDraft, draftedBy: "RULE" };
-  } finally {
-    clearTimeout(timer);
   }
+
+  return { body: text, draftedBy: "AGENT" };
 }
 
 // ── Templates ───────────────────────────────────────────────────────────────

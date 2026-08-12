@@ -2088,6 +2088,82 @@ export const ListDmsEventsResponse = zod.object({
 
 
 /**
+ * The decision log answers *what happened to this record* and answers it well. It cannot answer *what did the agent do at half past two*, because a run is a narrative across records — it looked at a hundred and forty, suggested eleven, was refused on two and called a model four times — and that shape exists in no per-record table. You cannot supervise what you cannot watch.
+ * `costPaise` is an estimate from the provider's own token counts times a rate table in code. It is not an invoice, and what it is for is noticing that today cost forty times yesterday, and for the daily ceiling.
+ * `standingDown` is set only while a stand-down is still the newest thing that happened. One three days ago followed by six good runs is history, not a state, and a banner nothing ever clears is a banner people learn to ignore.
+ * @summary What ran on its own, what it cost, and whether it stood down
+ */
+export const ListRunsResponse = zod.object({
+  "runs": zod.array(zod.object({
+  "id": zod.number().int(),
+  "kind": zod.string(),
+  "actor": zod.string(),
+  "trigger": zod.enum(['SCHEDULER', 'PERSON', 'WEBHOOK']),
+  "outcome": zod.enum(['RUNNING', 'COMPLETED', 'FAILED', 'STOOD_DOWN']),
+  "reason": zod.string().nullable(),
+  "startedAt": zod.string(),
+  "finishedAt": zod.string().nullable(),
+  "durationMs": zod.number().int().nullable(),
+  "considered": zod.number().int(),
+  "proposed": zod.number().int(),
+  "acted": zod.number().int(),
+  "refused": zod.number().int(),
+  "modelCalls": zod.number().int(),
+  "costPaise": zod.number().int()
+})),
+  "spentTodayPaise": zod.number().int(),
+  "capPaise": zod.number().int(),
+  "standingDown": zod.object({
+  "reason": zod.string(),
+  "at": zod.string()
+}).nullable()
+})
+
+
+/**
+ * Five kinds of step, closed: READ looked at something, PROPOSE offered a value, ACT wrote one, REFUSED was told no and by what, MODEL called a model and what it cost. Deliberately not application logging — a steps table with a severity column becomes a second logger inside the database within a month.
+ * A step that produced a write **names** its `decision_log` row rather than repeating it. The authoritative record of what happened to a record stays in one place; two tables telling the story of one write is how they come to disagree.
+ * @summary One run, step by step
+ */
+export const GetRunParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const GetRunResponse = zod.object({
+  "run": zod.object({
+  "id": zod.number().int(),
+  "kind": zod.string(),
+  "actor": zod.string(),
+  "trigger": zod.enum(['SCHEDULER', 'PERSON', 'WEBHOOK']),
+  "outcome": zod.enum(['RUNNING', 'COMPLETED', 'FAILED', 'STOOD_DOWN']),
+  "reason": zod.string().nullable(),
+  "startedAt": zod.string(),
+  "finishedAt": zod.string().nullable(),
+  "durationMs": zod.number().int().nullable(),
+  "considered": zod.number().int(),
+  "proposed": zod.number().int(),
+  "acted": zod.number().int(),
+  "refused": zod.number().int(),
+  "modelCalls": zod.number().int(),
+  "costPaise": zod.number().int()
+}),
+  "steps": zod.array(zod.object({
+  "seq": zod.number().int(),
+  "kind": zod.enum(['READ', 'PROPOSE', 'ACT', 'REFUSED', 'MODEL']),
+  "module": zod.string().nullable(),
+  "recordKey": zod.string().nullable(),
+  "action": zod.string().nullable(),
+  "detail": zod.string().nullable(),
+  "decisionId": zod.number().int().nullable().describe('The decision_log row this produced. Named, never copied.'),
+  "model": zod.string().nullable(),
+  "costPaise": zod.number().int().nullable(),
+  "ms": zod.number().int().nullable(),
+  "at": zod.string()
+}))
+})
+
+
+/**
  * DDMS holds no WhatsApp number and no mail server of its own. Every outside credential belongs to the dealership (R-106), which is what makes the number a customer sees theirs, the template approvals theirs and the bill theirs.
  * No response here can carry a secret. The token is encrypted at rest and decrypted by one module-private function on the sending path; a screen gets whether the channel is connected, the address customers see, and four characters of the secret — enough to tell two tokens apart and useless to anybody who only has this.
  * `blocker` is one sentence saying why a channel cannot be used yet and whose problem it is. *No transport is configured* described a gap in the product; three of the four real reasons belong to the dealership.

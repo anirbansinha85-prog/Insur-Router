@@ -109,6 +109,7 @@ import {
   type Channel,
 } from "../lib/dms/channels";
 import { markRead, unreadReplies } from "../lib/dms/channels/inbound";
+import { recentRuns, stepsFor } from "../lib/dms/trace";
 import { describeRules, MAX_RULES } from "../lib/dms/rules";
 import {
   standingFor,
@@ -1606,6 +1607,95 @@ router.get("/dms/events", async (req, res): Promise<void> => {
  * message is a long way from being allowed to connect the number every message
  * afterwards goes out on.
  */
+/**
+ * What ran on its own, and what it cost (OBJ-28, R-92, R-93).
+ *
+ * Readable by anybody signed in, on the same argument that put the rule set and
+ * the ladder on screens: **an automation layer nobody can see is where an
+ * automation layer nobody can predict begins.** A trace visible only to us is a
+ * trace that exists for us.
+ *
+ * Read-only, and not because nothing has been built yet. A run is opened and
+ * closed by the thing doing the running; a person editing what an unattended
+ * process recorded about itself is the single change that would make the whole
+ * table worthless. The grant carries the same refusal.
+ */
+router.get("/dms/runs", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  const owned = await ownedShowroomIds(user.ownerId);
+  const visible =
+    user.showroomId !== null && !seesEveryOutlet(user.role) ? [user.showroomId] : owned;
+
+  const summary = await recentRuns({
+    ownerId: user.ownerId,
+    showroomIds: visible,
+    policy: await loadPolicy(user.ownerId),
+  });
+
+  res.json({
+    runs: summary.runs.map((r) => ({
+      id: r.id,
+      kind: r.kind,
+      actor: r.actor,
+      trigger: r.trigger,
+      outcome: r.outcome,
+      reason: r.reason,
+      startedAt: r.startedAt.toISOString(),
+      finishedAt: r.finishedAt?.toISOString() ?? null,
+      durationMs: r.durationMs,
+      considered: r.considered,
+      proposed: r.proposed,
+      acted: r.acted,
+      refused: r.refused,
+      modelCalls: r.modelCalls,
+      costPaise: r.costPaise,
+    })),
+    spentTodayPaise: summary.spentTodayPaise,
+    capPaise: summary.capPaise,
+    standingDown: summary.standingDown,
+  });
+});
+
+router.get("/dms/runs/:id", async (req, res): Promise<void> => {
+  const found = await stepsFor(req.sessionUser!.ownerId, Number(req.params.id));
+  if (!found) {
+    res.status(404).json({ error: `No run ${req.params.id}` });
+    return;
+  }
+  res.json({
+    run: {
+      id: found.run.id,
+      kind: found.run.kind,
+      actor: found.run.actor,
+      trigger: found.run.trigger,
+      outcome: found.run.outcome,
+      reason: found.run.reason,
+      startedAt: found.run.startedAt.toISOString(),
+      finishedAt: found.run.finishedAt?.toISOString() ?? null,
+      durationMs: found.run.durationMs,
+      considered: found.run.considered,
+      proposed: found.run.proposed,
+      acted: found.run.acted,
+      refused: found.run.refused,
+      modelCalls: found.run.modelCalls,
+      costPaise: found.run.costPaise,
+    },
+    steps: found.steps.map((st) => ({
+      seq: st.seq,
+      kind: st.kind,
+      module: st.module,
+      recordKey: st.recordKey,
+      action: st.action,
+      detail: st.detail,
+      decisionId: st.decisionId,
+      model: st.model,
+      costPaise: st.costPaise,
+      ms: st.ms,
+      at: st.at.toISOString(),
+    })),
+  });
+});
+
 router.get("/dms/channels", async (req, res): Promise<void> => {
   res.json({ channels: await statusFor(req.sessionUser!.ownerId) });
 });
