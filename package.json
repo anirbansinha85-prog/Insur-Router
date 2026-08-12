@@ -20,6 +20,7 @@
     "verify:ingest": "pnpm --filter @workspace/scripts run ingest",
     "verify:invoice": "pnpm --filter @workspace/scripts run invoice",
     "verify:autonomy": "pnpm --filter @workspace/scripts run autonomy",
+    "verify:overview": "pnpm --filter @workspace/scripts run overview",
     "db:probe": "pnpm --filter @workspace/scripts run probe",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"

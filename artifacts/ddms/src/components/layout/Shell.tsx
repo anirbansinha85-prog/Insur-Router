@@ -2,7 +2,7 @@ import { Link, useLocation } from "wouter"
 import {
   Users, ListChecks, Wrench, LayoutDashboard, ShieldCheck, Bell,
   ExternalLink, LogOut, IdCard, Boxes, Send, Wallet, Bike, ListTodo, SlidersHorizontal,
-  ReceiptText, Sparkles,
+  ReceiptText, Sparkles, Gauge,
 } from "lucide-react"
 import type { SessionUser } from "@workspace/api-client-react"
 import { cn } from "@/lib/utils"
@@ -34,7 +34,10 @@ const GROUPS: NavGroup[] = [
     // Its own group and first, because it is not one more list of records —
     // it is the answer to what to do next, assembled from all of them.
     label: "Today",
-    items: [{ href: "/", label: "My queue", icon: ListTodo }],
+    items: [
+      { href: "/overview", label: "Overall view", icon: Gauge },
+      { href: "/", label: "My queue", icon: ListTodo },
+    ],
   },
   {
     label: "Showroom",

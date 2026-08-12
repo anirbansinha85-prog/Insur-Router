@@ -2678,17 +2678,17 @@ the product issues and the ladder it earns autonomy on are all built.
 *deliver* — every message it composes still stops at the outbox, because no
 WhatsApp or mail account is connected (OBJ-27). It cannot be *watched* — there
 is a decision log per record and no trace across a run, and nothing meters what
-an agent costs (OBJ-28). And it cannot answer *how is the business doing*
-without somebody opening seven screens and adding up (OBJ-35, and it is the
-one of the three that is blocked on nothing).
+an agent costs (OBJ-28). It could not answer *how is the business doing*
+without somebody opening seven screens and adding up, and that one is now
+built — OBJ-35, on 12 August, blocked on nothing and therefore done first.
 
 **The blocker before a customer is gone.** Sign-in exists in all three
 products, the database enforces the boundary rather than trusting the code to,
 and since OBJ-8 the server holds no credential that could bypass it — it refuses
 to start with one. What is left is not a safety question any more.
 
-**Eight verifiers, and each states a claim it could fail.** Permissions,
-records, agent, journey, ingest, invoice, autonomy and `typecheck`.
+**Nine verifiers, and each states a claim it could fail.** Permissions,
+records, agent, journey, ingest, invoice, autonomy, overview and `typecheck`.
 The rule they are held to was learnt the expensive way in OBJ-30: *a verifier
 that can fail for a reason it does not name will one day pass for a reason it
 does not name.*
@@ -2940,15 +2940,15 @@ it"* stopped being evidence that a thing was not built.
 | R-104 | **A document has two readers, and only one of them may see the provenance.** The customer gets a document; we keep a copy that says where each figure came from and how sure of it we were. Printing the second is how a dealership hands a buyer a page admitting a model read 55% of it. And the halves must each be true *on their own*: a sale confirmation saying *the tax invoice number is shown above* is a lie on every copy where there is no number, and a document that can lie about itself is worse than one that says nothing | ✅ |
 | R-105 | **Where the trade has a word, use the trade's word.** *Data type*, *import*, *import history*, *column mapping* — a dealership's administrator and an implementation consultant both already have vocabulary for this, and inventing friendlier terms makes the product read as though nobody who built it had done the job. Write plainly everywhere the trade has no word | ✅ |
 | R-106 | **Every outside credential is the dealership's own.** The model key, the WhatsApp number, the mail account, the DMS login, the document store. DDMS holds none of them, meters none of them, and cannot spend one dealership's key on another's work. It is the honest answer to *where does our data go* and it is what makes per-run model cost somebody else's line item — but it is a constraint on the architecture before it is a pricing position, and it has to be true in the code or it must not be said | ○ |
-| R-107 | **One view answers *how is the business doing* without opening a module.** Seven screens each holding a list is the reporting product R-55 already refused; the queue fixed it for the person doing the work and left the owner with nothing. Derived on read like R-12, and every figure on it opens the rows underneath — a number you cannot walk into is a report, and R-20 says this product is not one | ○ |
-| R-108 | **What a prospect is shown first is a report about their own dealership.** Point the read-only mirror at their data and hand back what is falling through: orphaned work, money past its credit period, files the RTO has gone quiet on. It must be the *same artifact* the owner opens every morning after they buy — a diagnostic built only to sell is a brochure, and it stops being true the week after it is produced | ○ |
+| R-107 | **One view answers *how is the business doing* without opening a module.** Seven screens each holding a list is the reporting product R-55 already refused; the queue fixed it for the person doing the work and left the owner with nothing. Derived on read like R-12, and every figure on it opens the rows underneath — a number you cannot walk into is a report, and R-20 says this product is not one | ✅ OBJ-35. Six bands, derived on read, and every figure carries the screen its rows are on — `verify:overview` §7 refuses a figure pointing at a screen that does not exist |
+| R-108 | **What a prospect is shown first is a report about their own dealership.** Point the read-only mirror at their data and hand back what is falling through: orphaned work, money past its credit period, files the RTO has gone quiet on. It must be the *same artifact* the owner opens every morning after they buy — a diagnostic built only to sell is a brochure, and it stops being true the week after it is produced | ✅ OBJ-35. The same page, printed. `@media print` drops the chrome and the walk-in arrows and keeps the figures and the limits, so there is no second artifact to go stale |
 
 ### New objectives
 
 | # | Objective | Model? | Depends on | Why here |
 |---|---|---|---|---|
 | 34 | ~~**Ingestion for all seven modules**~~ ✅ | at the mapping step only | 24 | registered after the fact. OBJ-24 proved one seam on one module; a dealership does not export only its deals |
-| 35 | **The overall view, and the report that sells it** | no | 18, 23, 24, 26 | R-107 and R-108 are one build. It needs nothing new — it aggregates seven classifiers, the journeys, the queue bands and the ladder — and it is the second half of the one-line description of what DDMS is |
+| 35 | ~~**The overall view, and the report that sells it**~~ ✅ | no | 18, 23, 24, 26 | R-107 and R-108 are one build. It needs nothing new — it aggregates seven classifiers, the journeys, the queue bands and the ladder — and it is the second half of the one-line description of what DDMS is |
 
 > **Why 35 goes before 27 and before the ledger.** Anirban's own sentence for
 > this product is *it automates your routine tasks and gives you a dashboard
@@ -2998,4 +2998,90 @@ on 12 August.** R-44 and the non-goal stand until it is answered.
 as invoicing. Its executors are stubs, and unlike everything else in the queue
 the blocker is not build time — it is an insurer credential and a contract.
 Sequenced when that exists, not before.
+
+### What OBJ-35 turned out to be
+
+Built on 12 August. One module, one route, one screen and a verifier, and the
+module is almost entirely additions — which was the argument for doing it
+first and turned out to be true.
+
+**Six bands, in the order an owner asks.** What is waiting on somebody · the
+dealership's money · money held for somebody else · what time is costing · what
+the DMS still believes · what the product did on its own.
+
+The third is the one that was not in the plan. **R-103 belongs on a screen, not
+only in a ledger.** Road tax collected from a customer is the RTO's money
+sitting in a dealer's account, and a dashboard that folds ₹73,526 of it into the
+cash position is teaching somebody to spend money that is not theirs. It has its
+own band, with the sentence saying so, for that reason and no other — and OBJ-31
+will need the same distinction in double entry.
+
+**Nothing on it is derived.** Every figure is a classifier's existing answer, a
+queue band, a reconciliation state, an outbox count or a rung's standing. The
+one exception is a `count(*)` over `sale_documents`, written because
+`listDocuments` caps at a hundred rows and a capped list silently understates a
+total — a dealership past its hundredth invoice would watch the number stop
+climbing with no way to tell that from a quiet month.
+
+**The screen and the diagnostic are the same page.** No second route, no PDF
+library, the same decision as the invoice: `@media print` drops the chrome and
+the walk-in arrows, keeps the figures and the limits, and adds one printed line
+saying what the page is. R-108 asked that the artifact handed to a prospect be
+the one the owner opens every morning afterwards, and two files claiming to be
+that page would have made it two artifacts within a month.
+
+#### The finding, and it is the one worth keeping
+
+> **A verifier that agrees with the bug is a bug with a tick beside it.**
+
+The first `verify-overview` counted rows through the same builders `overview.ts`
+calls, and the file's own comment described that as independent. It is not.
+Spares, receivables and inventory each read every outlet in the group to answer
+their cross-branch questions and filter back to one outlet before returning;
+that filter is one line in each of three files, and losing it doubles every
+money figure on the owner's screen.
+
+Removing it from `receivables-worklist.ts` **left all twenty-two checks
+passing.** The defect landed on both sides of every comparison and cancelled
+itself out — the group run inflated, the per-outlet runs inflated by the same
+factor, and the sum still balanced.
+
+Two changes. Section 3 now reads `dms_vehicle_stock` in SQL with no classifier
+anywhere near it — a column and a null test, which is the only comparison in the
+file that shares no code with the thing it checks. And it asserts the invariant
+the whole fold rests on rather than assuming it: **a builder asked for one
+outlet returns that outlet's rows and no others.** The same mutation now fails
+one check, by name, in one line.
+
+Only one figure gets the SQL treatment, deliberately. Every other number here is
+a classifier's answer, and reimplementing a classifier inside its own verifier
+produces a second opinion that drifts and then fails for reasons that have
+nothing to do with the code under test. The sections now say which of them
+proves what, because the honest reach of a check is part of the check.
+
+#### Three smaller ones
+
+**A figure that is structurally zero reads as reassurance.** *Yours: 0* on an
+owner's screen — an owner has no employee code, so nothing on the queue is ever
+theirs — tells the one person looking that they are on top of their own work.
+The figure is only rendered for somebody the work can be assigned to.
+
+**Two numbers cannot say which of two stories is true; three can.** *Accepted 0,
+overruled 0* reads as a product whose every suggestion was ignored. With the
+count they are out of in front of them, the same two zeroes read as what they
+are — the agent has not proposed anything yet.
+
+**Money arrived asserting fourteen significant digits.** Interest accrued comes
+out of a daily rate and came back as `36733.291024657534`. Rounded in the
+response rather than in the formatter, so the screen, the printed page and
+anything exported all carry one figure — a display-only round is how two copies
+of one number start to disagree.
+
+#### What it did not do
+
+It is **not the root**. The queue stays at `/`, because it is the right first
+screen for most of the logins, and swapping the two by role would mean one URL
+showing two different screens. An owner arrives at the overall view from the
+first item in the sidebar. That is a reversible choice and it is written down
+here so it can be revisited rather than rediscovered.
 

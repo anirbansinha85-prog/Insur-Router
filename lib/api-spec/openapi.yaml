@@ -2134,6 +2134,50 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /dms/overview:
+    get:
+      operationId: getDmsOverview
+      tags: [dms]
+      summary: How the business is doing, without opening a module
+      description: >
+        The owner's screen, and the second half of what DDMS is: it automates
+        the routine tasks and it gives one view of the whole thing. The queue
+        answers *what do I do next* for the person doing the work; this answers
+        *how is the business doing* for the person who owns it.
+
+        It derives nothing. Every figure is already computed by the seven
+        classifiers, the queue's bands, the reconciliation, the outbox gate or
+        the ladder's standing — this loops the visible outlets, calls the same
+        builders every worklist route calls, and adds up what comes back. A
+        dashboard that computes its own version of *overdue* is a second answer
+        to a question the product already answers, and the two drift within a
+        month.
+
+        Every figure carries an `href` to the rows behind it. A number you
+        cannot walk into is a report, and this product is a control panel.
+
+        A module outside the caller's role is left out of the arithmetic and
+        named in `scope.withheld`, never counted as zero — four zeroes read as
+        *your dealership has none of these*, which is a false claim about
+        somebody's own business, and here it would be summed into a headline.
+
+        Nothing is stored. `limits` is derived from the state just read and
+        says what this view cannot tell you, including how stale the mirror is
+        and whether any message has actually reached a customer.
+      responses:
+        "200":
+          description: Derived on read. Nothing on this response was stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OverviewResult"
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /dms/queue:
     get:
       operationId: getDmsQueue
@@ -3775,6 +3819,97 @@ components:
               count: { type: integer }
             required: [module, count]
       required: [items, total, mine, unassigned, outlet, byModule]
+
+    OverviewFigure:
+      type: object
+      properties:
+        key: { type: string }
+        label: { type: string }
+        value: { type: number }
+        unit:
+          type: string
+          enum: [COUNT, RUPEES, DAYS]
+        tone:
+          type: string
+          enum: [PLAIN, WATCH, BAD]
+          description: >
+            BAD is reserved for numbers that should be zero and are not. WATCH
+            is fine now and will not stay fine. Most of a good screen is PLAIN
+            — a dashboard where everything is red is one nobody reads twice.
+        href:
+          type: ["string", "null"]
+          description: The screen listing the rows behind this number.
+        hint: { type: ["string", "null"] }
+      required: [key, label, value, unit, tone, href, hint]
+
+    OverviewSection:
+      type: object
+      properties:
+        id:
+          type: string
+          enum: [ATTENTION, MONEY, HELD, AGEING, GAP, UNATTENDED]
+        title: { type: string }
+        blurb: { type: string }
+        figures:
+          type: array
+          items: { $ref: "#/components/schemas/OverviewFigure" }
+      required: [id, title, blurb, figures]
+
+    OverviewResult:
+      type: object
+      properties:
+        generatedAt: { type: string, format: date-time }
+        scope:
+          type: object
+          properties:
+            ownerName: { type: string }
+            outlets:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: { type: integer }
+                  name: { type: string }
+                  code: { type: string }
+                required: [id, name, code]
+            modules:
+              type: array
+              items: { type: string }
+            withheld:
+              type: array
+              description: >
+                Modules outside this role, named rather than counted as zero.
+              items:
+                type: object
+                properties:
+                  module: { type: string }
+                  reason: { type: string }
+                required: [module, reason]
+          required: [ownerName, outlets, modules, withheld]
+        mirror:
+          type: object
+          description: >
+            The stalest sync across the visible outlets, which is the honest
+            bound — reporting the newest would let one outlet that synced a
+            minute ago vouch for another that has not synced since Tuesday.
+          properties:
+            lastSyncedAt: { type: ["string", "null"] }
+            staleHours: { type: ["integer", "null"] }
+          required: [lastSyncedAt, staleHours]
+        headline:
+          type: array
+          description: >
+            At most three sentences, chosen by a fixed severity table and
+            worded by a function. No model is involved.
+          items: { type: string }
+        sections:
+          type: array
+          items: { $ref: "#/components/schemas/OverviewSection" }
+        limits:
+          type: array
+          description: What this view cannot tell you, derived from what it read.
+          items: { type: string }
+      required: [generatedAt, scope, mirror, headline, sections, limits]
 
     PolicySetInput:
       type: object

@@ -106,6 +106,7 @@ import type {
   OcrEngineStatus,
   OcrInput,
   OemClaims,
+  OverviewResult,
   Policy,
   PolicyResetInput,
   PolicySetInput,
@@ -4414,6 +4415,88 @@ export function useListDmsEvents<TData = Awaited<ReturnType<typeof listDmsEvents
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListDmsEventsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetDmsOverviewUrl = () => {
+
+
+
+
+  return `/api/dms/overview`
+}
+
+/**
+ * The owner's screen, and the second half of what DDMS is: it automates the routine tasks and it gives one view of the whole thing. The queue answers *what do I do next* for the person doing the work; this answers *how is the business doing* for the person who owns it.
+ * It derives nothing. Every figure is already computed by the seven classifiers, the queue's bands, the reconciliation, the outbox gate or the ladder's standing — this loops the visible outlets, calls the same builders every worklist route calls, and adds up what comes back. A dashboard that computes its own version of *overdue* is a second answer to a question the product already answers, and the two drift within a month.
+ * Every figure carries an `href` to the rows behind it. A number you cannot walk into is a report, and this product is a control panel.
+ * A module outside the caller's role is left out of the arithmetic and named in `scope.withheld`, never counted as zero — four zeroes read as *your dealership has none of these*, which is a false claim about somebody's own business, and here it would be summed into a headline.
+ * Nothing is stored. `limits` is derived from the state just read and says what this view cannot tell you, including how stale the mirror is and whether any message has actually reached a customer.
+ * @summary How the business is doing, without opening a module
+ */
+export const getDmsOverview = async ( options?: Parameters<typeof customFetch>[1]): Promise<OverviewResult> => {
+
+  return customFetch<OverviewResult>(getGetDmsOverviewUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDmsOverviewQueryKey = () => {
+    return [
+    `/api/dms/overview`
+    ] as const;
+    }
+
+
+export const getGetDmsOverviewQueryOptions = <TData = Awaited<ReturnType<typeof getDmsOverview>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDmsOverview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDmsOverviewQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDmsOverview>>> = ({ signal }) => getDmsOverview({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDmsOverview>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDmsOverviewQueryResult = NonNullable<Awaited<ReturnType<typeof getDmsOverview>>>
+export type GetDmsOverviewQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary How the business is doing, without opening a module
+ */
+
+export function useGetDmsOverview<TData = Awaited<ReturnType<typeof getDmsOverview>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDmsOverview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDmsOverviewQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

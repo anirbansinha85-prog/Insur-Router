@@ -11,6 +11,7 @@ import { NotYours, ROUTE_MODULE, mayOpen } from '@/lib/permitted';
 
 import SignIn from '@/pages/SignIn';
 import Queue from '@/pages/Queue';
+import Overview from '@/pages/Overview';
 import Numbers from '@/pages/Numbers';
 import Learned from '@/pages/Learned';
 import Invoice from '@/pages/Invoice';
@@ -105,6 +106,18 @@ function Gate() {
               empty queue is a true answer. */}
           <Route path="/"><Queue /></Route>
           <Route path="/queue"><Queue /></Route>
+          {/* The other half of what this product is, and deliberately not the
+              root. The queue is the right first screen for the person doing
+              the work, which is most of the logins; an owner arrives here from
+              the first item in the sidebar. Swapping the two by role would
+              mean the same URL showing two different screens, which is worse
+              than either choice.
+
+              Not module-gated, for the same reason the queue is not: it spans
+              every module and narrows itself to what the role may read, so
+              there is no single module to refuse it on. What somebody may not
+              read is named on the page rather than counted as zero. */}
+          <Route path="/overview"><Overview /></Route>
           {/* Readable by everybody, editable by an owner or a manager — the
               numbers explain what is on somebody's screen, and hiding them
               would make the queue's order look arbitrary. The refusal to edit

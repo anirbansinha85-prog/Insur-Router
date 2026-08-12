@@ -100,6 +100,7 @@ import {
 } from "../lib/dms/permissions";
 import { showroomIdsForOwner } from "../lib/dms/events";
 import { buildQueue } from "../lib/dms/queue";
+import { buildOverview } from "../lib/dms/overview";
 import { describeRules, MAX_RULES } from "../lib/dms/rules";
 import {
   standingFor,
@@ -1560,6 +1561,42 @@ router.get("/dms/events", async (req, res): Promise<void> => {
  * built at all — a service advisor's queue holds job cards and parts and does
  * not silently contain an empty ledger section.
  */
+/**
+ * The overall view.
+ *
+ * Same scope expression as the queue below it, and deliberately the same two
+ * lines rather than a shared helper — the moment these two disagree about
+ * which outlets somebody may see, the owner's headline is summed over a set
+ * their queue is not, and neither screen would report the discrepancy.
+ *
+ * No `showroomId` parameter. The scope comes from the session, as it does
+ * everywhere in this router, and an overall view that could be pointed at one
+ * outlet by a query string would be a differently-shaped worklist rather than
+ * an answer about the business.
+ *
+ * Not module-gated, for the same reason `/dms/queue` is not: it spans every
+ * module and narrows itself to what the role may read, so there is no single
+ * module to refuse it on. What a role may not read is left out of the
+ * arithmetic and named in the response.
+ */
+router.get("/dms/overview", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  const owned = await ownedShowroomIds(user.ownerId);
+
+  const visible =
+    user.showroomId !== null && !seesEveryOutlet(user.role) ? [user.showroomId] : owned;
+
+  res.json(
+    await buildOverview({
+      ownerId: user.ownerId,
+      ownerShowroomIds: owned,
+      visibleShowroomIds: visible,
+      empCode: user.empCode,
+      role: user.role,
+    }),
+  );
+});
+
 router.get("/dms/queue", async (req, res): Promise<void> => {
   const user = req.sessionUser!;
   const owned = await ownedShowroomIds(user.ownerId);

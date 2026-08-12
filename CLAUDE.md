@@ -1083,6 +1083,74 @@ credential.
 > has no button to pre-fill, so its ceiling is `RECALL` rather than `PREFILLED`
 > — otherwise the screen reports a rung it reached while nothing ever changed.
 
+## The overall view
+
+`lib/dms/overview.ts` and `GET /api/dms/overview` (OBJ-35, R-107, R-108). The
+queue answers *what do I do next* for the person doing the work. This answers
+**how is the business doing** for the person who owns it, and until it existed
+the only way to ask was to open seven screens and add up.
+
+**It derives nothing.** Every figure is already computed by the seven
+classifiers, the queue's bands, the reconciliation, the outbox gate or the
+ladder's standing. This loops the visible outlets, calls the same builders every
+worklist route calls, and adds up what comes back. A dashboard that computes its
+own version of *overdue* is a second answer to a question the product already
+answers, and the two drift within a month — the owner's screen says eleven and
+the receivables screen says nine, and from then on nobody trusts either.
+
+Six bands: what is waiting on somebody, the dealership's money, **money held for
+somebody else**, what time is costing, what the DMS still believes, and what the
+product did on its own. The third is R-103 on a screen rather than in a ledger —
+road tax collected from a customer is the RTO's money in a dealer's account, and
+a dashboard that adds it to the cash position is teaching somebody to spend it.
+
+**Every figure carries an `href`.** R-20 says this is a control panel and not a
+report, and a number you cannot walk into is a report: it says eleven things are
+wrong and leaves somebody to find which eleven. The server decides where each
+one goes; the screen renders `href` and knows what none of them mean.
+
+**A module outside the role is named, never zeroed** — left out of the
+arithmetic and listed in `scope.withheld` with the reason. The same defect the
+route guard exists for, and worse here, because the zeroes would be summed into
+a headline.
+
+**The headline is a rule.** Findings ordered by a fixed table, top three, each
+worded by a function. No model is called from that file and there is no branch
+where one could be.
+
+**`limits` is derived from what was just read** and prints. The mirror's
+staleness, the modules left out, the outlets not covered, and — the one that
+matters most on a page handed to somebody who has not bought anything — whether
+any message has actually reached a customer.
+
+**The screen and the report are the same page.** R-108 asks that a prospect be
+shown a report about their own dealership, and that it be the *same artifact*
+the owner opens every morning afterwards; a diagnostic built only to sell is a
+brochure and stops being true the week after. So `/overview` is one route with a
+`@media print` block, exactly as `/invoices/:id` is — no second layout to drift.
+Print drops the chrome and the walk-in arrows, keeps the figures and the limits,
+and adds one line saying what the page is: read from this dealership's own DMS,
+which DDMS never writes to.
+
+> **A verifier that agrees with the bug is a bug with a tick beside it.** The
+> first `verify-overview` counted rows through the same builders `overview.ts`
+> calls and called that independent. Removing the outlet filter from
+> `receivables-worklist.ts` — the one line stopping a cross-branch builder
+> returning the whole group for every outlet, which would double every money
+> figure on the owner's screen — **left all twenty-two checks passing**, because
+> the defect landed on both sides of every comparison. Section 3 now reads
+> `dms_vehicle_stock` in SQL with no classifier involved, and asserts the
+> invariant the fold rests on: *a builder asked for one outlet returns that
+> outlet's rows and no others.* The same mutation now fails one check by name.
+> Only one figure gets the SQL treatment on purpose — reimplementing a
+> classifier in its own verifier produces a second opinion that drifts and then
+> fails for reasons unrelated to the code under test.
+
+`pnpm run verify:overview`. Nine sections, on the worker credential, and it
+asserts among other things that building the view writes no decision and no
+event: it is a read.
+
+
 ## One queue, worked one at a time
 
 Every screen below answers *what is wrong with these records*. `GET /api/dms/queue`
@@ -1519,8 +1587,8 @@ assignment (`VAR=x cmd`) and depends on `$REPLIT_EXPO_DEV_DOMAIN`,
 
 ### Frontend pages
 
-DDMS (`artifacts/ddms/src/pages/`): `Queue` (`/`), `Leads` (`/enquiries`), `Worklist` (`/worklist`),
-`Numbers` (`/numbers`),
+DDMS (`artifacts/ddms/src/pages/`): `Queue` (`/`), `Overview` (`/overview`),
+`Leads` (`/enquiries`), `Worklist` (`/worklist`), `Numbers` (`/numbers`),
 `Registrations` (`/registrations`), `ServiceWorklist` (`/service`),
 `Spares` (`/spares`), `Receivables` (`/receivables`), `Inventory`
 (`/inventory`), `Outbox` (`/outbox`), `Dossier` (`/who/:entityId`,

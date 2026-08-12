@@ -2088,6 +2088,52 @@ export const ListDmsEventsResponse = zod.object({
 
 
 /**
+ * The owner's screen, and the second half of what DDMS is: it automates the routine tasks and it gives one view of the whole thing. The queue answers *what do I do next* for the person doing the work; this answers *how is the business doing* for the person who owns it.
+ * It derives nothing. Every figure is already computed by the seven classifiers, the queue's bands, the reconciliation, the outbox gate or the ladder's standing — this loops the visible outlets, calls the same builders every worklist route calls, and adds up what comes back. A dashboard that computes its own version of *overdue* is a second answer to a question the product already answers, and the two drift within a month.
+ * Every figure carries an `href` to the rows behind it. A number you cannot walk into is a report, and this product is a control panel.
+ * A module outside the caller's role is left out of the arithmetic and named in `scope.withheld`, never counted as zero — four zeroes read as *your dealership has none of these*, which is a false claim about somebody's own business, and here it would be summed into a headline.
+ * Nothing is stored. `limits` is derived from the state just read and says what this view cannot tell you, including how stale the mirror is and whether any message has actually reached a customer.
+ * @summary How the business is doing, without opening a module
+ */
+export const GetDmsOverviewResponse = zod.object({
+  "generatedAt": zod.coerce.date(),
+  "scope": zod.object({
+  "ownerName": zod.string(),
+  "outlets": zod.array(zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "code": zod.string()
+})),
+  "modules": zod.array(zod.string()),
+  "withheld": zod.array(zod.object({
+  "module": zod.string(),
+  "reason": zod.string()
+})).describe('Modules outside this role, named rather than counted as zero.\n')
+}),
+  "mirror": zod.object({
+  "lastSyncedAt": zod.string().nullable(),
+  "staleHours": zod.number().int().nullable()
+}).describe('The stalest sync across the visible outlets, which is the honest bound — reporting the newest would let one outlet that synced a minute ago vouch for another that has not synced since Tuesday.\n'),
+  "headline": zod.array(zod.string()).describe('At most three sentences, chosen by a fixed severity table and worded by a function. No model is involved.\n'),
+  "sections": zod.array(zod.object({
+  "id": zod.enum(['ATTENTION', 'MONEY', 'HELD', 'AGEING', 'GAP', 'UNATTENDED']),
+  "title": zod.string(),
+  "blurb": zod.string(),
+  "figures": zod.array(zod.object({
+  "key": zod.string(),
+  "label": zod.string(),
+  "value": zod.number(),
+  "unit": zod.enum(['COUNT', 'RUPEES', 'DAYS']),
+  "tone": zod.enum(['PLAIN', 'WATCH', 'BAD']).describe('BAD is reserved for numbers that should be zero and are not. WATCH is fine now and will not stay fine. Most of a good screen is PLAIN — a dashboard where everything is red is one nobody reads twice.\n'),
+  "href": zod.string().nullable().describe('The screen listing the rows behind this number.'),
+  "hint": zod.string().nullable()
+}))
+})),
+  "limits": zod.array(zod.string()).describe('What this view cannot tell you, derived from what it read.')
+})
+
+
+/**
  * Seven screens each holding a list is a reporting product: it says what is wrong and leaves *which of these to do next* to the person with no time to decide it. This is the screen that decides, and the capacity argument the product is sold on stands or falls on it.
  * Three bands, in order — mine, nobody's, my outlet's. The middle one is the point: an enquiry assigned to a salesman who left in February is on nobody's list, is not late by any measure the DMS holds, and simply stops happening. A departed assignee puts an item in that band rather than in "somebody else's", because the work is not less orphaned for the DMS still carrying the name.
  * Contents are the classifiers' answers read through the same builders the screens and the event detector use — every record whose own screen would show an `actionRequired`, and whose state appears in the severity table. Nothing here is a second opinion about which rows matter, and no model is involved anywhere: what somebody should do next is exactly the decision R-49 says a model may not make.

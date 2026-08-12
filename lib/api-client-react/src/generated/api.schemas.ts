@@ -935,6 +935,103 @@ export interface QueueResult {
   byModule: QueueResultByModuleItem[];
 }
 
+export type OverviewFigureUnit = typeof OverviewFigureUnit[keyof typeof OverviewFigureUnit];
+
+
+export const OverviewFigureUnit = {
+  COUNT: 'COUNT',
+  RUPEES: 'RUPEES',
+  DAYS: 'DAYS',
+} as const;
+
+/**
+ * BAD is reserved for numbers that should be zero and are not. WATCH is fine now and will not stay fine. Most of a good screen is PLAIN — a dashboard where everything is red is one nobody reads twice.
+ */
+export type OverviewFigureTone = typeof OverviewFigureTone[keyof typeof OverviewFigureTone];
+
+
+export const OverviewFigureTone = {
+  PLAIN: 'PLAIN',
+  WATCH: 'WATCH',
+  BAD: 'BAD',
+} as const;
+
+export interface OverviewFigure {
+  key: string;
+  label: string;
+  value: number;
+  unit: OverviewFigureUnit;
+  /** BAD is reserved for numbers that should be zero and are not. WATCH is fine now and will not stay fine. Most of a good screen is PLAIN — a dashboard where everything is red is one nobody reads twice. */
+  tone: OverviewFigureTone;
+  /**
+     * The screen listing the rows behind this number.
+     * @nullable
+     */
+  href: string | null;
+  /** @nullable */
+  hint: string | null;
+}
+
+export type OverviewSectionId = typeof OverviewSectionId[keyof typeof OverviewSectionId];
+
+
+export const OverviewSectionId = {
+  ATTENTION: 'ATTENTION',
+  MONEY: 'MONEY',
+  HELD: 'HELD',
+  AGEING: 'AGEING',
+  GAP: 'GAP',
+  UNATTENDED: 'UNATTENDED',
+} as const;
+
+export interface OverviewSection {
+  id: OverviewSectionId;
+  title: string;
+  blurb: string;
+  figures: OverviewFigure[];
+}
+
+export type OverviewResultScopeOutletsItem = {
+  id: number;
+  name: string;
+  code: string;
+};
+
+export type OverviewResultScopeWithheldItem = {
+  module: string;
+  reason: string;
+};
+
+export type OverviewResultScope = {
+  ownerName: string;
+  outlets: OverviewResultScopeOutletsItem[];
+  modules: string[];
+  /** Modules outside this role, named rather than counted as zero. */
+  withheld: OverviewResultScopeWithheldItem[];
+};
+
+/**
+ * The stalest sync across the visible outlets, which is the honest bound — reporting the newest would let one outlet that synced a minute ago vouch for another that has not synced since Tuesday.
+ */
+export type OverviewResultMirror = {
+  /** @nullable */
+  lastSyncedAt: string | null;
+  /** @nullable */
+  staleHours: number | null;
+};
+
+export interface OverviewResult {
+  generatedAt: string;
+  scope: OverviewResultScope;
+  /** The stalest sync across the visible outlets, which is the honest bound — reporting the newest would let one outlet that synced a minute ago vouch for another that has not synced since Tuesday. */
+  mirror: OverviewResultMirror;
+  /** At most three sentences, chosen by a fixed severity table and worded by a function. No model is involved. */
+  headline: string[];
+  sections: OverviewSection[];
+  /** What this view cannot tell you, derived from what it read. */
+  limits: string[];
+}
+
 export interface PolicySetInput {
   key: string;
   /**
