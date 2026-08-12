@@ -201,7 +201,7 @@ pnpm run typecheck:libs                         # before checking leaf packages
 
 ## Data model
 
-Thirty-seven tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
+Thirty-nine tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
 which of them `ddms_app` may read, and on what terms, is in `lib/db/sql/rls.sql`.
 
 **The owner tier** — who the data belongs to:
@@ -381,6 +381,106 @@ template goes forward — and the *reason* is logged too, because a silent
 fallback and a silent failure look identical from the outside. They looked
 identical for a while: a malformed request made the model path inert and every
 draft came back `RULE`, which is exactly what healthy fallback looks like.
+
+## Messages out, replies in
+
+`lib/dms/channels/`, `routes/webhooks.ts` and two tables (OBJ-27, R-106). The
+outbox has drafted since OBJ-16 and delivered nothing, because `TRANSPORTS` was
+an empty object with a long comment explaining that being empty was the honest
+state of the system. It is no longer empty.
+
+**DDMS holds no messaging account of its own.** The WhatsApp number a customer
+sees has to be the dealership's — a service reminder from an unknown number is
+a message nobody answers — and so do the template approvals, the sending
+reputation and the bill. R-106 states it as a rule and `channel_credentials`
+is what makes it true: one row per (owner, channel), and an environment
+variable would have been one account for every dealership using the product.
+
+**The secret is encrypted and no route can return it.** AES-256-GCM under
+`CREDENTIAL_KEY`, which lives in the environment and not the database, so a
+backup on a laptop or a `pg_dump` in a support ticket is not a token. The
+decrypting function is module-private; what a screen gets is `ChannelStatus`,
+which has no field for a secret and four masked characters instead. That is a
+property of the type rather than a rule every future handler must remember.
+No key, no feature — a token written in the clear with a warning nobody reads
+is not the fallback.
+
+**A credential arrives switched off, every time, including on a re-paste.** A
+token that changed is a token nobody has tested, and the send that proves it
+works is cheaper than the one that goes to four hundred customers from a number
+the dealership had not finished setting up.
+
+**`blocker` is one sentence naming whose problem it is.** *No transport is
+configured* described a gap in the product; three of the four real reasons are
+the dealership's own and each is worded separately.
+
+WhatsApp goes over Meta's Cloud API as a `text` message, which Meta permits only
+within twenty-four hours of the customer's last one. Outside that window their
+error is shown verbatim. **DDMS does not quietly substitute an approved
+template** — delivering something other than what a manager put their name to is
+the one thing the whole gate exists to prevent.
+
+### A reply is the half that is not plumbing
+
+`inbound_messages` is the first table in this product that mirrors nothing. A
+DMS records what the dealership did to a record; it has no column for *the
+customer answered on Tuesday and said the bike is still pulling left*, no report
+that would produce one, and no way to notice that nobody read it.
+
+**Nothing reads the message.** Stored verbatim, no rule fires on its contents,
+no model summarises it. A model reading *"don't bother, I've sold it"* and
+marking a lead lost is the judgement R-49 reserves for a person, and the failure
+is silent — the lead leaves a screen and nobody learns why. What a reply does is
+become a queue row saying somebody answered and nobody opened it, **always in
+the Nobody's band**: an unread message arrived at a number, not at a person,
+which is the exact definition of that band.
+
+**The thread beats the phone book** (R-47). A reply is attributed to the last
+message DDMS actually sent that number — a reference, because we wrote it — and
+falls back to matching the customer entity on the mobile, which is probable and
+says so. An unmatched reply is kept and queued rather than dropped: somebody
+wrote to the dealership whether or not we can say about what.
+
+`providerMessageId` is unique per channel, and that is the whole of the
+idempotency. Meta retries any webhook it did not get a 200 for, including ones
+it timed out on itself, so without it one customer message becomes four queue
+rows and the screen stops being believed inside a week.
+
+### The webhook is outside every gate, and one thing replaces them
+
+`POST /api/webhooks/whatsapp` is the only route in this product without the
+service key, a session or a role. Meta is the caller and holds none of them.
+**The signature is what stands in their place** — HMAC-SHA256 over the raw
+bytes with the app secret the dealership stored beside their own credential,
+`timingSafeEqual`, verified before a row is written. A channel with no signing
+secret **cannot receive at all**: an unsigned webhook is somewhere anybody may
+post a fabricated customer conversation into a dealership's queue, and refusing
+the delivery is the honest failure.
+
+Whose payload it is has to be settled before there is a key to check it with, so
+the business phone number id resolves the owner first. It answers 200 to almost
+everything, deliberately: a 500 for an unparseable payload buys the same bad
+payload every few minutes for a day. Only a failed signature gets a 401.
+
+> **The signature is over the bytes, not the parsed object.** `express.json`'s
+> `verify` hook keeps `rawBody`, because `JSON.stringify(req.body)` re-serialises
+> with different key order and spacing — verifying against that produces a
+> webhook that rejects every genuine delivery while looking correct.
+
+> **A verifier that reaches for a wider credential is usually reporting a real
+> boundary.** `verify:channels` connected an account inside `withWorkerScope`
+> and got `permission denied for table channel_credentials`. The grant is right:
+> an unattended process that could write a messaging credential could point a
+> dealership's outbound at a number nobody chose. Connecting is a person's act.
+> Third time this has happened — `ingest_mappings`, `autonomy_consents`, and now
+> this — and each accident became a check.
+
+> **A verifier that only exercises the empty case keeps passing after the
+> feature breaks.** With no prior outbound to that number the test reply came
+> back `matchBasis: NONE`, every check passed, and the entire threading path —
+> the reason `providerMessageId` is on the outbox at all — was untested.
+
+`pnpm run verify:channels`, and `/channels` is the screen.
 
 ## The panel that explains
 
@@ -1514,6 +1614,17 @@ those URLs say and then proves what each can and cannot reach.
 CLI tools need the table owner; the server refuses to start with it. See
 `.env.api.example`.
 
+`CREDENTIAL_KEY` must be in **both**, and it is what encrypts a dealership's
+messaging token at rest (OBJ-27). Without it the product cannot hold one at
+all, which is the designed refusal rather than a fallback to storing it in the
+clear. Generate one the same way as the service key. Changing it does not
+corrupt anything — the stored ciphers simply stop opening, and the log says so
+in those words rather than reporting an authentication failure that would send
+somebody to re-paste a perfectly good token.
+
+`WHATSAPP_VERIFY_TOKEN` is only used for Meta's one-time subscription
+handshake, which happens before any credential exists to check against.
+
 ```powershell
 # API — build once, then run node directly so --env-file loads the env file.
 # (Don't use the package's `dev` script on Windows: it starts with POSIX
@@ -1589,6 +1700,7 @@ assignment (`VAR=x cmd`) and depends on `$REPLIT_EXPO_DEV_DOMAIN`,
 
 DDMS (`artifacts/ddms/src/pages/`): `Queue` (`/`), `Overview` (`/overview`),
 `Leads` (`/enquiries`), `Worklist` (`/worklist`), `Numbers` (`/numbers`),
+`Channels` (`/channels`),
 `Registrations` (`/registrations`), `ServiceWorklist` (`/service`),
 `Spares` (`/spares`), `Receivables` (`/receivables`), `Inventory`
 (`/inventory`), `Outbox` (`/outbox`), `Dossier` (`/who/:entityId`,

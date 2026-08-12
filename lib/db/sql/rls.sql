@@ -437,6 +437,63 @@ create policy outbound_messages_own on public.outbound_messages
   with check (owner_id = app.current_owner_id());
 
 /*
+ * The dealership's own account on somebody else's network (OBJ-27, R-106).
+ *
+ * Owner-scoped like everything else, and narrowed again to the two roles that
+ * may decide what this product does on the dealership's behalf. `policy.set`
+ * is the permission in the route and `OWNER`/`MANAGER` is the same pair here,
+ * for the same reason `dealer_policy` has it: connecting a WhatsApp number
+ * decides what may be said to a dealership's customers from their own number,
+ * which is authority and not visibility.
+ *
+ * **The secret is encrypted on top of this, and neither replaces the other.**
+ * A row policy governs which connection may read a row; it has nothing to say
+ * about a backup on somebody's laptop or a `pg_dump` in a support ticket, and
+ * the table owner's credential legitimately bypasses it. `secret_cipher` is
+ * AES-256-GCM under a key that lives in the environment, so getting the token
+ * takes two separate compromises rather than one.
+ *
+ * Two policies, because permissive policies OR together: select passes on the
+ * first, and the write verbs can only pass on the second.
+ */
+drop policy if exists channel_credentials_read on public.channel_credentials;
+create policy channel_credentials_read on public.channel_credentials
+  for select to ddms_app
+  using (owner_id = app.current_owner_id());
+
+drop policy if exists channel_credentials_write on public.channel_credentials;
+create policy channel_credentials_write on public.channel_credentials
+  for all to ddms_app
+  using (owner_id = app.current_owner_id() and app.current_role() in ('OWNER','MANAGER'))
+  with check (owner_id = app.current_owner_id() and app.current_role() in ('OWNER','MANAGER'));
+
+/*
+ * What a customer said back (OBJ-27).
+ *
+ * Gated on the outbox the same way the outbox is: a reply is the other half of
+ * a conversation, and anybody who may see what the dealership said may see what
+ * came back.
+ *
+ * `showroom_id` is nullable here and the policy allows a null through, unlike
+ * every mirror table. That is deliberate: a null means *a customer wrote to
+ * this dealership and nothing could work out which branch they meant*, and
+ * hiding it would hide precisely the message most likely to be nobody's — the
+ * orphan this queue exists to surface.
+ *
+ * No delete on the request path. A customer's message is not something the
+ * dealership gets to make never have happened.
+ */
+drop policy if exists inbound_messages_own on public.inbound_messages;
+create policy inbound_messages_own on public.inbound_messages
+  for all to ddms_app
+  using (
+    owner_id = app.current_owner_id()
+    and app.can_read('OUTBOX')
+    and (showroom_id is null or showroom_id in (select app.visible_showroom_ids()))
+  )
+  with check (owner_id = app.current_owner_id() and app.can_read('OUTBOX'));
+
+/*
  * The dealership's own numbers.
  *
  * Read by anybody in the group — the numbers explain what is on their screen,
@@ -942,6 +999,27 @@ drop policy if exists outbound_worker on public.outbound_messages;
 create policy outbound_worker on public.outbound_messages
   for all to ddms_worker using (true) with check (true);
 
+/*
+ * The scheduler sends, so it must be able to read a credential (OBJ-27).
+ *
+ * Select and update only, and the update is for `last_used_at` and
+ * `last_error`. **No insert and no delete**: an unattended process that could
+ * write a messaging credential could point a dealership's outbound at a number
+ * nobody chose, and the same argument that keeps `ingest_mappings` and
+ * `autonomy_consents` out of this role's hands applies exactly. Connecting an
+ * account is a person's decision.
+ *
+ * Inbound it may write, because the webhook runs here — there is nobody signed
+ * in when a customer's phone talks to the server.
+ */
+drop policy if exists channel_credentials_worker on public.channel_credentials;
+create policy channel_credentials_worker on public.channel_credentials
+  for all to ddms_worker using (true) with check (true);
+
+drop policy if exists inbound_messages_worker on public.inbound_messages;
+create policy inbound_messages_worker on public.inbound_messages
+  for all to ddms_worker using (true) with check (true);
+
 drop policy if exists decision_log_worker on public.decision_log;
 create policy decision_log_worker on public.decision_log
   for all to ddms_worker using (true) with check (true);
@@ -982,6 +1060,14 @@ grant select, insert on public.record_events to ddms_app;
 -- Update but not delete: a draft moves DRAFT → APPROVED → SENT in place, and a
 -- message that was decided against is CANCELLED rather than removed.
 grant select, insert, update on public.outbound_messages to ddms_app;
+-- Delete is granted here, unlike the outbox: disconnecting an account is a
+-- dealership deciding this product may no longer speak for them, and leaving
+-- an encrypted token behind after somebody pressed Disconnect would be the
+-- product keeping a credential they revoked.
+grant select, insert, update, delete on public.channel_credentials to ddms_app;
+-- No delete. A customer's message is not something a dealership gets to make
+-- never have happened.
+grant select, insert, update on public.inbound_messages to ddms_app;
 
 grant select, insert, update on
   public.dms_deals,
@@ -1117,6 +1203,9 @@ grant select on public.applications, public.policies to ddms_worker;
 -- The outbox, since OBJ-16. Update but not delete, exactly as `ddms_app` has
 -- it. What a draft may *do* is still `authoriseSend()`'s to decide.
 grant select, insert, update on public.outbound_messages to ddms_worker;
+-- No insert: an unattended process may not connect an account.
+grant select, update on public.channel_credentials to ddms_worker;
+grant select, insert, update on public.inbound_messages to ddms_worker;
 grant select, insert on public.decision_log to ddms_worker;
 grant select on public.dealer_policy to ddms_worker;
 

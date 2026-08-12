@@ -23,6 +23,9 @@ export * from "./ingest";
 // Price lists with history, and the document DDMS issues (OBJ-25, R-87..R-90).
 export * from "./pricing";
 export * from "./outbound_messages";
+// The dealership's own account on somebody else's network, and what came
+// back on it (OBJ-27, R-106).
+export * from "./channels";
 export * from "./providers";
 export * from "./insurer_panel";
 export * from "./applications";

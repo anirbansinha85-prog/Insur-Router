@@ -101,6 +101,14 @@ import {
 import { showroomIdsForOwner } from "../lib/dms/events";
 import { buildQueue } from "../lib/dms/queue";
 import { buildOverview } from "../lib/dms/overview";
+import {
+  connectChannel,
+  disconnectChannel,
+  setChannelActive,
+  statusFor,
+  type Channel,
+} from "../lib/dms/channels";
+import { markRead, unreadReplies } from "../lib/dms/channels/inbound";
 import { describeRules, MAX_RULES } from "../lib/dms/rules";
 import {
   standingFor,
@@ -1579,6 +1587,142 @@ router.get("/dms/events", async (req, res): Promise<void> => {
  * module to refuse it on. What a role may not read is left out of the
  * arithmetic and named in the response.
  */
+/**
+ * The dealership's own messaging accounts (OBJ-27, R-106).
+ *
+ * ## No route here can return a secret, and that is structural
+ *
+ * `statusFor` returns `ChannelStatus`, which has no field for a token. The
+ * decrypting function is module-private in `lib/dms/channels`, so there is no
+ * shape of handler anybody could write in this file that leaks one — rather
+ * than a rule every future handler has to remember.
+ *
+ * ## Owner or manager only, and it is `policy.set`
+ *
+ * The same permission that guards the dealership's thresholds, for the same
+ * reason: connecting a WhatsApp number decides what this product may do on the
+ * dealership's behalf to their own customers, and that is not a visibility
+ * question. Deliberately *not* `outbox.send` — being allowed to approve one
+ * message is a long way from being allowed to connect the number every message
+ * afterwards goes out on.
+ */
+router.get("/dms/channels", async (req, res): Promise<void> => {
+  res.json({ channels: await statusFor(req.sessionUser!.ownerId) });
+});
+
+router.put("/dms/channels", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  if (!may(user.role, "policy.set")) {
+    res.status(403).json({ error: whyNot(user.role, "policy.set") });
+    return;
+  }
+
+  const body = req.body as Record<string, unknown>;
+  const channel = String(body.channel ?? "").toUpperCase() as Channel;
+  if (channel !== "WHATSAPP" && channel !== "EMAIL") {
+    res.status(400).json({ error: "channel must be WHATSAPP or EMAIL" });
+    return;
+  }
+
+  const displayAddress = String(body.displayAddress ?? "").trim();
+  const secret = String(body.secret ?? "");
+  if (!displayAddress || !secret) {
+    res.status(400).json({
+      error:
+        channel === "WHATSAPP"
+          ? "The WhatsApp Business number and its access token are both needed."
+          : "The from-address and the mailbox password are both needed.",
+    });
+    return;
+  }
+
+  try {
+    res.json({
+      channels: await connectChannel({
+        ownerId: user.ownerId,
+        userId: user.userId,
+        channel,
+        displayAddress,
+        secret,
+        signingSecret: body.signingSecret ? String(body.signingSecret) : null,
+        config: (body.config as Record<string, unknown>) ?? {},
+      }),
+    });
+  } catch (err) {
+    // The only thing that throws here is a missing CREDENTIAL_KEY, and its
+    // message says what to do about it. Passed through rather than swallowed:
+    // "could not save" would send somebody to check their token.
+    res.status(503).json({ error: (err as Error).message });
+  }
+});
+
+router.post("/dms/channels/active", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  if (!may(user.role, "policy.set")) {
+    res.status(403).json({ error: whyNot(user.role, "policy.set") });
+    return;
+  }
+  const body = req.body as Record<string, unknown>;
+  const channel = String(body.channel ?? "").toUpperCase() as Channel;
+  res.json({ channels: await setChannelActive(user.ownerId, channel, body.active === true) });
+});
+
+router.delete("/dms/channels/:channel", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  if (!may(user.role, "policy.set")) {
+    res.status(403).json({ error: whyNot(user.role, "policy.set") });
+    return;
+  }
+  res.json({
+    channels: await disconnectChannel(user.ownerId, req.params.channel!.toUpperCase() as Channel),
+  });
+});
+
+/**
+ * What customers have said back, and marking one read.
+ *
+ * Gated on `outbox.view`, because a reply is the other half of the outbox and
+ * anybody who may see what the dealership said may see what came back. Marking
+ * it read is a decision field like any other — a name and a time against a
+ * claim that somebody looked at it.
+ */
+router.get("/dms/replies", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  if (!assertModuleAccess(req, res, "OUTBOX")) return;
+
+  const owned = await ownedShowroomIds(user.ownerId);
+  const visible =
+    user.showroomId !== null && !seesEveryOutlet(user.role) ? [user.showroomId] : owned;
+
+  const rows = await unreadReplies(user.ownerId, visible);
+  res.json({
+    replies: rows.map((r) => ({
+      id: r.id,
+      channel: r.channel,
+      fromAddress: r.fromAddress,
+      fromName: r.fromName,
+      body: r.body,
+      module: r.module,
+      recordKey: r.recordKey,
+      matchBasis: r.matchBasis,
+      matchConfidence: r.matchConfidence,
+      receivedAt: r.receivedAt.toISOString(),
+    })),
+  });
+});
+
+router.post("/dms/replies/:id/read", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  if (!assertModuleAccess(req, res, "OUTBOX")) return;
+
+  const row = await markRead(user.ownerId, Number(req.params.id), user.userId);
+  if (!row) {
+    res.status(404).json({ error: `No reply ${req.params.id}` });
+    return;
+  }
+  res.json({ ok: true });
+});
+
 router.get("/dms/overview", async (req, res): Promise<void> => {
   const user = req.sessionUser!;
   const owned = await ownedShowroomIds(user.ownerId);

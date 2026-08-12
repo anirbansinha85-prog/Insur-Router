@@ -47,7 +47,24 @@ app.use(
   }),
 );
 app.use(cors({ origin: allowedOrigins(), credentials: true }));
-app.use(express.json());
+/*
+ * The parsed body, and the bytes it was parsed from.
+ *
+ * Only the webhook router needs the original text, and it needs it absolutely:
+ * a signature is over what was actually sent, and `JSON.stringify(req.body)`
+ * re-serialises with different key order and spacing. Verifying against that
+ * produces a webhook that rejects every genuine delivery while looking
+ * correct. Kept for every request rather than one path because `express.json`
+ * has one `verify` hook and a conditional one is a branch that will be wrong
+ * the day somebody adds a second provider.
+ */
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      (req as typeof req & { rawBody?: string }).rawBody = buf.toString("utf8");
+    },
+  }),
+);
 app.use(express.urlencoded({ extended: true }));
 
 // Auth sits between the mount and the routes so every current and future route

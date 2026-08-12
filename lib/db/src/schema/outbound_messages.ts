@@ -93,6 +93,17 @@ export const outboundMessagesTable = pgTable(
     /** Set when the recipient is a member of staff, so the gate can re-check they still are. */
     toEmpCode: text("to_emp_code"),
 
+    /**
+     * The provider's own id for what went out (OBJ-27).
+     *
+     * Not bookkeeping. It is what lets a reply arriving three days later be
+     * threaded back to the record *this* message was about, rather than to
+     * whichever message happened to go to that number most recently — which is
+     * the difference between a customer's answer landing on the job card they
+     * were asked about and landing on an unrelated insurance chase.
+     */
+    providerMessageId: text("provider_message_id"),
+
     /** Null on WhatsApp and SMS, which have no subject line. */
     subject: text("subject"),
     body: text("body").notNull(),

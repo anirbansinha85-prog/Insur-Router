@@ -21,7 +21,8 @@
     "ingest": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-ingest.ts",
     "invoice": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-invoice.ts",
     "autonomy": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-autonomy.ts",
-    "overview": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-overview.ts"
+    "overview": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-overview.ts",
+    "channels": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-channels.ts"
   },
   "dependencies": {
     "@workspace/db": "workspace:*",

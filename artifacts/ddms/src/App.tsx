@@ -14,6 +14,7 @@ import Queue from '@/pages/Queue';
 import Overview from '@/pages/Overview';
 import Numbers from '@/pages/Numbers';
 import Learned from '@/pages/Learned';
+import Channels from '@/pages/Channels';
 import Invoice from '@/pages/Invoice';
 import Leads from '@/pages/Leads';
 import Worklist from '@/pages/Worklist';
@@ -127,6 +128,11 @@ function Gate() {
               explains what is on their queue, and only an owner or a manager
               may answer the one question it asks. */}
           <Route path="/learned"><Learned permissions={u.permissions ?? []} /></Route>
+          {/* Readable by everybody so the Outbox's refusals make sense, and
+              writable by an owner or a manager. Connecting a number is not a
+              visibility question — it decides what this product may say to
+              customers on the dealership's behalf. */}
+          <Route path="/channels"><Channels permissions={u.permissions ?? []} /></Route>
           <Route path="/enquiries">{guard(u, "/enquiries", <Leads />)}</Route>
           <Route path="/worklist">{guard(u, "/worklist", <Worklist />)}</Route>
           <Route path="/registrations">{guard(u, "/registrations", <Registrations />)}</Route>

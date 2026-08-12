@@ -63,6 +63,7 @@ import { buildInventoryWorklist } from "./inventory-worklist";
 import type { ActionId } from "./actions";
 import { suggestForItems, type AgentSuggestion } from "./agent";
 import { standingFor, type Rung } from "./autonomy";
+import { unreadReplies } from "./channels/inbound";
 import { patternKey } from "./precedent";
 import { openTasks, daysLate } from "./records";
 import { journeyQueueRows, liveSubjects } from "./journeys";
@@ -102,7 +103,7 @@ export interface QueueItem {
    * recreate exactly the problem OBJ-15 was built to solve: seven places to
    * look and no answer to *what do I do next*.
    */
-  source: "DERIVED" | "TASK" | "JOURNEY";
+  source: "DERIVED" | "TASK" | "JOURNEY" | "REPLY";
   /** Set only on a `TASK` row — what to close when it is done. */
   taskId?: number;
   /**
@@ -878,6 +879,72 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         href: task.module && task.recordKey ? hrefFor(task.module as QueueModule) : "/",
       });
     }
+  }
+
+  /*
+   * And what a customer said back that nobody has read (OBJ-27).
+   *
+   * The only source on this queue that is not derived from the dealer's own
+   * system, because it is the only one their system could not produce. A DMS
+   * records what the dealership did to a record; it has no column for *the
+   * customer answered and nobody opened it*, and no report that would find one.
+   *
+   * **Always in the Nobody's band, and always at severity 3.** Not because a
+   * reply is the most urgent thing in the building — often it is not — but
+   * because there is no honest way to say it is assigned. Nobody is carrying an
+   * unread message: it arrived at a number, not at a person. That is the exact
+   * definition of the band, and it is the finding this product exists for.
+   *
+   * The body is the subtitle and nothing has read it. No classifier ran, no
+   * model summarised it, and the row asserts only that it arrived and is
+   * unopened — anything more would be the product forming an opinion about a
+   * sentence a customer wrote, which R-49 reserves for a person.
+   */
+  for (const reply of await unreadReplies(input.ownerId, visibleShowroomIds)) {
+    // A reply threaded to a module this role cannot read is skipped, exactly as
+    // a task about one is. An *unthreaded* reply is shown to everybody who can
+    // see the outlet, because nothing yet says whose it is and hiding it would
+    // reproduce the orphan.
+    if (reply.module && !may(reply.module as AccessModule)) continue;
+
+    const waiting = Math.max(
+      0,
+      Math.floor((Date.now() - new Date(reply.receivedAt).getTime()) / 86_400_000),
+    );
+    const oneLine = reply.body.replace(/\s+/g, " ").trim();
+
+    items.push({
+      source: "REPLY",
+      tone: "PROBLEM",
+      module: (reply.module ?? "ENQUIRY") as QueueModule,
+      recordKey: reply.recordKey ?? `REPLY-${reply.id}`,
+      showroomId: reply.showroomId ?? visibleShowroomIds[0]!,
+      showroomCode: null,
+      band: "UNASSIGNED",
+      severity: 3,
+      waitingDays: waiting,
+      title: `${reply.fromName ?? reply.fromAddress} replied and nobody has read it`,
+      subtitle: oneLine.length > 140 ? `${oneLine.slice(0, 137)}…` : oneLine,
+      state: "REPLY_UNREAD",
+      note:
+        reply.matchBasis === "OUTBOUND_THREAD"
+          ? `Answering the message sent about ${reply.recordKey}.`
+          : reply.matchBasis === "MOBILE"
+            ? "Matched on their mobile number, which is probable rather than certain."
+            : "Nothing here can say which record this is about. Read it and decide.",
+      actionRequired: "Read it, and reply if it needs one",
+      assignedEmpCode: null,
+      assignedEmpName: null,
+      assigneeGone: false,
+      contactName: reply.fromName,
+      contactMobile: reply.channel === "EMAIL" ? null : reply.fromAddress,
+      actions: [],
+      assignAction: null,
+      assignRole: null,
+      agentSuggestion: null,
+      learned: null,
+      href: "/outbox",
+    });
   }
 
   /*

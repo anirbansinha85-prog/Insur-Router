@@ -26,10 +26,20 @@ const KEY_VAR = "API_SERVICE_KEY";
 
 /**
  * Paths that answer without a key, matched against the path *inside* the /api
- * mount. Only the health check: a platform that cannot probe liveness restarts
- * a healthy service, and the response carries nothing worth protecting.
+ * mount.
+ *
+ * The health check, because a platform that cannot probe liveness restarts a
+ * healthy service and the response carries nothing worth protecting.
+ *
+ * And the WhatsApp webhook, because Meta is the caller and Meta does not hold
+ * this product's service key. **That exemption is only safe because something
+ * else replaces it**: every delivery is HMAC-signed with the app secret the
+ * dealership stored beside their own credential, verified in `webhooks.ts`
+ * before a single row is written, and a channel with no signing secret cannot
+ * receive at all. An exemption with nothing behind it would make this URL a
+ * place to post a fabricated customer conversation into somebody's queue.
  */
-const PUBLIC_PATHS = new Set(["/healthz"]);
+const PUBLIC_PATHS = new Set(["/healthz", "/webhooks/whatsapp"]);
 
 /**
  * Read at import time so a missing key fails at startup rather than on the

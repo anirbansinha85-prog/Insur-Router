@@ -53,6 +53,7 @@ import {
   showroomsTable,
   type OutboundMessageRow,
 } from "@workspace/db";
+import { deliver, statusFor } from "./channels";
 import { logger } from "../logger";
 import {
   draftAgentAssignment,
@@ -86,30 +87,45 @@ export const TEMPLATE_IDS: ReadonlySet<string> = new Set<TemplateId>([
 
 // ── Transports ──────────────────────────────────────────────────────────────
 
-interface Transport {
-  name: string;
-  send(msg: OutboundMessageRow): Promise<{ ok: true } | { ok: false; error: string }>;
-}
-
 /**
- * How a message would actually go, per channel.
+ * How a message actually goes, per channel (OBJ-27).
  *
- * **Empty, and that is the honest state of this system.** There is no SMTP
- * credential and no WhatsApp Business account, so nothing DDMS approves is
- * delivered to anybody. An authorised message therefore ends in
- * `HELD_NO_TRANSPORT` and the screen says exactly that, rather than showing a
- * green "sent" for something no customer received — which would be the same
- * defect as a simulated policy number that looks issued (R-41).
+ * This used to be an empty object with a long comment explaining that being
+ * empty was the honest state of the system. It is no longer empty: WhatsApp
+ * goes over Meta's Cloud API and email over SMTP, both in
+ * `lib/dms/channels/`.
  *
- * Adding one is adding an entry to this object. The gate above is complete
- * either way: it is what decides whether a message *may* go, and that decision
- * is the objective. Delivery is plumbing, and plumbing that lies is worse than
- * plumbing that is absent.
+ * **What has not changed is who owns the account.** There is no DDMS WhatsApp
+ * number and no DDMS mail server. `deliver()` resolves the *dealership's own*
+ * credential for the owner the message belongs to (R-106), and returns null
+ * when they have not connected one — at which point this behaves exactly as it
+ * did before, and the row says `HELD_NO_TRANSPORT` rather than showing a green
+ * tick for something no customer received.
+ *
+ * The split is the whole of R-48. `authoriseSend()` above decides whether a
+ * message *may* leave; everything here is plumbing. Plumbing that can authorise
+ * is plumbing that will eventually authorise something nobody approved, so this
+ * side of the line takes a message that has already been permitted and does not
+ * look at the audience, the template or the basis.
  */
-const TRANSPORTS: Partial<Record<MessageChannel, Transport>> = {};
+async function carry(
+  ownerId: number,
+  msg: OutboundMessageRow,
+): Promise<{ ok: true; providerMessageId: string | null } | { ok: false; error: string } | null> {
+  if (!msg.toAddress) return { ok: false, error: "The message has no recipient address on it." };
 
-function resolveTransport(channel: MessageChannel): Transport | null {
-  return TRANSPORTS[channel] ?? null;
+  const result = await deliver({
+    ownerId,
+    channel: msg.channel,
+    to: msg.toAddress,
+    subject: msg.subject,
+    body: msg.body,
+  });
+
+  if (result === null) return null;
+  return result.ok
+    ? { ok: true, providerMessageId: result.providerMessageId ?? null }
+    : { ok: false, error: result.error ?? "Delivery failed and the provider gave no reason." };
 }
 
 // ── The gate ────────────────────────────────────────────────────────────────
@@ -737,12 +753,23 @@ export async function sendMessage(
     return { ok: false, status: 409, error: auth.reason };
   }
 
-  const transport = resolveTransport(msg.channel);
   const now = new Date();
+  const carried = await carry(ownerId, msg);
 
-  // Authorised, and there is nothing to carry it. Held rather than sent: the
-  // gate said yes, no customer received anything, and the row says both.
-  if (!transport) {
+  /*
+   * Authorised, and this dealership has nothing to carry it on.
+   *
+   * Held rather than sent — the gate said yes and no customer received
+   * anything, and the row says both. What changed with OBJ-27 is the sentence:
+   * it used to read *no transport is configured*, which describes a gap in the
+   * product. Three of the four reasons are the dealership's own (no account
+   * connected, connected but switched off, a key the server is missing) and
+   * `statusFor` words each of them separately, because somebody looking at an
+   * undelivered message is entitled to know whose problem it is and what the
+   * fix is.
+   */
+  if (carried === null) {
+    const status = (await statusFor(ownerId)).find((c) => c.channel === msg.channel);
     const [row] = await db
       .update(outboundMessagesTable)
       .set({
@@ -751,7 +778,7 @@ export async function sendMessage(
         authorisedRule: auth.basis === "RULE" ? auth.rule : null,
         failureReason:
           `Authorised${auth.basis === "RULE" ? ` by rule ${auth.rule}` : " by a person"}, ` +
-          `but no ${msg.channel.toLowerCase()} transport is configured, so nothing was delivered.`,
+          `and nothing was delivered. ${status?.blocker ?? `No ${msg.channel.toLowerCase()} account is connected.`}`,
       })
       .where(eq(outboundMessagesTable.id, messageId))
       .returning();
@@ -760,20 +787,23 @@ export async function sendMessage(
     return { ok: true, message: row! };
   }
 
-  const result = await transport.send(msg);
   const [row] = await db
     .update(outboundMessagesTable)
     .set({
-      status: result.ok ? "SENT" : "FAILED",
-      sentAt: result.ok ? now : null,
+      status: carried.ok ? "SENT" : "FAILED",
+      sentAt: carried.ok ? now : null,
+      // The provider's id, and it is not bookkeeping: it is what lets a reply
+      // arriving in three days be threaded back to the record this message was
+      // about, rather than to whichever message went to that number last.
+      providerMessageId: carried.ok ? carried.providerMessageId : null,
       authorisedBasis: auth.basis,
       authorisedRule: auth.basis === "RULE" ? auth.rule : null,
-      failureReason: result.ok ? null : result.error,
+      failureReason: carried.ok ? null : carried.error,
     })
     .where(eq(outboundMessagesTable.id, messageId))
     .returning();
 
-  await logSend(ownerId, userId, msg, auth, result.ok ? "SENT" : "FAILED");
+  await logSend(ownerId, userId, msg, auth, carried.ok ? "SENT" : "FAILED");
   return { ok: true, message: row! };
 }
 

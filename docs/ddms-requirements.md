@@ -1835,7 +1835,7 @@ and the one we lack.
 | R-88 | ✅ **An OEM scheme is claimable whatever the customer was told.** The claim is owed on the scheme amount regardless of how much was passed on, and DDMS is the only system holding both halves | ✅ |
 | R-89 | ✅ **A document must say what it is.** If it is not a tax invoice it must not look like one. Same instinct as *held — nothing was delivered* and the `SIM-` prefix | ✅ |
 | R-90 | ✅ **Only one system may hold the tax-invoice series.** Which one is a per-dealer setting; two systems issuing from one sequential series produces gaps or duplicates, and both are audit findings | ✅ |
-| R-91 | **A person may ask the agent to act, under their name and their permissions.** The third mode, and the safest, because accountability is unambiguous from the start | ○ |
+| R-91 | **A person may ask the agent to act, under their name and their permissions.** The third mode, and the safest, because accountability is unambiguous from the start | ◑ the mechanism is there — an agent already acts through `applyAction` under a principal — and there is still no screen where a person asks it to do something under *their* name |
 | R-92 | **An agent run has a cost and a cap.** Per-run cost, a daily ceiling, and attribution. wrrk quotes $0.01–$0.05 a run and caps at 50/org/day **[Documented]**; DDMS meters nothing | ○ |
 | R-93 | **A run is a trace, not a row.** The decision log answers *what happened to this record*. A multi-agent run is a narrative across records and agents, and nothing today can show it as one thing | ○ |
 | R-95 | ✅ **One table answers every permission question, and the agent is a principal in it.** Verb-scoped `namespace.verb`, not tiered roles. The agent holds grants like any role rather than being a special case beside the table, so a second agent is a principal and a set of grants and nothing else changes. Withheld permissions carry a written reason where there is one worth writing — *a model cannot make a phone call* is a fact about the world, not about the grant | ✅ |
@@ -1851,7 +1851,7 @@ and the one we lack.
 | 24 | ~~**Ingestion beyond the API**~~ ✅ | at the mapping step only | — | independent of everything, and the thing that decides how many dealers can be sold to at all |
 | 25 | ~~**The invoice DDMS produces**~~ ✅ | no | 22, 23, 24 | the first document the product issues, and the first record it holds *before* the DMS knows anything |
 | 26 | ~~**Autonomy: the ladder and graduation**~~ ✅ | recall only | 21, 23 | needs journeys running long enough to have history to cite. Absorbs OBJ-19 |
-| 27 | **dm-concierge — messages out, replies in** | no | 22 | the Outbox has no transport at all. Inbound is the larger half: a reply is a fact the DMS will never hold |
+| 27 | ~~**dm-concierge — messages out, replies in**~~ ✅ | no | 22 | the Outbox has no transport at all. Inbound is the larger half: a reply is a fact the DMS will never hold |
 | 28 | **The trace and the stand-down** | no | 23, 26 | you cannot supervise what you cannot watch, and cost belongs here |
 | 29 | **More agents** | yes | all | last, and only once there is a model that admits new principals, a ladder to place them on, records they may write, and a trace to watch them in |
 
@@ -2674,9 +2674,10 @@ through the building shown as ten unrelated rows on four screens, and that
 nothing could wait. The journey model, its four kinds of waiting, the invoice
 the product issues and the ladder it earns autonomy on are all built.
 
-**What it cannot do yet, as of 12 August, and it is three things.** It cannot
-*deliver* — every message it composes still stops at the outbox, because no
-WhatsApp or mail account is connected (OBJ-27). It cannot be *watched* — there
+**What it cannot do yet, as of 12 August.** It could not *deliver* — every
+message it composed stopped at the outbox — and OBJ-27 closed that: the
+transports are built and a dealership connects its own account. What remains
+outside the software is the account itself. It cannot be *watched* — there
 is a decision log per record and no trace across a run, and nothing meters what
 an agent costs (OBJ-28). It could not answer *how is the business doing*
 without somebody opening seven screens and adding up, and that one is now
@@ -2687,8 +2688,9 @@ products, the database enforces the boundary rather than trusting the code to,
 and since OBJ-8 the server holds no credential that could bypass it — it refuses
 to start with one. What is left is not a safety question any more.
 
-**Nine verifiers, and each states a claim it could fail.** Permissions,
-records, agent, journey, ingest, invoice, autonomy, overview and `typecheck`.
+**Ten verifiers, and each states a claim it could fail.** Permissions,
+records, agent, journey, ingest, invoice, autonomy, overview, channels and
+`typecheck`.
 The rule they are held to was learnt the expensive way in OBJ-30: *a verifier
 that can fail for a reason it does not name will one day pass for a reason it
 does not name.*
@@ -2939,7 +2941,7 @@ it"* stopped being evidence that a thing was not built.
 |---|---|---|
 | R-104 | **A document has two readers, and only one of them may see the provenance.** The customer gets a document; we keep a copy that says where each figure came from and how sure of it we were. Printing the second is how a dealership hands a buyer a page admitting a model read 55% of it. And the halves must each be true *on their own*: a sale confirmation saying *the tax invoice number is shown above* is a lie on every copy where there is no number, and a document that can lie about itself is worse than one that says nothing | ✅ |
 | R-105 | **Where the trade has a word, use the trade's word.** *Data type*, *import*, *import history*, *column mapping* — a dealership's administrator and an implementation consultant both already have vocabulary for this, and inventing friendlier terms makes the product read as though nobody who built it had done the job. Write plainly everywhere the trade has no word | ✅ |
-| R-106 | **Every outside credential is the dealership's own.** The model key, the WhatsApp number, the mail account, the DMS login, the document store. DDMS holds none of them, meters none of them, and cannot spend one dealership's key on another's work. It is the honest answer to *where does our data go* and it is what makes per-run model cost somebody else's line item — but it is a constraint on the architecture before it is a pricing position, and it has to be true in the code or it must not be said | ○ |
+| R-106 | **Every outside credential is the dealership's own.** The model key, the WhatsApp number, the mail account, the DMS login, the document store. DDMS holds none of them, meters none of them, and cannot spend one dealership's key on another's work. It is the honest answer to *where does our data go* and it is what makes per-run model cost somebody else's line item — but it is a constraint on the architecture before it is a pricing position, and it has to be true in the code or it must not be said | ✅ OBJ-27. `channel_credentials`, one row per (owner, channel), AES-256-GCM under a key that lives in the environment. `verify:channels` §2 serialises the whole response and fails if the token appears anywhere in it |
 | R-107 | **One view answers *how is the business doing* without opening a module.** Seven screens each holding a list is the reporting product R-55 already refused; the queue fixed it for the person doing the work and left the owner with nothing. Derived on read like R-12, and every figure on it opens the rows underneath — a number you cannot walk into is a report, and R-20 says this product is not one | ✅ OBJ-35. Six bands, derived on read, and every figure carries the screen its rows are on — `verify:overview` §7 refuses a figure pointing at a screen that does not exist |
 | R-108 | **What a prospect is shown first is a report about their own dealership.** Point the read-only mirror at their data and hand back what is falling through: orphaned work, money past its credit period, files the RTO has gone quiet on. It must be the *same artifact* the owner opens every morning after they buy — a diagnostic built only to sell is a brochure, and it stops being true the week after it is produced | ✅ OBJ-35. The same page, printed. `@media print` drops the chrome and the walk-in arrows and keeps the figures and the limits, so there is no second artifact to go stale |
 
@@ -3084,4 +3086,108 @@ screen for most of the logins, and swapping the two by role would mean one URL
 showing two different screens. An owner arrives at the overall view from the
 first item in the sidebar. That is a reversible choice and it is written down
 here so it can be revisited rather than rediscovered.
+
+### What OBJ-27 turned out to be
+
+Built on 12 August, and it divided cleanly in two: one half was plumbing and the
+other half was the first thing this product knows that a dealership could not
+have found out any other way.
+
+**The sending half is BYOK, and that is the design rather than a pricing
+position.** R-106 was written into the register three hours before this was
+built and it would have been easy to satisfy in the documentation and not in the
+code — one environment variable, one WhatsApp number, every dealership sending
+from it. `channel_credentials` is what makes the rule true: the number a
+customer sees is the dealership's, so is the Meta account, so are the template
+approvals, and so is the bill.
+
+The token is AES-256-GCM under a key that lives in the environment, and the
+function that decrypts it is private to one module. **No route in this product
+has a shape that could return a secret** — `ChannelStatus` has no field for one
+— which is a property of the type rather than a rule every future handler has
+to remember. `verify:channels` §2 serialises the whole response and fails if the
+plaintext appears anywhere in it.
+
+**A credential arrives switched off every time, including on a re-paste.** A
+token that changed is a token nobody has tested, and the send that proves it
+works costs less than the one that goes to four hundred customers from a number
+the dealership had not finished setting up.
+
+**Meta's twenty-four-hour window is shown, not worked around.** A free-form
+WhatsApp message is only permitted within a day of the customer's last one;
+outside it a business must send a pre-approved template. DDMS surfaces Meta's
+own refusal rather than silently substituting an approved template for the
+message a manager wrote and put their name to — which is the single thing the
+whole approval gate exists to prevent.
+
+#### The half that is not plumbing
+
+`inbound_messages` is the first table here that mirrors nothing. Every other one
+copies, derives from or annotates something the dealer's own system holds. A DMS
+records what the dealership *did* to a record; it has no column for *the
+customer answered on Tuesday*, no report that would produce one, and no way to
+notice that nobody read it.
+
+**Nothing reads the message.** Stored verbatim, no rule fires on its contents,
+no model summarises it. A model reading *"don't bother, I've sold it"* and
+marking a lead lost is exactly the judgement R-49 reserves for a person, and it
+is the worst kind of failure because it is silent — the lead leaves a screen and
+nobody ever learns why.
+
+What a reply produces is a queue row saying somebody answered and nobody has
+opened it, **always in the Nobody's band**. Not because a reply is the most
+urgent thing in a dealership, but because there is no honest way to call it
+assigned: it arrived at a number, not at a person. That is the definition of the
+band and it is the finding this product exists for.
+
+**The thread beats the phone book** (R-47 again, in a new place). A reply is
+attributed to the last message DDMS actually sent that number — a reference,
+because we wrote it and know what it was about — and falls back to matching the
+customer entity on the mobile, which is probable and says so on the row. An
+unmatched reply is kept and queued rather than dropped: somebody wrote to the
+dealership whether or not anything here can say what about.
+
+#### The endpoint outside every gate
+
+The webhook is the only route in this product without the service key, a session
+or a role, because Meta holds none of them. **The signature is what stands in
+their place**: HMAC-SHA256 over the raw bytes with the app secret the dealership
+stored beside their own credential, compared in constant time, verified before
+a row is written.
+
+A channel with no signing secret **cannot receive at all**. There was a
+temptation to accept unsigned deliveries so a dealership could get replies
+working before finishing the Meta setup, and it is the wrong trade by a long way
+— it makes the URL somewhere anybody may post a fabricated customer conversation
+into a dealership's queue.
+
+> **The signature is over the bytes, not the parsed object.** Verifying against
+> `JSON.stringify(req.body)` re-serialises with different key order and spacing,
+> and produces a webhook that rejects every genuine delivery while looking
+> completely correct.
+
+#### Two findings, and both are about the verifier
+
+> **A verifier that reaches for a wider credential is usually reporting a real
+> boundary.** This one connected an account inside `withWorkerScope` and got
+> `permission denied for table channel_credentials`. The grant is right —
+> `ddms_worker` holds select and update and no insert, because an unattended
+> process that could write a messaging credential could point a dealership's
+> outbound at a number nobody chose. Connecting is a person's act. **Third time
+> this exact shape has appeared** (`ingest_mappings`, `autonomy_consents`, now
+> this), and each accident became a deliberate check.
+
+> **A verifier that only exercises the empty case keeps passing after the
+> feature breaks.** With no prior outbound to the test number the reply came
+> back `matchBasis: NONE`, all twenty-two checks passed, and the entire
+> threading path — the reason `providerMessageId` exists on the outbox at all —
+> had never run. Section 5b sends a message first and then answers it.
+
+#### What is still outside the software
+
+An actual WhatsApp Business account: a Meta app, a verified business, a phone
+number that is not already on consumer WhatsApp, and a permanent access token.
+None of that is code and none of it is ours to do. The product is ready for the
+numbers; adding them is the dealership's afternoon with their own Meta account,
+and `/channels` is written to be that afternoon's screen.
 

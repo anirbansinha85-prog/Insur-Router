@@ -935,6 +935,110 @@ export interface QueueResult {
   byModule: QueueResultByModuleItem[];
 }
 
+export type ChannelStatusChannel = typeof ChannelStatusChannel[keyof typeof ChannelStatusChannel];
+
+
+export const ChannelStatusChannel = {
+  WHATSAPP: 'WHATSAPP',
+  EMAIL: 'EMAIL',
+  SMS: 'SMS',
+} as const;
+
+export interface ChannelStatus {
+  channel: ChannelStatusChannel;
+  configured: boolean;
+  active: boolean;
+  /**
+     * The number or address customers see. Not a secret.
+     * @nullable
+     */
+  displayAddress: string | null;
+  /**
+     * The last four characters, masked. Never the token.
+     * @nullable
+     */
+  secretHint: string | null;
+  /** A signing secret is stored, so inbound webhooks can be verified. A channel without one can send and may not receive — an unsigned webhook is an open endpoint anybody may post a customer conversation into. */
+  canReceive: boolean;
+  /** @nullable */
+  lastUsedAt: string | null;
+  /** @nullable */
+  lastError: string | null;
+  /**
+     * Why this cannot be used yet, and whose problem it is.
+     * @nullable
+     */
+  blocker: string | null;
+}
+
+export type ChannelActiveInputChannel = typeof ChannelActiveInputChannel[keyof typeof ChannelActiveInputChannel];
+
+
+export const ChannelActiveInputChannel = {
+  WHATSAPP: 'WHATSAPP',
+  EMAIL: 'EMAIL',
+} as const;
+
+export interface ChannelActiveInput {
+  channel: ChannelActiveInputChannel;
+  active: boolean;
+}
+
+export type ConnectChannelInputChannel = typeof ConnectChannelInputChannel[keyof typeof ConnectChannelInputChannel];
+
+
+export const ConnectChannelInputChannel = {
+  WHATSAPP: 'WHATSAPP',
+  EMAIL: 'EMAIL',
+} as const;
+
+/**
+ * WhatsApp needs `phoneNumberId`. Email needs `host`, `port`, `secure` and `user`.
+ */
+export type ConnectChannelInputConfig = { [key: string]: unknown };
+
+export interface ConnectChannelInput {
+  channel: ConnectChannelInputChannel;
+  /** The WhatsApp Business number, or the from-address. */
+  displayAddress: string;
+  /** The access token or mailbox password. Write-only — it is encrypted on arrival and no response ever carries it back. */
+  secret: string;
+  /**
+     * Meta's app secret, which signs every inbound webhook. Without it this channel can send and cannot receive. Omitting it on a re-paste leaves the stored one alone, so rotating an access token does not silently disable inbound.
+     * @nullable
+     */
+  signingSecret?: string | null;
+  /** WhatsApp needs `phoneNumberId`. Email needs `host`, `port`, `secure` and `user`. */
+  config?: ConnectChannelInputConfig;
+}
+
+export type InboundReplyMatchBasis = typeof InboundReplyMatchBasis[keyof typeof InboundReplyMatchBasis];
+
+
+export const InboundReplyMatchBasis = {
+  OUTBOUND_THREAD: 'OUTBOUND_THREAD',
+  MOBILE: 'MOBILE',
+  NONE: 'NONE',
+} as const;
+
+export interface InboundReply {
+  id: number;
+  channel: string;
+  fromAddress: string;
+  /** @nullable */
+  fromName: string | null;
+  /** Exactly what arrived. Never edited, never summarised. */
+  body: string;
+  /** @nullable */
+  module: string | null;
+  /** @nullable */
+  recordKey: string | null;
+  matchBasis: InboundReplyMatchBasis;
+  /** @nullable */
+  matchConfidence: string | null;
+  receivedAt: string;
+}
+
 export type OverviewFigureUnit = typeof OverviewFigureUnit[keyof typeof OverviewFigureUnit];
 
 
@@ -3825,6 +3929,30 @@ limit?: number;
 
 export type ListDmsEvents200 = {
   rows: RecordEvent[];
+};
+
+export type ListChannels200 = {
+  channels: ChannelStatus[];
+};
+
+export type ConnectChannel200 = {
+  channels: ChannelStatus[];
+};
+
+export type SetChannelActive200 = {
+  channels: ChannelStatus[];
+};
+
+export type DisconnectChannel200 = {
+  channels: ChannelStatus[];
+};
+
+export type ListReplies200 = {
+  replies: InboundReply[];
+};
+
+export type MarkReplyRead200 = {
+  ok: boolean;
 };
 
 export type GetDmsPolicy200 = {

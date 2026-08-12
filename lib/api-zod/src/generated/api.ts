@@ -2088,6 +2088,136 @@ export const ListDmsEventsResponse = zod.object({
 
 
 /**
+ * DDMS holds no WhatsApp number and no mail server of its own. Every outside credential belongs to the dealership (R-106), which is what makes the number a customer sees theirs, the template approvals theirs and the bill theirs.
+ * No response here can carry a secret. The token is encrypted at rest and decrypted by one module-private function on the sending path; a screen gets whether the channel is connected, the address customers see, and four characters of the secret — enough to tell two tokens apart and useless to anybody who only has this.
+ * `blocker` is one sentence saying why a channel cannot be used yet and whose problem it is. *No transport is configured* described a gap in the product; three of the four real reasons belong to the dealership.
+ * @summary The dealership's own messaging accounts, and whether they work
+ */
+export const ListChannelsResponse = zod.object({
+  "channels": zod.array(zod.object({
+  "channel": zod.enum(['WHATSAPP', 'EMAIL', 'SMS']),
+  "configured": zod.boolean(),
+  "active": zod.boolean(),
+  "displayAddress": zod.string().nullable().describe('The number or address customers see. Not a secret.'),
+  "secretHint": zod.string().nullable().describe('The last four characters, masked. Never the token.'),
+  "canReceive": zod.boolean().describe('A signing secret is stored, so inbound webhooks can be verified. A channel without one can send and may not receive — an unsigned webhook is an open endpoint anybody may post a customer conversation into.\n'),
+  "lastUsedAt": zod.string().nullable(),
+  "lastError": zod.string().nullable(),
+  "blocker": zod.string().nullable().describe('Why this cannot be used yet, and whose problem it is.')
+}))
+})
+
+
+/**
+ * Upsert on (owner, channel) — a dealership has one WhatsApp number, and re-pasting a rotated token is the ordinary case rather than a second account.
+ * It arrives **switched off every time**, including on a re-paste. A token that changed is a token nobody has tested, and the send that proves it works is cheaper than the one that goes to four hundred customers from a number the dealership had not finished setting up.
+ * Owner or manager only, on `policy.set` rather than `outbox.send`: being allowed to approve one message is a long way from being allowed to connect the number every message afterwards goes out on.
+ * @summary Connect or re-connect an account
+ */
+export const ConnectChannelBody = zod.object({
+  "channel": zod.enum(['WHATSAPP', 'EMAIL']),
+  "displayAddress": zod.string().describe('The WhatsApp Business number, or the from-address.'),
+  "secret": zod.string().describe('The access token or mailbox password. Write-only — it is encrypted on arrival and no response ever carries it back.\n'),
+  "signingSecret": zod.string().nullish().describe('Meta\'s app secret, which signs every inbound webhook. Without it this channel can send and cannot receive. Omitting it on a re-paste leaves the stored one alone, so rotating an access token does not silently disable inbound.\n'),
+  "config": zod.record(zod.string(), zod.unknown()).optional().describe('WhatsApp needs `phoneNumberId`. Email needs `host`, `port`, `secure` and `user`.\n')
+})
+
+export const ConnectChannelResponse = zod.object({
+  "channels": zod.array(zod.object({
+  "channel": zod.enum(['WHATSAPP', 'EMAIL', 'SMS']),
+  "configured": zod.boolean(),
+  "active": zod.boolean(),
+  "displayAddress": zod.string().nullable().describe('The number or address customers see. Not a secret.'),
+  "secretHint": zod.string().nullable().describe('The last four characters, masked. Never the token.'),
+  "canReceive": zod.boolean().describe('A signing secret is stored, so inbound webhooks can be verified. A channel without one can send and may not receive — an unsigned webhook is an open endpoint anybody may post a customer conversation into.\n'),
+  "lastUsedAt": zod.string().nullable(),
+  "lastError": zod.string().nullable(),
+  "blocker": zod.string().nullable().describe('Why this cannot be used yet, and whose problem it is.')
+}))
+})
+
+
+/**
+ * @summary Switch a connected account on or off
+ */
+export const SetChannelActiveBody = zod.object({
+  "channel": zod.enum(['WHATSAPP', 'EMAIL']),
+  "active": zod.boolean()
+})
+
+export const SetChannelActiveResponse = zod.object({
+  "channels": zod.array(zod.object({
+  "channel": zod.enum(['WHATSAPP', 'EMAIL', 'SMS']),
+  "configured": zod.boolean(),
+  "active": zod.boolean(),
+  "displayAddress": zod.string().nullable().describe('The number or address customers see. Not a secret.'),
+  "secretHint": zod.string().nullable().describe('The last four characters, masked. Never the token.'),
+  "canReceive": zod.boolean().describe('A signing secret is stored, so inbound webhooks can be verified. A channel without one can send and may not receive — an unsigned webhook is an open endpoint anybody may post a customer conversation into.\n'),
+  "lastUsedAt": zod.string().nullable(),
+  "lastError": zod.string().nullable(),
+  "blocker": zod.string().nullable().describe('Why this cannot be used yet, and whose problem it is.')
+}))
+})
+
+
+/**
+ * The row is deleted rather than deactivated, unlike almost everything else in this product. Disconnecting is a dealership deciding DDMS may no longer speak for them, and keeping an encrypted token after somebody pressed Disconnect would be holding a credential they revoked.
+ * @summary Disconnect an account and forget its credential
+ */
+export const DisconnectChannelParams = zod.object({
+  "channel": zod.enum(['WHATSAPP', 'EMAIL'])
+})
+
+export const DisconnectChannelResponse = zod.object({
+  "channels": zod.array(zod.object({
+  "channel": zod.enum(['WHATSAPP', 'EMAIL', 'SMS']),
+  "configured": zod.boolean(),
+  "active": zod.boolean(),
+  "displayAddress": zod.string().nullable().describe('The number or address customers see. Not a secret.'),
+  "secretHint": zod.string().nullable().describe('The last four characters, masked. Never the token.'),
+  "canReceive": zod.boolean().describe('A signing secret is stored, so inbound webhooks can be verified. A channel without one can send and may not receive — an unsigned webhook is an open endpoint anybody may post a customer conversation into.\n'),
+  "lastUsedAt": zod.string().nullable(),
+  "lastError": zod.string().nullable(),
+  "blocker": zod.string().nullable().describe('Why this cannot be used yet, and whose problem it is.')
+}))
+})
+
+
+/**
+ * The half of messaging that is not plumbing. A DMS records what the dealership did to a record; it has no column for *the customer answered on Tuesday*, no report that would produce one, and no way to notice that nobody read it.
+ * Nothing here has read the message. The body is stored verbatim, no rule fires on its contents and no model summarises it — a model reading "don't bother, I've sold it" and marking a lead lost is the judgement R-49 reserves for a person. What a reply produces is a queue row saying somebody answered and nobody opened it, which is a fact about the dealership rather than a claim about the message.
+ * `matchBasis` says how the reply was attributed. A thread is something DDMS wrote and can point at; a mobile number is probable and no more (R-47), and an unmatched reply is kept and shown rather than dropped.
+ * @summary What customers said back that nobody has read
+ */
+export const ListRepliesResponse = zod.object({
+  "replies": zod.array(zod.object({
+  "id": zod.number().int(),
+  "channel": zod.string(),
+  "fromAddress": zod.string(),
+  "fromName": zod.string().nullable(),
+  "body": zod.string().describe('Exactly what arrived. Never edited, never summarised.'),
+  "module": zod.string().nullable(),
+  "recordKey": zod.string().nullable(),
+  "matchBasis": zod.enum(['OUTBOUND_THREAD', 'MOBILE', 'NONE']),
+  "matchConfidence": zod.string().nullable(),
+  "receivedAt": zod.string()
+}))
+})
+
+
+/**
+ * @summary Somebody read it
+ */
+export const MarkReplyReadParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const MarkReplyReadResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
  * The owner's screen, and the second half of what DDMS is: it automates the routine tasks and it gives one view of the whole thing. The queue answers *what do I do next* for the person doing the work; this answers *how is the business doing* for the person who owns it.
  * It derives nothing. Every figure is already computed by the seven classifiers, the queue's bands, the reconciliation, the outbox gate or the ladder's standing — this loops the visible outlets, calls the same builders every worklist route calls, and adds up what comes back. A dashboard that computes its own version of *overdue* is a second answer to a question the product already answers, and the two drift within a month.
  * Every figure carries an `href` to the rows behind it. A number you cannot walk into is a report, and this product is a control panel.

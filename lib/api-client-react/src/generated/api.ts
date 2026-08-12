@@ -33,9 +33,13 @@ import type {
   CancelDmsMessage200,
   CancelSaleDocument200,
   CaseRecord,
+  ChannelActiveInput,
   CloseDmsTask200,
+  ConnectChannel200,
+  ConnectChannelInput,
   CreateDmsTask201,
   DashboardStats,
+  DisconnectChannel200,
   DmsActionInput,
   DmsPullInput,
   DocumentCancelInput,
@@ -79,6 +83,7 @@ import type {
   ListAutonomy200,
   ListAutonomyProposals200,
   ListAutonomyProposalsParams,
+  ListChannels200,
   ListDmsEvents200,
   ListDmsEventsParams,
   ListDmsMessages200,
@@ -93,6 +98,7 @@ import type {
   ListPriceLists200,
   ListPriceListsParams,
   ListRecordActivities200,
+  ListReplies200,
   ListSaleDocuments200,
   ListSaleDocumentsParams,
   ListShowroomStaff200,
@@ -100,6 +106,7 @@ import type {
   LoginInput,
   MappingConfirmInput,
   MappingConfirmResult,
+  MarkReplyRead200,
   MessageEditInput,
   MessageNoteInput,
   MessageWithGate,
@@ -124,6 +131,7 @@ import type {
   SearchEntitiesParams,
   SendDmsMessage200,
   SessionUser,
+  SetChannelActive200,
   SetDmsPolicy200,
   SetIngestSource200,
   ShowroomSummary,
@@ -4426,6 +4434,454 @@ export function useListDmsEvents<TData = Awaited<ReturnType<typeof listDmsEvents
 
 
 
+
+export const getListChannelsUrl = () => {
+
+
+
+
+  return `/api/dms/channels`
+}
+
+/**
+ * DDMS holds no WhatsApp number and no mail server of its own. Every outside credential belongs to the dealership (R-106), which is what makes the number a customer sees theirs, the template approvals theirs and the bill theirs.
+ * No response here can carry a secret. The token is encrypted at rest and decrypted by one module-private function on the sending path; a screen gets whether the channel is connected, the address customers see, and four characters of the secret — enough to tell two tokens apart and useless to anybody who only has this.
+ * `blocker` is one sentence saying why a channel cannot be used yet and whose problem it is. *No transport is configured* described a gap in the product; three of the four real reasons belong to the dealership.
+ * @summary The dealership's own messaging accounts, and whether they work
+ */
+export const listChannels = async ( options?: Parameters<typeof customFetch>[1]): Promise<ListChannels200> => {
+
+  return customFetch<ListChannels200>(getListChannelsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListChannelsQueryKey = () => {
+    return [
+    `/api/dms/channels`
+    ] as const;
+    }
+
+
+export const getListChannelsQueryOptions = <TData = Awaited<ReturnType<typeof listChannels>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listChannels>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListChannelsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listChannels>>> = ({ signal }) => listChannels({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listChannels>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListChannelsQueryResult = NonNullable<Awaited<ReturnType<typeof listChannels>>>
+export type ListChannelsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary The dealership's own messaging accounts, and whether they work
+ */
+
+export function useListChannels<TData = Awaited<ReturnType<typeof listChannels>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listChannels>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListChannelsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getConnectChannelUrl = () => {
+
+
+
+
+  return `/api/dms/channels`
+}
+
+/**
+ * Upsert on (owner, channel) — a dealership has one WhatsApp number, and re-pasting a rotated token is the ordinary case rather than a second account.
+ * It arrives **switched off every time**, including on a re-paste. A token that changed is a token nobody has tested, and the send that proves it works is cheaper than the one that goes to four hundred customers from a number the dealership had not finished setting up.
+ * Owner or manager only, on `policy.set` rather than `outbox.send`: being allowed to approve one message is a long way from being allowed to connect the number every message afterwards goes out on.
+ * @summary Connect or re-connect an account
+ */
+export const connectChannel = async (connectChannelInput: ConnectChannelInput, options?: Parameters<typeof customFetch>[1]): Promise<ConnectChannel200> => {
+
+  return customFetch<ConnectChannel200>(getConnectChannelUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(connectChannelInput)
+  }
+);}
+
+
+
+
+
+export const getConnectChannelMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof connectChannel>>, TError,{data: BodyType<ConnectChannelInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof connectChannel>>, TError,{data: BodyType<ConnectChannelInput>}, TContext> => {
+
+const mutationKey = ['connectChannel'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof connectChannel>>, {data: BodyType<ConnectChannelInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  connectChannel(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ConnectChannelMutationResult = NonNullable<Awaited<ReturnType<typeof connectChannel>>>
+    export type ConnectChannelMutationBody = BodyType<ConnectChannelInput>
+    export type ConnectChannelMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Connect or re-connect an account
+ */
+export const useConnectChannel = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof connectChannel>>, TError,{data: BodyType<ConnectChannelInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof connectChannel>>,
+        TError,
+        {data: BodyType<ConnectChannelInput>},
+        TContext
+      > => {
+      return useMutation(getConnectChannelMutationOptions(options));
+    }
+
+export const getSetChannelActiveUrl = () => {
+
+
+
+
+  return `/api/dms/channels/active`
+}
+
+/**
+ * @summary Switch a connected account on or off
+ */
+export const setChannelActive = async (channelActiveInput: ChannelActiveInput, options?: Parameters<typeof customFetch>[1]): Promise<SetChannelActive200> => {
+
+  return customFetch<SetChannelActive200>(getSetChannelActiveUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(channelActiveInput)
+  }
+);}
+
+
+
+
+
+export const getSetChannelActiveMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setChannelActive>>, TError,{data: BodyType<ChannelActiveInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setChannelActive>>, TError,{data: BodyType<ChannelActiveInput>}, TContext> => {
+
+const mutationKey = ['setChannelActive'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setChannelActive>>, {data: BodyType<ChannelActiveInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  setChannelActive(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetChannelActiveMutationResult = NonNullable<Awaited<ReturnType<typeof setChannelActive>>>
+    export type SetChannelActiveMutationBody = BodyType<ChannelActiveInput>
+    export type SetChannelActiveMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Switch a connected account on or off
+ */
+export const useSetChannelActive = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setChannelActive>>, TError,{data: BodyType<ChannelActiveInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setChannelActive>>,
+        TError,
+        {data: BodyType<ChannelActiveInput>},
+        TContext
+      > => {
+      return useMutation(getSetChannelActiveMutationOptions(options));
+    }
+
+export const getDisconnectChannelUrl = (channel: 'WHATSAPP' | 'EMAIL',) => {
+
+
+
+
+  return `/api/dms/channels/${channel}`
+}
+
+/**
+ * The row is deleted rather than deactivated, unlike almost everything else in this product. Disconnecting is a dealership deciding DDMS may no longer speak for them, and keeping an encrypted token after somebody pressed Disconnect would be holding a credential they revoked.
+ * @summary Disconnect an account and forget its credential
+ */
+export const disconnectChannel = async (channel: 'WHATSAPP' | 'EMAIL', options?: Parameters<typeof customFetch>[1]): Promise<DisconnectChannel200> => {
+
+  return customFetch<DisconnectChannel200>(getDisconnectChannelUrl(channel),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDisconnectChannelMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectChannel>>, TError,{channel: 'WHATSAPP' | 'EMAIL'}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof disconnectChannel>>, TError,{channel: 'WHATSAPP' | 'EMAIL'}, TContext> => {
+
+const mutationKey = ['disconnectChannel'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof disconnectChannel>>, {channel: 'WHATSAPP' | 'EMAIL'}> = (props) => {
+          const {channel} = props ?? {};
+
+          return  disconnectChannel(channel,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DisconnectChannelMutationResult = NonNullable<Awaited<ReturnType<typeof disconnectChannel>>>
+
+    export type DisconnectChannelMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Disconnect an account and forget its credential
+ */
+export const useDisconnectChannel = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectChannel>>, TError,{channel: 'WHATSAPP' | 'EMAIL'}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof disconnectChannel>>,
+        TError,
+        {channel: 'WHATSAPP' | 'EMAIL'},
+        TContext
+      > => {
+      return useMutation(getDisconnectChannelMutationOptions(options));
+    }
+
+export const getListRepliesUrl = () => {
+
+
+
+
+  return `/api/dms/replies`
+}
+
+/**
+ * The half of messaging that is not plumbing. A DMS records what the dealership did to a record; it has no column for *the customer answered on Tuesday*, no report that would produce one, and no way to notice that nobody read it.
+ * Nothing here has read the message. The body is stored verbatim, no rule fires on its contents and no model summarises it — a model reading "don't bother, I've sold it" and marking a lead lost is the judgement R-49 reserves for a person. What a reply produces is a queue row saying somebody answered and nobody opened it, which is a fact about the dealership rather than a claim about the message.
+ * `matchBasis` says how the reply was attributed. A thread is something DDMS wrote and can point at; a mobile number is probable and no more (R-47), and an unmatched reply is kept and shown rather than dropped.
+ * @summary What customers said back that nobody has read
+ */
+export const listReplies = async ( options?: Parameters<typeof customFetch>[1]): Promise<ListReplies200> => {
+
+  return customFetch<ListReplies200>(getListRepliesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListRepliesQueryKey = () => {
+    return [
+    `/api/dms/replies`
+    ] as const;
+    }
+
+
+export const getListRepliesQueryOptions = <TData = Awaited<ReturnType<typeof listReplies>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listReplies>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListRepliesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listReplies>>> = ({ signal }) => listReplies({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listReplies>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListRepliesQueryResult = NonNullable<Awaited<ReturnType<typeof listReplies>>>
+export type ListRepliesQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary What customers said back that nobody has read
+ */
+
+export function useListReplies<TData = Awaited<ReturnType<typeof listReplies>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listReplies>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListRepliesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getMarkReplyReadUrl = (id: number,) => {
+
+
+
+
+  return `/api/dms/replies/${id}/read`
+}
+
+/**
+ * @summary Somebody read it
+ */
+export const markReplyRead = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<MarkReplyRead200> => {
+
+  return customFetch<MarkReplyRead200>(getMarkReplyReadUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getMarkReplyReadMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markReplyRead>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof markReplyRead>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['markReplyRead'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markReplyRead>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  markReplyRead(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MarkReplyReadMutationResult = NonNullable<Awaited<ReturnType<typeof markReplyRead>>>
+
+    export type MarkReplyReadMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Somebody read it
+ */
+export const useMarkReplyRead = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markReplyRead>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof markReplyRead>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getMarkReplyReadMutationOptions(options));
+    }
 
 export const getGetDmsOverviewUrl = () => {
 

@@ -2,7 +2,7 @@ import { Link, useLocation } from "wouter"
 import {
   Users, ListChecks, Wrench, LayoutDashboard, ShieldCheck, Bell,
   ExternalLink, LogOut, IdCard, Boxes, Send, Wallet, Bike, ListTodo, SlidersHorizontal,
-  ReceiptText, Sparkles, Gauge,
+  ReceiptText, Sparkles, Gauge, Radio,
 } from "lucide-react"
 import type { SessionUser } from "@workspace/api-client-react"
 import { cn } from "@/lib/utils"
@@ -83,7 +83,10 @@ const GROUPS: NavGroup[] = [
     // on their behalf, and that difference is worth a heading rather than a row
     // tucked under After sales.
     label: "Outbound",
-    items: [{ href: "/outbox", label: "Outbox", icon: Send, module: "OUTBOX" }],
+    items: [
+      { href: "/outbox", label: "Outbox", icon: Send, module: "OUTBOX" },
+      { href: "/channels", label: "How it speaks", icon: Radio },
+    ],
   },
   {
     // No module gate: the numbers explain every other screen, so everybody may
