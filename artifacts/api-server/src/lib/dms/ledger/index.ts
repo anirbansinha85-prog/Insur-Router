@@ -16,3 +16,5 @@ export * from "./books";
 export * from "./service";
 // Audit-ready: the lock, the register and the two-way trace (OBJ-43).
 export * from "./audit";
+// GSTR-3B, TCS and e-invoicing (OBJ-44, R-118).
+export * from "./returns3b";

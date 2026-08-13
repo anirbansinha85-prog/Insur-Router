@@ -4,6 +4,7 @@ import {
   db,
   ledgerAccountsTable,
   showroomsTable,
+  gstRegistrationsTable,
   vouchersTable,
   voucherLinesTable,
 } from "@workspace/db";
@@ -119,9 +120,26 @@ export async function gstr1For(input: {
   const from = `${input.period}-01`;
   const to = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
 
+  /*
+   * The GSTIN comes from the **registration**, not from the branch (OBJ-37).
+   *
+   * `showrooms.gstin` was where identity lived when the first fixture was two
+   * separate companies. Under the ordinary shape - one company, several
+   * branches - a branch has no GSTIN of its own and invoices under its
+   * entity's, so reading the deprecated column would produce a return filed
+   * under nothing for every satellite.
+   */
   const outlets = await db
-    .select({ id: showroomsTable.id, gstin: showroomsTable.gstin, state: showroomsTable.state })
+    .select({
+      id: showroomsTable.id,
+      gstin: gstRegistrationsTable.gstin,
+      state: gstRegistrationsTable.state,
+    })
     .from(showroomsTable)
+    .leftJoin(
+      gstRegistrationsTable,
+      eq(showroomsTable.registrationId, gstRegistrationsTable.id),
+    )
     .where(inArray(showroomsTable.id, input.showroomIds));
 
   /*

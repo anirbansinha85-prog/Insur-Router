@@ -19,6 +19,7 @@
     "books": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-books.ts",
     "service": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-service.ts",
     "audit": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-audit.ts",
+    "returns": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-returns.ts",
     "export-reports": "tsx --env-file-if-exists=../.env ./src/export-reports.ts",
     "rls": "tsx --env-file-if-exists=../.env ./src/apply-rls.ts",
     "probe": "tsx --env-file-if-exists=../.env ./src/rls-probe.ts",
