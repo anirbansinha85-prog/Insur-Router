@@ -852,6 +852,82 @@ create policy gst_registrations_worker on public.gst_registrations
   for select to ddms_worker using (true);
 
 /*
+ * Parties, bills and purchases (OBJ-38).
+ *
+ * A party is a customer or a supplier, so reading one is gated on `DEAL` for
+ * the same reason a sale document is: what a customer owes and what a
+ * dealership pays for a bike is not a technician's business, and the row policy
+ * is what makes that true rather than the sidebar.
+ *
+ * The **scheduler may not touch any of it**. Every table here is a statement
+ * about money owed, and an unattended process that could open a bill or record
+ * a purchase could quietly create a debt nobody agreed to. It reads and it
+ * reads only, which is what a reconciliation pass needs and no more.
+ */
+drop policy if exists parties_own on public.parties;
+create policy parties_own on public.parties
+  for all to ddms_app
+  using (owner_id = app.current_owner_id() and app.can_read('DEAL'))
+  with check (owner_id = app.current_owner_id() and app.can_read('DEAL'));
+
+drop policy if exists parties_worker on public.parties;
+create policy parties_worker on public.parties
+  for select to ddms_worker using (true);
+
+drop policy if exists party_bills_own on public.party_bills;
+create policy party_bills_own on public.party_bills
+  for all to ddms_app
+  using (owner_id = app.current_owner_id() and app.can_read('DEAL'))
+  with check (owner_id = app.current_owner_id() and app.can_read('DEAL'));
+
+drop policy if exists party_bills_worker on public.party_bills;
+create policy party_bills_worker on public.party_bills
+  for select to ddms_worker using (true);
+
+drop policy if exists purchase_invoices_own on public.purchase_invoices;
+create policy purchase_invoices_own on public.purchase_invoices
+  for all to ddms_app
+  using (
+    showroom_id in (select app.owned_showroom_ids())
+    and app.can_read('DEAL')
+  )
+  with check (
+    showroom_id in (select app.visible_showroom_ids())
+    and app.can_read('DEAL')
+  );
+
+drop policy if exists purchase_invoices_worker on public.purchase_invoices;
+create policy purchase_invoices_worker on public.purchase_invoices
+  for select to ddms_worker using (true);
+
+/*
+ * A line has no owner column of its own, so it is reached through its invoice —
+ * the same shape `voucher_lines` uses. A line whose parent is invisible is
+ * invisible, which is the only arrangement where the two cannot disagree.
+ */
+drop policy if exists purchase_invoice_lines_own on public.purchase_invoice_lines;
+create policy purchase_invoice_lines_own on public.purchase_invoice_lines
+  for all to ddms_app
+  using (
+    purchase_invoice_id in (
+      select id from public.purchase_invoices
+      where showroom_id in (select app.owned_showroom_ids())
+    )
+    and app.can_read('DEAL')
+  )
+  with check (
+    purchase_invoice_id in (
+      select id from public.purchase_invoices
+      where showroom_id in (select app.visible_showroom_ids())
+    )
+    and app.can_read('DEAL')
+  );
+
+drop policy if exists purchase_invoice_lines_worker on public.purchase_invoice_lines;
+create policy purchase_invoice_lines_worker on public.purchase_invoice_lines
+  for select to ddms_worker using (true);
+
+/*
  * Price lists and the document DDMS issues (OBJ-25).
  *
  * A price list may belong to one outlet or to the whole group, and the null
@@ -1272,6 +1348,10 @@ grant select, insert, update on public.ingest_batches to ddms_app;
 -- migration or a named act, never a screen (OBJ-37).
 grant select on public.legal_entities to ddms_app;
 grant select on public.gst_registrations to ddms_app;
+grant select, insert, update on public.parties to ddms_app;
+grant select, insert, update on public.party_bills to ddms_app;
+grant select, insert, update on public.purchase_invoices to ddms_app;
+grant select, insert, update on public.purchase_invoice_lines to ddms_app;
 grant select, insert, update on public.price_lists to ddms_app;
 grant select, insert, update on public.price_list_items to ddms_app;
 -- No delete on documents: a cancelled tax invoice keeps its number and says it
@@ -1409,6 +1489,12 @@ grant select, insert, update on public.ingest_batches to ddms_worker;
 -- document exists; it issues nothing and sets no price.
 grant select on public.legal_entities to ddms_worker;
 grant select on public.gst_registrations to ddms_worker;
+-- Select only, all four. A reconciliation pass reads what is owed; an
+-- unattended process that could open a bill could create a debt nobody agreed to.
+grant select on public.parties to ddms_worker;
+grant select on public.party_bills to ddms_worker;
+grant select on public.purchase_invoices to ddms_worker;
+grant select on public.purchase_invoice_lines to ddms_worker;
 grant select on public.price_lists to ddms_worker;
 grant select on public.price_list_items to ddms_worker;
 grant select on public.sale_documents to ddms_worker;

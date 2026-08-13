@@ -24,6 +24,8 @@ export * from "./autonomy";
 export * from "./trace";
 // Double entry, from the documents DDMS issues (OBJ-31, R-98..R-103).
 export * from "./ledger";
+// The other half of every entry: parties, bills, purchases (OBJ-38, R-109..R-111).
+export * from "./parties";
 // Three ways in, one record (OBJ-24, R-84).
 export * from "./ingest";
 // Price lists with history, and the document DDMS issues (OBJ-25, R-87..R-90).

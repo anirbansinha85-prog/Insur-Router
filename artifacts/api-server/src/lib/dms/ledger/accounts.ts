@@ -86,6 +86,23 @@ export const CHART: SeedAccount[] = [
     group: "LIABILITY",
   },
 
+  // ── Equity ───────────────────────────────────────────────────────────────
+  /*
+   * Where the opening balance's difference lands (OBJ-38).
+   *
+   * Assets brought in less liabilities brought in *is* the owner's capital, by
+   * definition, so this is derived rather than asked for. A dealership asked to
+   * state its capital and then refused when the arithmetic disagreed would be
+   * reconciling our arithmetic for us on its first afternoon.
+   */
+  { code: "3100", name: "Owner's Capital", tallyName: "Capital Account", group: "EQUITY" },
+  {
+    code: "3200",
+    name: "Reserves & Surplus",
+    tallyName: "Reserves & Surplus",
+    group: "EQUITY",
+  },
+
   // ── Income ───────────────────────────────────────────────────────────────
   { code: "4100", name: "Vehicle Sales", tallyName: "Sales Accounts", group: "INCOME" },
   { code: "4200", name: "Spare Parts Sales", tallyName: "Sales Accounts", group: "INCOME" },

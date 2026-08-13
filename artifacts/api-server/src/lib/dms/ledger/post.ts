@@ -11,6 +11,8 @@ import {
 
 import { logger } from "../../logger";
 import { accountsByCode, ensureChart } from "./accounts";
+import { ensureParty, openBill } from "./parties";
+import { placementOf } from "../org";
 
 /**
  * Turning a document DDMS issued into double entry (OBJ-31, R-100 to R-103).
@@ -109,11 +111,16 @@ export function accountForCharge(label: string): { code: string; why: string | n
 
 // ── Building the voucher ─────────────────────────────────────────────────────
 
-interface Line {
+export interface Line {
   accountCode: string;
   debit: number;
   credit: number;
   narration?: string;
+  /**
+   * Which party this line is against (R-110). The control account stays on
+   * `accountCode`; this is what makes the subsidiary ledger under it possible.
+   */
+  partyId?: number | null;
   partyName?: string | null;
   partyGstin?: string | null;
   hsn?: string | null;
@@ -202,8 +209,36 @@ export async function postSaleDocument(input: {
     return a;
   };
 
+  /*
+   * The customer becomes a **ledger**, not a string on a line (R-110).
+   *
+   * Until this, `1100` Sundry Debtors was debited by every sale and credited by
+   * nothing, so every customer who had ever paid still appeared to owe. There
+   * was no row to credit. The party row and the bill opened below it are the
+   * other end of that entry, and OBJ-40's receipt is what closes it.
+   *
+   * A retail buyer with no name and no mobile is still a real sale, so the
+   * fallback is the document's own reference rather than a refusal — an
+   * unnamed customer is a poor statement and a refused invoice is a lost sale.
+   */
+  const placement = await placementOf(doc.showroomId);
+  const { party: customer } = await ensureParty({
+    ownerId: input.ownerId,
+    entityId: placement.entity.id,
+    kind: "CUSTOMER",
+    name: doc.customerName?.trim() || `Counter sale ${doc.reference}`,
+    gstin: doc.customerGstin,
+    mobile: doc.customerMobile,
+    addressLine: doc.customerAddress,
+    state: doc.placeOfSupply,
+  });
+
   const lines: Line[] = [];
-  const party = { partyName: doc.customerName, partyGstin: doc.customerGstin };
+  const party = {
+    partyId: customer.id,
+    partyName: doc.customerName,
+    partyGstin: doc.customerGstin,
+  };
 
   const total = n(doc.totalAmount);
   const taxable = n(doc.taxableAmount);
@@ -264,7 +299,22 @@ export async function postSaleDocument(input: {
       debit: 0,
       credit: bucket.amount,
       narration: bucket.labels.join(", "),
-      ...party,
+      /*
+       * The customer's **name** and not his ledger (R-110).
+       *
+       * These lines credit a liability to the RTO, the insurer or whoever else
+       * the money is being collected for. Whose road tax it is belongs in the
+       * narration, and putting `partyId` here instead would post an ₹8,400
+       * credit onto the customer's own account - so a statement would show him
+       * owing ₹84,000 on a ₹92,400 invoice, and the eight thousand he still owes
+       * would have vanished into somebody else's liability.
+       *
+       * Caught by `verify-parties` on the first run after the party ledger
+       * existed, which is precisely what a subsidiary ledger is for: the trial
+       * balance was correct throughout, and the customer's account was not.
+       */
+      partyName: party.partyName,
+      partyGstin: party.partyGstin,
     });
   }
 
@@ -389,6 +439,7 @@ export async function postSaleDocument(input: {
           debit: money(l.debit),
           credit: money(l.credit),
           narration: l.narration ?? null,
+          partyId: l.partyId ?? null,
           partyName: l.partyName ?? null,
           partyGstin: l.partyGstin ?? null,
           hsn: l.hsn ?? null,
@@ -396,6 +447,27 @@ export async function postSaleDocument(input: {
         };
       }),
     );
+
+    /*
+     * The debt, as a bill somebody can settle (R-111).
+     *
+     * A party balance alone can only be paid off oldest-first, which is a guess
+     * about which invoice the customer meant to settle. A customer disputing one
+     * and paying another is an ordinary Tuesday, and a product that applied his
+     * money to the one he is disputing has taken a side in his argument.
+     */
+    await openBill({
+      ownerId: input.ownerId,
+      partyId: customer.id,
+      showroomId: doc.showroomId,
+      direction: "RECEIVABLE",
+      billNo: doc.taxInvoiceNo ?? doc.reference,
+      billDate: doc.documentDate,
+      dueDate: null,
+      amount: total,
+      sourceKind: "SALE_DOCUMENT",
+      sourceId: doc.id,
+    });
 
     logger.info(
       { ownerId: input.ownerId, documentId: doc.id, voucherNo, warnings: warnings.length },
@@ -426,7 +498,7 @@ export async function postSaleDocument(input: {
  * instead of producing two vouchers numbered 41 — a gapless series with a
  * duplicate in it is an audit finding, and so is one with a hole.
  */
-async function nextVoucherNo(
+export async function nextVoucherNo(
   ownerId: number,
   kind: "SALES" | "PURCHASE" | "RECEIPT" | "PAYMENT" | "JOURNAL" | "CREDIT_NOTE",
   financialYear: string,

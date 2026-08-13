@@ -129,7 +129,17 @@ export const vouchersTable = pgTable(
     narration: text("narration"),
 
     /** What this posts. `SALE_DOCUMENT` is the only source today. */
-    sourceKind: text("source_kind", { enum: ["SALE_DOCUMENT", "MANUAL"] }).notNull(),
+    sourceKind: text("source_kind", {
+      enum: [
+        "SALE_DOCUMENT",
+        // A motorcycle entering the books, which is what makes Vehicle Stock
+        // an account that moves in two directions rather than one (OBJ-38).
+        "PURCHASE_INVOICE",
+        // Whatever the dealership kept before us, carried in once (OBJ-38).
+        "OPENING_BALANCE",
+        "MANUAL",
+      ],
+    }).notNull(),
     sourceId: integer("source_id"),
 
     status: text("status", { enum: ["POSTED", "REVERSED"] }).notNull().default("POSTED"),
@@ -208,7 +218,20 @@ export const voucherLinesTable = pgTable(
     credit: numeric("credit", { precision: 14, scale: 2 }).notNull().default("0"),
 
     narration: text("narration"),
-    /** The customer or party this line is against, for a debtors ledger. */
+    /**
+     * Which party this line is against (R-110).
+     *
+     * `1100` and `2100` are control accounts, exactly as Tally treats them: the
+     * trial balance sees one Sundry Debtors and the subsidiary ledger sees a
+     * row per customer. This column is what makes the second one possible, and
+     * a statement, an ageing report and a bill-wise allocation are all
+     * impossible without it.
+     *
+     * The two strings stay beside it and are not redundant - they are what the
+     * party was called **on this document**, which is what a reprint has to
+     * show even after somebody corrects a spelling three years later.
+     */
+    partyId: integer("party_id"),
     partyName: text("party_name"),
     partyGstin: text("party_gstin"),
 
