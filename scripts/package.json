@@ -11,6 +11,8 @@
     "seed-users": "tsx --env-file-if-exists=../.env ./src/seed-users.ts",
     "seed-applications": "tsx --env-file-if-exists=../.env ./src/seed-applications.ts",
     "seed-pricelists": "tsx --env-file-if-exists=../.env ./src/seed-pricelists.ts",
+    "migrate-org": "tsx --env-file-if-exists=../.env ./src/migrate-org.ts",
+    "org": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-org.ts",
     "export-reports": "tsx --env-file-if-exists=../.env ./src/export-reports.ts",
     "rls": "tsx --env-file-if-exists=../.env ./src/apply-rls.ts",
     "probe": "tsx --env-file-if-exists=../.env ./src/rls-probe.ts",

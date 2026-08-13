@@ -1,6 +1,8 @@
 export * from "./owners";
 export * from "./users";
 export * from "./showrooms";
+// entity -> registration -> branch, the shape of a dealership (OBJ-37, R-119).
+export * from "./org";
 export * from "./dms_deals";
 export * from "./dms_job_cards";
 export * from "./dms_enquiries";

@@ -28,10 +28,24 @@ import { ownersTable } from "./owners";
  * `showroom_dms_accounts`. The extra table costs one join and survives all
  * three cases.
  *
- * `legalName` and `gstin` sit here rather than on the owner because a group
- * routinely spans legal entities — the two seeded outlets are a Pvt Ltd and an
- * LLP with different GST registrations and different insurance arrangements.
- * Invoicing and compliance follow the entity, not the group.
+ * ## A showroom is a branch, and a branch is a cost centre (OBJ-37, R-119)
+ *
+ * `entityId` and `registrationId` say which legal person this outlet belongs to
+ * and which GST registration it invoices under. They replace `legalName` and
+ * `gstin`, which sat here because the first fixture was two separate companies
+ * and which were wrong for the ordinary case: **one owner, one company, several
+ * branches, run hub-and-spoke from a main location.** Under that shape a branch
+ * has no GSTIN of its own - it invoices under its entity's - and moving a
+ * chassis from the hub to a satellite is not a supply at all.
+ *
+ * The two old columns survive as **nullable, deprecated** and are read by
+ * nothing. They stay through one migration so the reseed can be checked against
+ * what they said, and go in the objective after this one.
+ *
+ * `role` is a real field rather than a label because it changes behaviour: a
+ * BigWing outlet selling a Gold Wing crosses the ten-lakh TCS threshold on
+ * every sale and a 1S satellite never will, and a service outlet issues
+ * documents a sales outlet does not.
  */
 export const showroomsTable = pgTable(
   "showrooms",
@@ -43,8 +57,33 @@ export const showroomsTable = pgTable(
     /** Short stable handle, unique within the owner. */
     code: text("code").notNull(),
     name: text("name").notNull(),
-    /** The registered entity that actually raises the invoice. */
+    /**
+     * The legal person this branch belongs to, and the registration it invoices
+     * under. Nullable through the migration only; after it, every branch has
+     * both and the resolver refuses a branch that does not.
+     */
+    entityId: integer("entity_id"),
+    registrationId: integer("registration_id"),
+
+    /**
+     * What this outlet is, and it decides what it can do.
+     *
+     *   HUB      4S: sales, service, spares, stockyard. Holds the finance team.
+     *   SALES    1S/2S satellite. Footfall and bookings; stock allocated to it.
+     *   SERVICE  authorised service centre. Labour and parts, no vehicle sales.
+     *   PREMIUM  the big-bike outlet, where TCS above ten lakh actually bites.
+     *
+     * Defaulting to SALES is the honest default: an outlet nobody has classified
+     * sells bikes, which is what a showroom is, and the roles that change
+     * behaviour are the ones somebody has to choose deliberately.
+     */
+    role: text("role", { enum: ["HUB", "SALES", "SERVICE", "PREMIUM"] })
+      .notNull()
+      .default("SALES"),
+
+    /** @deprecated Moved to `legal_entities`. Read by nothing (OBJ-37). */
     legalName: text("legal_name"),
+    /** @deprecated Moved to `gst_registrations`. Read by nothing (OBJ-37). */
     gstin: text("gstin"),
     addressLine: text("address_line"),
     city: text("city"),

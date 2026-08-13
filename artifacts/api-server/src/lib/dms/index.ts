@@ -228,3 +228,16 @@ export type { WorklistRow, WorklistSummary, ReconcileState } from "./worklist";
 export type { DmsTenant } from "./tenant";
 export type { RtoLookup } from "./rto";
 export type { DmsDeal, DmsStockLookup } from "./types";
+// entity -> registration -> branch, and what the structure decides (OBJ-37).
+export {
+  placementOf,
+  placementsFor,
+  branchesOfEntity,
+  branchesOfRegistration,
+  entitiesOf,
+  registrationsOf,
+  transferIsSupply,
+  eInvoicing,
+  UnplacedBranchError,
+} from "./org";
+export type { Placement, BranchRole } from "./org";

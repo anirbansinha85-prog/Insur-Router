@@ -819,6 +819,39 @@ create policy ingest_batches_worker on public.ingest_batches
   for all to ddms_worker using (true) with check (true);
 
 /*
+ * The shape of the dealership (OBJ-37).
+ *
+ * An entity and a registration are the dealership's own identity, so every
+ * signed-in person may read them: an invoice prints the legal name and the
+ * GSTIN, and a screen that hid them would produce a document nobody could
+ * check. There is no module gate for the same reason there is none on
+ * `showrooms` — this is who the dealership *is*, not what it did.
+ *
+ * Writing is a different matter and is left to the owner credential and the
+ * seed. A branch reassigned to another legal entity changes which balance sheet
+ * every one of its invoices lands in, retrospectively, and that is not a thing
+ * a screen should be able to do quietly. It becomes a named act in the
+ * objective that needs it, or it stays a migration.
+ */
+drop policy if exists legal_entities_own on public.legal_entities;
+create policy legal_entities_own on public.legal_entities
+  for select to ddms_app
+  using (owner_id = app.current_owner_id());
+
+drop policy if exists legal_entities_worker on public.legal_entities;
+create policy legal_entities_worker on public.legal_entities
+  for select to ddms_worker using (true);
+
+drop policy if exists gst_registrations_own on public.gst_registrations;
+create policy gst_registrations_own on public.gst_registrations
+  for select to ddms_app
+  using (owner_id = app.current_owner_id());
+
+drop policy if exists gst_registrations_worker on public.gst_registrations;
+create policy gst_registrations_worker on public.gst_registrations
+  for select to ddms_worker using (true);
+
+/*
  * Price lists and the document DDMS issues (OBJ-25).
  *
  * A price list may belong to one outlet or to the whole group, and the null
@@ -1234,6 +1267,11 @@ grant select, insert on public.journey_steps to ddms_app;
 grant select, insert, update on public.ingest_sources to ddms_app;
 grant select, insert, update on public.ingest_mappings to ddms_app;
 grant select, insert, update on public.ingest_batches to ddms_app;
+-- Read-only for the request path: reassigning a branch to another legal
+-- entity rewrites which balance sheet its history belongs to, so it is a
+-- migration or a named act, never a screen (OBJ-37).
+grant select on public.legal_entities to ddms_app;
+grant select on public.gst_registrations to ddms_app;
 grant select, insert, update on public.price_lists to ddms_app;
 grant select, insert, update on public.price_list_items to ddms_app;
 -- No delete on documents: a cancelled tax invoice keeps its number and says it
@@ -1369,6 +1407,8 @@ grant select, update on public.ingest_mappings to ddms_worker;
 grant select, insert, update on public.ingest_batches to ddms_worker;
 -- Select only, all three. The runtime prices a deal and reads whether a
 -- document exists; it issues nothing and sets no price.
+grant select on public.legal_entities to ddms_worker;
+grant select on public.gst_registrations to ddms_worker;
 grant select on public.price_lists to ddms_worker;
 grant select on public.price_list_items to ddms_worker;
 grant select on public.sale_documents to ddms_worker;
