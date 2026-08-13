@@ -3485,3 +3485,260 @@ The grant is honest about what the agent *may* do; the gap is a queue field
 rather than a permission, and it is written down here so it is not rediscovered
 as a bug.
 
+## 3f. Planned 12 August — accounting that a chartered accountant would sign
+
+Anirban's ask, verbatim in substance: *the invoicing module should handle
+everything from generating the invoice to reconciliation and reporting to the
+CA, and all of it should be audit ready.*
+
+OBJ-31 to 33 built the first third of that and the register said so. This
+section is the rest, and it opens with a defect rather than a feature, because
+the defect explains the shape of everything after it.
+
+### The defect, and it is the whole design in miniature
+
+**Every account the ledger touches moves in one direction.**
+
+| Account | What moves it | What moves it back |
+|---|---|---|
+| `1200` Vehicle Stock | credited by every sale | **nothing** |
+| `1100` Sundry Debtors | debited by every sale | **nothing** |
+| `2300` Road Tax Payable | credited by every sale | **nothing** |
+| `2200`–`2230` Output GST | credited by every sale | **nothing** |
+
+A trial balance drawn today would show Stock-in-Hand as a large negative asset,
+a debtor book that has never received a rupee, and a road-tax liability that
+grows for ever. None of it is wrong arithmetic — every voucher balances — and
+all of it is a set of books nobody could file.
+
+The cause is single: **the ledger knows about one event in a dealership's life.**
+There are four.
+
+1. The vehicle arrives from the manufacturer — *purchase*
+2. It is sold — *built*
+3. The customer pays, usually in three parts — *receipt*
+4. The dealership pays the OEM, the RTO and the insurer — *payment*
+
+This also answers why reconciliation cannot be bolted on. **Reconciliation
+compares two sides**, and only one side exists. Complete the double entry and
+most of the reconciliation writes itself; leave it incomplete and every
+reconciliation screen would be a report of one number against nothing.
+
+### What "audit ready" means here, specifically
+
+Not a mood. In India it is three concrete things and one of them is statutory.
+
+**The edit log is statutory.** The proviso to Rule 3(1) of the Companies
+(Accounts) Rules and Rule 11(g) of the Companies (Audit and Auditors) Rules
+require accounting software to keep an audit trail of every change, with the
+date, **which cannot be disabled**, and which is preserved. It binds companies
+from FY 2023-24. A dealership trading as a proprietorship is not caught by it;
+their auditor will still ask, and a product that can only answer *for a
+proprietorship* has a ceiling on who may buy it.
+
+DDMS is already stronger than the rule asks — **there is no edit path at all**,
+only reversal — but "stronger" is not the same as "demonstrable". An auditor
+asks *show me the trail*, and the answer has to be a screen rather than an
+argument about grants.
+
+**A closed period is closed.** Once a return is filed for a month, a voucher
+posting into it makes the filed return disagree with the books. Every accounting
+system in the world locks periods and DDMS does not.
+
+**A figure traces both ways.** From a GSTR-1 row to the voucher to the document
+to the deal, and back from the deal to the return it ended up in. An auditor's
+question is almost always *where did this come from* or *where did this go*, and
+a system that answers one direction answers half of them.
+
+### The five objectives
+
+| # | Objective | Fixes / unblocks | Depends on |
+|---|---|---|---|
+| 36 | **Parties, purchases and opening balances** | negative stock, input credit, the Tally party gap | 31 |
+| 37 | **Receipts, payments and bill-wise allocation** | debtors that never clear, liabilities that never discharge, real ageing | 36 |
+| 38 | **Day book, ledger, trial balance, P&L, balance sheet** | proves 36 and 37 landed | 37 |
+| 39 | **Audit-ready: period lock, audit register, gapless proof, two-way trace** | the statutory half | 38 |
+| 40 | **Reconciliation — five of them, and the graduation gate** | R-98's promise made concrete | 39 |
+
+Sequenced so each one is provable by the next. **OBJ-38's trial balance is the
+proof that 36 and 37 worked** — if it does not balance, nothing after it is
+worth building, and finding that out with two objectives spent is much cheaper
+than finding it out with five.
+
+---
+
+### OBJ-36 — Parties, purchases and opening balances
+
+**A party is a ledger, not a column.** Tally gives every customer and supplier
+its own ledger under a group, and that is not a formatting preference: it is
+what makes a statement of account, a bill-wise allocation and an ageing report
+possible at all. DDMS posts every debtor to one `Sundry Debtors` account with
+the name as a line attribute, so the Tally feed imports with the party visible
+and no per-customer statement is derivable from it.
+
+`ledger_parties` hangs off `ledger_accounts` as a child, resolved against the
+entity graph where a customer is already known — and **probable, per R-47**. Two
+customers who share a handset must not silently become one ledger, so the match
+is on an explicit reference where one exists and named as probable otherwise.
+
+**Purchases are what stops stock going negative.** Dr Vehicle Stock, Dr Input
+CGST/SGST/IGST, Cr the supplier. The mirror carries `receivedDate` and
+`costAmount`, which is enough for the stock half and **not** enough for the
+input-credit half — the OEM's tax invoice has GST on it that
+`dms_vehicle_stock` does not hold. See the fork below.
+
+**Opening balances** are one dated journal that must balance, for a dealership
+adopting mid-year with debtors, creditors, stock and a bank balance already in
+existence. It posts into the period before the first live month and is the one
+entry that may name any account.
+
+> **Done when:** a trial balance drawn after one purchase and one sale of the
+> same chassis shows Vehicle Stock at zero and Cost of Goods Sold at the unit's
+> cost — the arithmetic that is impossible today.
+
+### OBJ-37 — Receipts, payments and bill-wise allocation
+
+**The three-debit sale that §3d named.** A two-wheeler is rarely paid for once:
+a booking advance in cash or UPI, a financier's disbursement into the bank, and
+a balance on delivery. Three receipts against one invoice, and the ledger has to
+hold that without any of them being an approximation.
+
+**Bill-wise allocation is the mechanism, and it is Tally's own.** *New Ref* opens
+a bill, *Agst Ref* settles part or all of one, *On Account* is money with no
+invoice against it yet, *Advance* is money taken before there is an invoice at
+all. `voucher_bill_allocations` carries it, and the Tally feed emits
+`BILLALLOCATIONS.LIST` so an imported receipt lands against the right invoice
+rather than as an unallocated credit their accountant then has to place by hand.
+
+This is also what makes **DDMS's own receivables ageing true rather than
+plausible.** Today the ageing comes from `dms_receivables`, which is the DMS's
+opinion; once receipts are posted, the ledger has its own and the two can
+disagree — which is OBJ-40's first reconciliation and a genuinely useful
+finding.
+
+**Payments discharge the liabilities.** Road tax paid over to the RTO, premium
+paid to the insurer, the OEM's invoice settled. Without these, R-103's
+liabilities are correct on the way in and wrong for ever afterwards.
+
+> **Done when:** a customer who paid a ₹5,000 advance, was financed ₹70,000 and
+> paid ₹19,000 on delivery has a zero balance, a statement showing four lines,
+> and no unallocated credit anywhere.
+
+### OBJ-38 — The three reports a CA opens first, and two more
+
+Day book, ledger (per account and per party), and **trial balance**. Then P&L and
+balance sheet, which fall out of a trial balance once the group hierarchy is
+real — and the groups already exist on `ledger_accounts`.
+
+The trial balance is the one that turns *audit ready* from a hope into a claim.
+If it does not balance, nothing else on this list matters, and the fastest way
+to discover that 36 or 37 has a hole is to draw one.
+
+**Derived on read, and this is the exception that proves R-12's rule.** Every
+other derived figure in this product is computed fresh because a stale flag is
+worse than none. A report over an append-only ledger is the same argument
+reaching the opposite conclusion only in appearance: the vouchers are immutable,
+so the report *cannot* go stale — recomputing is free and storing would be the
+thing that could drift.
+
+### OBJ-39 — Audit-ready
+
+**Period locking, refused at the database.** A `ledger_periods` row per owner per
+month, with `CLOSED` set when a return is filed. A voucher whose date falls in a
+closed period is refused — and the refusal belongs in the row policy as well as
+the route, for the same reason every other refusal in this product does: a
+policy is true and a route is careful.
+
+Reopening a closed period is a named act with a reason, recorded, and it should
+be rare enough that somebody notices.
+
+**The audit register.** One screen answering the auditor's actual question:
+every voucher, who posted it, from what document, when, and — for anything
+reversed — the reversal, its reason and its author. It exists because *we never
+edit* is a claim about grants, and an auditor is entitled to see it as a list.
+
+**The gapless proof.** A register per series per financial year saying *tax
+invoices 1 to 247, no gaps, no duplicates*, computed rather than asserted. The
+unique index prevents a duplicate; nothing today proves the absence of a hole,
+and a hole in a sequential tax series is an audit finding on its own.
+
+**The two-way trace.** From a GSTR-1 row to the voucher to the document to the
+deal, and back. Both directions, because an auditor asks *where did this come
+from* and *where did this end up* about equally.
+
+### OBJ-40 — Reconciliation, and there are five
+
+Each answers a different question and only the last is optional.
+
+**1 · The books against the mirror.** Sundry Debtors against
+`dms_receivables`; Vehicle Stock at cost against `dms_vehicle_stock`. These
+should agree, and when they do not the difference **names the document** — a
+sale that posted without relieving stock, a receipt the DMS recorded that DDMS
+never posted. This is where OBJ-31's R-102 warnings stop being a sentence on a
+voucher and become a number somebody has to explain.
+
+**2 · The return against the books.** GSTR-1's taxable value against the Vehicle
+Sales credit for the month, tax head by tax head. Already asserted inside
+`verify:ledger`; it needs to be a screen, because a CA will ask before filing
+and *the verifier says so* is not an answer.
+
+**3 · Input credit: GSTR-2B against purchases.** The single biggest recurring
+job in a dealership's month. Three buckets: matched, **in 2B and not in our
+books** (the supplier filed and we have not recorded the purchase), and **in our
+books and not in 2B** (we recorded it and the supplier has not filed — credit at
+risk, and worth chasing before the deadline rather than after).
+
+**4 · The bank.** Statement lines against receipts and payments. Lowest value of
+the five, because most dealers already do it in whatever they keep, and it is
+listed so it is not mistaken for an oversight.
+
+**5 · Against their own system, and this one is the product decision.** R-98
+promised that DDMS becomes the book of record *only once its numbers have
+reconciled against what they already keep, for an agreed period*. That promise
+needs a scorecard: month by month, DDMS's sales, tax and debtor movement against
+Tally's, the difference and its cause. **N consecutive months inside tolerance,
+and the product offers to graduate** — which is OBJ-26's ladder applied to a
+product decision exactly as §3d said it should be, with the dealership's own
+consent as the thing that authorises.
+
+> **A variance nobody can act on is a report, not a reconciliation.** Every one
+> of these five must name the row, not the difference. *Debtors are ₹1,20,400
+> apart* sends somebody to a spreadsheet for an afternoon; *these four invoices
+> are in the ledger and not in the DMS, and this receipt is in the DMS and not
+> in the ledger* is a morning's work with a list.
+
+### New requirements
+
+| # | Requirement | Status |
+|---|---|---|
+| R-109 | **A ledger records every money event, not one.** Every account must have something that moves it back, or the balance is a running total rather than a position. The four events in a dealership's life are the vehicle arriving, the sale, the customer paying and the dealership paying onward — and a ledger holding one of them balances per voucher while being unfilable in aggregate | ○ |
+| R-110 | **A party is a ledger, not a column.** A statement of account, a bill-wise allocation and an ageing report are all impossible without it, and an import that lands every customer in one lump creates a parallel chart inside somebody else's books | ○ |
+| R-111 | **Money is allocated to a bill, or it is on account and says so.** An unallocated receipt is not an error and must not be silently spread across the oldest invoices — that is a guess about which debt a customer intended to settle, and it is theirs to make | ○ |
+| R-112 | **A filed period is closed, and the refusal is at the database.** A voucher dated into a month whose return has been lodged makes the filed return disagree with the books. Reopening is a named act with a reason and should be rare enough to notice | ○ |
+| R-113 | **The audit trail cannot be switched off, and it is a screen rather than an argument.** India requires it of companies from FY 2023-24. DDMS is already stronger than the rule — there is no edit path, only reversal — and *stronger* is not *demonstrable* | ○ |
+| R-114 | **A reconciliation names the row, not the difference.** A variance figure sends somebody to a spreadsheet; a list of documents is a morning's work. Every one of the five must produce the second | ○ |
+| R-115 | **The book of record is earned by reconciling, not claimed.** N months inside tolerance against what the dealership already keeps, then the product asks. R-98's graduation with a number against it, and the dealership's consent is what authorises | ○ |
+
+### Three forks, and they change the build
+
+**Purchases: derived from the mirror, or the OEM's invoice?** The mirror has
+`receivedDate` and `costAmount`, which fixes the negative stock and gives no
+input credit, because the GST on the manufacturer's invoice is not in there.
+Requiring the purchase invoice makes the ledger complete and adds an onboarding
+step. *Recommendation: derive the cost-only purchase now so stock is right, and
+take the OEM invoice through OBJ-24's existing report path when input credit is
+wanted — the ingestion seam already exists and this is one more data type.*
+
+**Is the first dealership a company?** Rule 11(g)'s audit trail binds companies
+from FY 2023-24 and not proprietorships. It decides whether period locking is a
+hard refusal or a warning, and whether the audit register is a requirement or a
+courtesy. *Recommendation: build the hard version regardless — a product that
+only suits a proprietorship has a ceiling on who may buy it, and the strict
+behaviour is not more work.*
+
+**GSTR-2B: portal access, or a file the CA hands over?** The government's API
+needs registration and a GSP in most cases; a downloaded JSON is what a CA
+actually has on their desk. *Recommendation: the file first, through the same
+drop-and-map path OBJ-24 already built, and the API only if a dealership turns
+out to have one.*
+
