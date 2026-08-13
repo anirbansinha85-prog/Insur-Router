@@ -28,6 +28,8 @@ export * from "./ledger";
 export * from "./parties";
 // Stock that moves without being sold, and the chassis register (OBJ-39, R-117).
 export * from "./stock_moves";
+// Receipts, payments, bill-wise allocation and the day close (OBJ-40, R-111).
+export * from "./money";
 // Three ways in, one record (OBJ-24, R-84).
 export * from "./ingest";
 // Price lists with history, and the document DDMS issues (OBJ-25, R-87..R-90).

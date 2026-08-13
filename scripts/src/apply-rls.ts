@@ -63,6 +63,8 @@ const SCOPED_TABLES = [
   "dealer_policy",
   "showrooms",
   "stock_moves",
+  "money_documents",
+  "day_closes",
   "chassis_events",
   "legal_entities",
   "gst_registrations",

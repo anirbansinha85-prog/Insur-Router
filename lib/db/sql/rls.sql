@@ -852,6 +852,50 @@ create policy gst_registrations_worker on public.gst_registrations
   for select to ddms_worker using (true);
 
 /*
+ * Money, allocation and the day close (OBJ-40).
+ *
+ * Gated on `DEAL`, like the bills they settle. What a customer has paid and
+ * what is still on account is the same class of fact as what he owes.
+ *
+ * The **day close is per branch and stays per branch** on the read side too: a
+ * branch manager closes their own till, and seeing another branch's shortfall
+ * is not part of that job. An owner sees all of them because an owner's showroom
+ * set is all of them, which is the same mechanism and not a special case.
+ *
+ * The scheduler reads and never writes. An unattended process that could record
+ * a receipt could settle a debt nobody paid.
+ */
+drop policy if exists money_documents_own on public.money_documents;
+create policy money_documents_own on public.money_documents
+  for all to ddms_app
+  using (showroom_id in (select app.owned_showroom_ids()) and app.can_read('DEAL'))
+  with check (showroom_id in (select app.visible_showroom_ids()) and app.can_read('DEAL'));
+
+drop policy if exists money_documents_worker on public.money_documents;
+create policy money_documents_worker on public.money_documents
+  for select to ddms_worker using (true);
+
+drop policy if exists bill_allocations_own on public.bill_allocations;
+create policy bill_allocations_own on public.bill_allocations
+  for all to ddms_app
+  using (owner_id = app.current_owner_id() and app.can_read('DEAL'))
+  with check (owner_id = app.current_owner_id() and app.can_read('DEAL'));
+
+drop policy if exists bill_allocations_worker on public.bill_allocations;
+create policy bill_allocations_worker on public.bill_allocations
+  for select to ddms_worker using (true);
+
+drop policy if exists day_closes_own on public.day_closes;
+create policy day_closes_own on public.day_closes
+  for all to ddms_app
+  using (showroom_id in (select app.owned_showroom_ids()) and app.can_read('DEAL'))
+  with check (showroom_id in (select app.visible_showroom_ids()) and app.can_read('DEAL'));
+
+drop policy if exists day_closes_worker on public.day_closes;
+create policy day_closes_worker on public.day_closes
+  for select to ddms_worker using (true);
+
+/*
  * Stock that moves without being sold (OBJ-39).
  *
  * A challan is visible to **both** ends of the movement, not only the branch
@@ -1417,6 +1461,12 @@ grant select, insert, update on public.ingest_batches to ddms_app;
 -- migration or a named act, never a screen (OBJ-37).
 grant select on public.legal_entities to ddms_app;
 grant select on public.gst_registrations to ddms_app;
+grant select, insert, update on public.money_documents to ddms_app;
+-- Insert only on allocations: an allocation that could be edited is a record of
+-- a decision that quietly became a different decision. Undoing one posts its
+-- opposite, which is the same posture a voucher takes.
+grant select, insert on public.bill_allocations to ddms_app;
+grant select, insert on public.day_closes to ddms_app;
 grant select, insert, update on public.stock_moves to ddms_app;
 grant select, insert, update on public.stock_move_lines to ddms_app;
 grant select, insert on public.chassis_events to ddms_app;
@@ -1563,6 +1613,9 @@ grant select on public.legal_entities to ddms_worker;
 grant select on public.gst_registrations to ddms_worker;
 -- Select only, all four. A reconciliation pass reads what is owed; an
 -- unattended process that could open a bill could create a debt nobody agreed to.
+grant select on public.money_documents to ddms_worker;
+grant select on public.bill_allocations to ddms_worker;
+grant select on public.day_closes to ddms_worker;
 grant select on public.stock_moves to ddms_worker;
 grant select on public.stock_move_lines to ddms_worker;
 grant select on public.chassis_events to ddms_worker;
