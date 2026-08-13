@@ -49,7 +49,7 @@ import {
 import { logger } from "../../logger";
 import { may, whyNot } from "../permissions";
 import type { ResolvedPolicy } from "../policy";
-import { money, resolvePrice, round2, taxOn, type StatedPrice } from "./pricing";
+import { money, resolvePrice, round2, taxWithin, type StatedPrice } from "./pricing";
 import { decideKind, nextReference, nextTaxInvoiceNo } from "./series";
 import {
   doubtful,
@@ -306,18 +306,24 @@ export async function generateDocument(input: GenerateInput): Promise<GenerateRe
   /*
    * What the customer actually pays, and what the dealer is still owed.
    *
-   * The taxable value is reduced by **what the customer was given** - his own
-   * discount plus whatever of the scheme was passed on. The scheme the dealer
-   * kept never reaches this line, because the customer was never given it.
+   * The discount comes off **what the customer was given** - his own discount
+   * plus whatever of the scheme was passed on. The scheme the dealer kept never
+   * reaches this line, because the customer was never given it.
    *
    * And `oemSchemeAmount` stays on the row at its full value whatever happened
    * here. That is R-88 and it is money: the claim to the manufacturer is owed
    * on the scheme, not on the part of it that reached the customer, and a
    * dealer who retained it has made a commercial decision and is still owed the
    * whole thing. An unclaimed scheme is money given away twice.
+   *
+   * **The discount comes off the inclusive figure, not the taxable one**, and
+   * that is the only place it can honestly come off: a two-thousand-rupee
+   * discount is two thousand rupees off the price the customer was quoted, not
+   * off a taxable value he has never seen. The taxable value falls by less than
+   * the discount, because part of what he was given back was tax.
    */
   const givenToCustomer = round2(dealerDiscount + schemePassedOn);
-  const taxable = round2(Math.max(0, exShowroom - givenToCustomer));
+  const agreedPrice = round2(Math.max(0, exShowroom - givenToCustomer));
 
   const gstRate = priced.gstRatePct;
   const cessRate = priced.cessRatePct;
@@ -340,13 +346,36 @@ export async function generateDocument(input: GenerateInput): Promise<GenerateRe
       placeOfSupply.trim().toLowerCase() !== showroom.state.trim().toLowerCase(),
   );
 
-  const tax = taxOn({ taxable, gstRatePct: gstRate, cessRatePct: cessRate, interState });
+  /*
+   * The tax is **inside** the agreed price, and the taxable value is what is
+   * left after it comes out (R-122).
+   *
+   * This used to add tax on top of the ex-showroom figure, which meant a
+   * Splendor quoted at eighty-four thousand invoiced at over a lakh. Ex-showroom
+   * is the price including GST - that is what the trade means by the word and
+   * what the customer agreed to - so the taxable value is back-calculated and
+   * the tax is the residual. `taxable + cgst + sgst + cess` equals the agreed
+   * price exactly, by construction rather than by luck.
+   */
+  const tax = taxWithin({
+    inclusive: agreedPrice,
+    gstRatePct: gstRate,
+    cessRatePct: cessRate,
+    interState,
+  });
+  const taxable = tax.taxable;
 
   const otherCharges = (input.otherCharges ?? []).filter(
     (c) => c.label && Number.isFinite(c.amount),
   );
   const otherTotal = round2(otherCharges.reduce((n, c) => n + c.amount, 0));
 
+  /*
+   * And so the total is the price agreed plus whatever was collected for
+   * somebody else. `taxable + tax.total` is `agreedPrice` to the paisa; adding
+   * them rather than using `agreedPrice` directly is the arithmetic saying so
+   * out loud, and `verify-invoice` asserts the two are equal.
+   */
   const total = round2(taxable + tax.total + otherTotal);
 
   const reference = await nextReference(input.ownerId, decision.kind, onDate);

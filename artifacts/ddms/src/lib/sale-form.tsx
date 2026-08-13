@@ -5,6 +5,7 @@ import {
   useListPriceLists,
   type SaleDocument,
 } from "@workspace/api-client-react"
+import { rateFor } from "@workspace/quoting/tax"
 import { CheckCircle2, ChevronDown, ChevronRight, Info, Loader2, PenLine } from "lucide-react"
 
 /**
@@ -91,8 +92,34 @@ export function SaleForm({
 
   const [price, setPrice] = useState("")
   const [hsn, setHsn] = useState("8711")
-  const [gst, setGst] = useState("28")
-  const [cess, setCess] = useState("0")
+
+  /*
+   * The rate comes from what the machine is, and a typed rate wins (R-121, R-97).
+   *
+   * `engineCc` is the input because the HSN cannot be one — `8711 30` spans the
+   * 350cc boundary where the rate changes — and the model name cannot be one
+   * either, since a Classic 350 is exactly 350cc and belongs in the *lower*
+   * band. `rateFor` is the same table the seeder and the invoice generator use,
+   * so this form cannot disagree with them.
+   *
+   * `rateTouched` is why this is a default rather than a rule: the moment
+   * somebody types a rate, capacity stops overriding it. A figure a person
+   * entered is confirmed; one derived from a number they typed elsewhere is a
+   * proposal.
+   */
+  const [engineCc, setEngineCc] = useState("")
+  const [rateTouched, setRateTouched] = useState(false)
+  const suggested = rateFor({ engineCc: Number(engineCc) || null })
+  const [gst, setGst] = useState(String(suggested.gstRatePct))
+  const [cess, setCess] = useState(String(suggested.cessRatePct))
+
+  const setCapacity = (v: string) => {
+    setEngineCc(v)
+    if (rateTouched) return
+    const r = rateFor({ engineCc: Number(v) || null })
+    setGst(String(r.gstRatePct))
+    setCess(String(r.cessRatePct))
+  }
 
   const [dealerDiscount, setDealerDiscount] = useState("0")
   const [insurance, setInsurance] = useState("")
@@ -118,6 +145,10 @@ export function SaleForm({
     setChassisNo("")
     setEngineNo("")
     setPrice("")
+    setEngineCc("")
+    setRateTouched(false)
+    setGst("18")
+    setCess("0")
     setDealerDiscount("0")
     setInsurance("")
     setRegistration("")
@@ -165,6 +196,9 @@ export function SaleForm({
                   exShowroomAmount: stated,
                   hsn: hsn.trim() || null,
                   gstRatePct: Number(gst) || 0,
+                  // Zero on every two-wheeler since September 2025 — the cess
+                  // above 350cc was folded into the 40% band. Still sent, and
+                  // still a column, because cars and a car brand still carry it.
                   cessRatePct: Number(cess) || 0,
                 },
               }
@@ -307,15 +341,25 @@ export function SaleForm({
                     value={price}
                     onChange={setPrice}
                     placeholder={hasLists ? "from the list" : "79500"}
+                    hint="Including GST — what the customer pays for the bike."
+                  />
+                  <Field
+                    label="Engine cc"
+                    value={engineCc}
+                    onChange={setCapacity}
+                    placeholder="97"
+                    hint="Sets the GST rate."
+                  />
+                  <Field
+                    label="GST %"
+                    value={gst}
+                    onChange={(v) => {
+                      setRateTouched(true)
+                      setGst(v)
+                    }}
+                    hint="18% to 350cc, 40% above."
                   />
                   <Field label="HSN" value={hsn} onChange={setHsn} />
-                  <Field label="GST %" value={gst} onChange={setGst} />
-                  <Field
-                    label="Cess %"
-                    value={cess}
-                    onChange={setCess}
-                    hint="3% above 350cc."
-                  />
                 </div>
               </div>
 

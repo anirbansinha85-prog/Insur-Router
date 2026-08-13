@@ -17,6 +17,7 @@
  */
 
 import { and, desc, eq, isNull, lte, or, sql } from "drizzle-orm";
+import { rateFor, type Propulsion } from "@workspace/quoting/tax";
 import {
   db,
   priceListsTable,
@@ -123,31 +124,71 @@ export async function priceFor(input: {
 }
 
 /**
- * The tax split, recorded as an answer rather than a rule.
+ * The tax **inside** the price, which is where it has always been (R-122).
  *
- * Intra-state is CGST and SGST in halves; inter-state is IGST alone. Which
- * applies is place of supply. The **document stores the amounts**, not the
- * rule, because a document reprinted next year has to show what was charged and
- * not what today's rule would charge — the same instinct as `record_events`
+ * The trade quotes *ex-showroom* as the price including GST: factory cost plus
+ * tax plus the dealer's margin, excluding registration, road tax and insurance.
+ * This product used to treat that figure as the taxable value and add tax on
+ * top of it, which is how a Splendor quoted at eighty-four thousand rupees came
+ * to invoice at over a lakh. So the taxable value is **back-calculated** from
+ * what the customer agreed to pay, and the tax is what is left.
+ *
+ * ```
+ *   taxable  =  inclusive / (1 + (gst + cess)/100)
+ *   tax      =  inclusive - taxable          <- the residual
+ *   cess     =  taxable * cessRatePct/100
+ *   gst      =  tax - cess
+ *   CGST     =  gst / 2
+ *   SGST     =  gst - CGST                   <- the residual again
+ * ```
+ *
+ * **Tax is the residual twice, and both are deliberate.** Computing each column
+ * independently and printing them together means the invoice does not foot when
+ * the paise round the wrong way, and an invoice whose columns do not add to its
+ * own total is one a customer queries and an auditor circles. Taking the
+ * difference guarantees `taxable + cgst + sgst + cess === inclusive`, exactly,
+ * for every price and every rate.
+ *
+ * Which split applies is place of supply: intra-state is CGST and SGST in
+ * halves, inter-state is IGST alone. The **document stores the amounts**, not
+ * the rule, because a document reprinted next year has to show what was charged
+ * and not what today's rule would charge — the same instinct as `record_events`
  * keeping the state it detected rather than re-deriving it.
  */
-export function taxOn(input: {
-  taxable: number;
+export function taxWithin(input: {
+  /** The price agreed, tax included. */
+  inclusive: number;
   gstRatePct: number;
   cessRatePct: number;
   interState: boolean;
-}): { cgst: number; sgst: number; igst: number; cess: number; total: number } {
-  const gst = round2((input.taxable * input.gstRatePct) / 100);
-  const cess = round2((input.taxable * input.cessRatePct) / 100);
+}): {
+  taxable: number;
+  cgst: number;
+  sgst: number;
+  igst: number;
+  cess: number;
+  total: number;
+} {
+  const inclusive = round2(input.inclusive);
+  const divisor = 1 + (input.gstRatePct + input.cessRatePct) / 100;
+
+  const taxable = round2(inclusive / divisor);
+  const tax = round2(inclusive - taxable);
+
+  // Cess is computed and GST takes what is left, rather than the other way
+  // round: cess has its own column on the return and has to be the rate applied
+  // to the taxable value, while GST is the head the residual can safely land in.
+  const cess = round2((taxable * input.cessRatePct) / 100);
+  const gst = round2(tax - cess);
 
   if (input.interState) {
-    return { cgst: 0, sgst: 0, igst: gst, cess, total: round2(gst + cess) };
+    return { taxable, cgst: 0, sgst: 0, igst: gst, cess, total: round2(gst + cess) };
   }
-  // Halved and then rounded, so the two halves always add back to the whole.
+  // Halved and then subtracted, so the two halves always add back to the whole.
   // Rounding each half independently is how an invoice ends up a paisa short of
   // its own total.
   const half = round2(gst / 2);
-  return { cgst: half, sgst: round2(gst - half), igst: 0, cess, total: round2(gst + cess) };
+  return { taxable, cgst: half, sgst: round2(gst - half), igst: 0, cess, total: round2(gst + cess) };
 }
 
 /**
@@ -183,10 +224,20 @@ export interface Priced {
 }
 
 export interface StatedPrice {
+  /** The price agreed, **including** tax — what the customer was quoted. */
   exShowroomAmount: number;
   hsn?: string | null;
   gstRatePct?: number;
   cessRatePct?: number;
+  /**
+   * What the rate defaults from when nobody typed one (R-121).
+   *
+   * Capacity rather than the HSN, because `8711 30` spans the 350cc boundary,
+   * and rather than the model name, because a Classic 350 is exactly 350 and
+   * reads as big to anything matching on digits.
+   */
+  engineCc?: number | null;
+  propulsion?: Propulsion | null;
 }
 
 /**
@@ -230,14 +281,26 @@ export async function resolvePrice(input: {
     }
 
     /*
-     * The rates fall back to the list's where there is one and to 28% / 0%
-     * otherwise, which is the two-wheeler default and is wrong above 350cc.
-     * That is why the form asks: a guessed cess is a short-paid return, and the
-     * default exists so the ordinary case needs no thought rather than so the
-     * unusual one can be ignored.
+     * The rates fall back to the list's where there is one, and otherwise to
+     * what the machine actually is (R-121).
+     *
+     * `rateFor` is the one table — 5% electric, 18% up to 350cc, 40% above it —
+     * and it is only ever a default. A typed rate wins, because a person may
+     * know something about a machine that its capacity does not say, and under
+     * R-97 what a person entered is confirmed where anything derived is a
+     * proposal. What this must never do is guess at 28%, which is what it did
+     * until September 2025 caught up with it.
      */
-    const gst = input.stated.gstRatePct ?? (fromList ? money(fromList.item.gstRatePct) : 28);
-    const cess = input.stated.cessRatePct ?? (fromList ? money(fromList.item.cessRatePct) : 0);
+    const fallback = rateFor({
+      engineCc: input.stated.engineCc ?? null,
+      propulsion: input.stated.propulsion ?? null,
+    });
+    const gst =
+      input.stated.gstRatePct ??
+      (fromList ? money(fromList.item.gstRatePct) : fallback.gstRatePct);
+    const cess =
+      input.stated.cessRatePct ??
+      (fromList ? money(fromList.item.cessRatePct) : fallback.cessRatePct);
 
     return {
       ok: true,

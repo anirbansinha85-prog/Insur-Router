@@ -26,21 +26,68 @@ import {
   priceListItemsTable,
 } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
+import { rateFor, type Propulsion } from "@workspace/quoting/tax";
 
 const OWNER = 1;
 
 /**
- * The rates, and they are per model rather than one number in a settings
- * screen.
+ * What each machine in the mirror actually is.
  *
- * A motorcycle above 350cc attracts a compensation cess the one below it does
- * not, and the HSN is a fact about the goods. A single rate would have been
- * tidier and wrong for part of the range — which is the same reason the columns
- * live on the price list item.
+ * **The deal mirror does not carry engine capacity**, and that is a fact about
+ * the OEM's export rather than an oversight here: it records what was sold and
+ * for how much, not what the machine displaces. So a dealer bootstrapping a
+ * price list out of his own sales history has the prices and not the capacities,
+ * which is exactly why `engine_cc` is nullable and why a missing one defaults to
+ * 18% — the band nearly every two-wheeler sits in.
+ *
+ * This map is the fixture supplying what the mirror cannot, and it matches the
+ * mock OEM catalogue in `artifacts/dms-mock/src/catalogue.ts`. Anything absent
+ * from it seeds with a null capacity and takes the default, which is the same
+ * thing that happens to a real dealer with a model he has not filled in.
  */
-function taxFor(model: string): { hsn: string; gst: string; cess: string } {
-  const big = /(350|390|440|450|500|650|classic|meteor|himalayan|interceptor)/i.test(model);
-  return { hsn: "87112019", gst: "28", cess: big ? "3" : "0" };
+const CAPACITY: Record<string, { engineCc: number | null; propulsion: Propulsion }> = {
+  "Splendor Plus": { engineCc: 97, propulsion: "PETROL" },
+  "HF Deluxe": { engineCc: 97, propulsion: "PETROL" },
+  "Xtreme 125R": { engineCc: 125, propulsion: "PETROL" },
+  "Destini 125": { engineCc: 125, propulsion: "PETROL" },
+  "Xpulse 200 4V": { engineCc: 200, propulsion: "PETROL" },
+  "Vida V2 Plus": { engineCc: null, propulsion: "ELECTRIC" },
+};
+
+/**
+ * The classification and the rates, which come from what the machine is (R-121).
+ *
+ * This used to match on the model **name** — `/(350|390|...|classic|meteor)/`
+ * — and it was wrong in a way worth recording, because the same mistake is
+ * available to anybody who writes this in a hurry. A Classic 350 is *exactly*
+ * 350cc, the law says *exceeding* 350cc, so it belongs in the **lower** band and
+ * the regex put it in the upper one. Under the old rates that was a cess charged
+ * where none was due; under the new ones it is 40% charged where 18% is due, on
+ * a bike that sells in volume.
+ *
+ * So capacity is the input, `rateFor` is the one table, and there is no second
+ * copy of the slabs in this file to drift away from it.
+ *
+ * The HSN stays `87112019` for every model here — all six are under 350cc or
+ * electric — and it is deliberately *not* what the rate is read from, since
+ * `8711 30` spans the boundary.
+ */
+function taxFor(model: string): {
+  hsn: string;
+  gst: string;
+  cess: string;
+  engineCc: number | null;
+  propulsion: Propulsion;
+} {
+  const spec = CAPACITY[model] ?? { engineCc: null, propulsion: "PETROL" as Propulsion };
+  const rate = rateFor(spec);
+  return {
+    hsn: "87112019",
+    gst: String(rate.gstRatePct),
+    cess: String(rate.cessRatePct),
+    engineCc: spec.engineCc,
+    propulsion: spec.propulsion,
+  };
 }
 
 const JULY = "2026-07-01";
@@ -113,6 +160,8 @@ async function main(): Promise<void> {
         // Rounded to the nearest ten rupees, which is how a price list reads.
         exShowroomAmount: String(Math.round((amount * multiplier) / 10) * 10),
         hsn: tax.hsn,
+        engineCc: tax.engineCc,
+        propulsion: tax.propulsion,
         gstRatePct: tax.gst,
         cessRatePct: tax.cess,
       });
@@ -123,7 +172,10 @@ async function main(): Promise<void> {
 
   console.log(
     "\nTwo lists, and the August one is current. A deal priced off July is a\n" +
-      "commercial decision the dealer is entitled to make, and the document says so.\n",
+      "commercial decision the dealer is entitled to make, and the document says so.\n" +
+      "\nEvery amount is ex-showroom and therefore includes GST (R-122): the\n" +
+      "invoice back-calculates the taxable value out of it rather than adding tax\n" +
+      "on top, so a bike listed at 84,000 invoices at 84,000.\n",
   );
 }
 

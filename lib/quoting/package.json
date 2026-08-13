@@ -6,7 +6,8 @@
   "//": "Subpath exports with no root index, deliberately. dms-mock runs this source directly under Node's type stripping, which needs explicit .ts specifiers, while api-server typechecks without allowImportingTsExtensions and would reject them. Neither module imports the other, so exposing them separately means there is no internal specifier to disagree about.",
   "exports": {
     "./premium": "./src/premium.ts",
-    "./panel": "./src/panel.ts"
+    "./panel": "./src/panel.ts",
+    "./tax": "./src/tax.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"

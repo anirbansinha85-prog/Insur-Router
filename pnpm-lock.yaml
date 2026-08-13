@@ -263,6 +263,9 @@ importers:
       '@workspace/api-client-react':
         specifier: workspace:*
         version: link:../../lib/api-client-react
+      '@workspace/quoting':
+        specifier: workspace:*
+        version: link:../../lib/quoting
       class-variance-authority:
         specifier: 'catalog:'
         version: 0.7.1
@@ -1066,6 +1069,9 @@ importers:
       '@workspace/db':
         specifier: workspace:*
         version: link:../lib/db
+      '@workspace/quoting':
+        specifier: workspace:*
+        version: link:../lib/quoting
       drizzle-orm:
         specifier: 'catalog:'
         version: 0.45.2(@types/pg@8.20.0)(pg@8.22.0)

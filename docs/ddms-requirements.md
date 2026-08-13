@@ -3492,7 +3492,7 @@ as a bug.
 > Anirban corrected the premise: the ordinary two-wheeler dealership is **one
 > company running several branches hub-and-spoke**, and a dealer network strong
 > enough to hold two legal entities is a large firm that has become a company
-> anyway. **OBJ-36 to 40 below are replaced by §3g''s OBJ-36 to 43.**
+> anyway. **OBJ-36 to 40 below are replaced by §3g's OBJ-36 to 45.**
 >
 > What survives unchanged is the defect analysis that opens this section. The
 > one-directional ledger is still live and is still the reason reconciliation
@@ -3901,9 +3901,16 @@ dealer to answer a question that has one answer, and half of them would get it
 wrong.
 
 The code today treats `exShowroomAmount` as the **taxable value** and adds tax on
-top. For a Splendor quoted at ₹84,000 that produces an invoice of ₹99,120 before
-a single pass-through charge — about ₹15,000 more than the customer agreed to
-pay. It is the single largest correctness defect in the product.
+top, **and it does so at the stale rate**, so the two defects compound:
+
+| | Splendor @ ₹84,000 | Transalp @ ₹11,00,000 |
+|---|---|---|
+| Correct — inclusive, current rate | **₹84,000** | **₹11,00,000** |
+| The code today — 28% / 31% on top | **₹1,07,520** | **₹14,41,000** |
+| Overcharged | ₹23,520 | **₹3,41,000** |
+
+Before a single pass-through charge. It is the single largest correctness defect
+in the product, and on a BigWing bike it is three and a half lakh.
 
 **What replaces it.** The price list holds one figure, the one the dealer quotes
 and the customer recognises, and the taxable value is back-calculated:
@@ -3943,23 +3950,37 @@ frequently both on one job card.
 
 ### The objectives
 
-Eight. The module is **Finance**, and every one of them is written against the
-hierarchy above rather than against any one dealership.
+Ten, and the shape changed twice while planning them.
+
+**OBJ-36 was two objectives wearing one coat.** It bundled the entity hierarchy
+with the tax basis. They touch different files and carry different risk, and the
+tax basis is the one that cannot wait: until it lands, every invoice the product
+generates overcharges by twenty-eight per cent. It goes first, alone.
+
+**Nothing built the service invoice.** The service centre invoices through DDMS
+— that is settled — but no objective created the document, and the only
+generator in the codebase is built around one chassis and one ex-showroom
+figure. It is now OBJ-42, sitting *after* the trial balance so the vehicle path
+is proved complete before a second document type joins it.
 
 | # | Objective | Depends on | The claim it has to prove |
 |---|---|---|---|
-| 36 | **The hierarchy, the setup and the tax basis** — entity, registration, branch role, the closed setting list, the migration off `showrooms.gstin`, **ex-showroom as the inclusive price, and the September 2025 rates** | 31 | one code path serves a one-branch sub-dealer, a five-branch hub-and-spoke and a two-company group with **no branch in the code**; and a bike quoted at ₹84,000 invoices at ₹84,000 |
-| 37 | **Parties and purchases** — party ledgers, purchase vouchers, opening balances per entity | 36 | a purchase and a sale of one chassis leave Vehicle Stock at zero |
-| 38 | **Stock that moves without being sold** — delivery challan, chassis register, e-way bill | 37 | **the structure decides the tax**: same registration is no supply, different registration is a taxable one, and nothing asks a person |
-| 39 | **Money** — receipts, payments, bill-wise allocation, advances, the day close | 37 | a customer who paid in three parts has a zero balance and no unallocated credit |
-| 40 | **The books a CA opens** — day book, ledgers, trial balance, P&L, balance sheet | 39 | **the trial balance balances**, which is the proof 37 to 39 landed |
-| 41 | **Audit-ready** — period lock, audit register, gapless proof, two-way trace | 40 | an auditor's three questions answered on a screen, not in an argument about grants |
-| 42 | **The returns** — GSTR-1 per registration, GSTR-3B, TCS, e-invoicing on the B2B path | 41 | the return equals the books, tax head by tax head |
-| 43 | **The reconciliations** — ten, plus the graduation gate | 42 | every one names rows rather than a difference |
+| 36 | **The tax basis** — the September 2025 rates, engine capacity as the field they default from, and ex-showroom as the price **including** tax | 31 | a bike quoted at ₹84,000 invoices at ₹84,000, and a Classic 350 is taxed at 18% |
+| 37 | **The hierarchy and the setup** — entity, registration, branch role, the closed setting list, the migration off `showrooms.gstin` | 31 | one code path serves a one-branch sub-dealer, a five-branch hub-and-spoke and a two-company group, with **no branch in the code** |
+| 38 | **Parties and purchases** — party ledgers, purchase vouchers, opening balances per entity | 37 | a purchase and a sale of one chassis leave Vehicle Stock at zero |
+| 39 | **Stock that moves without being sold** — delivery challan, chassis register, e-way bill | 38 | **the structure decides the tax**: same registration is no supply, different registration is a taxable one, and nothing asks a person |
+| 40 | **Money** — receipts, payments, bill-wise allocation, advances, the day close | 38 | a customer who paid in three parts has a zero balance and no unallocated credit |
+| 41 | **The books a CA opens** — day book, ledgers, trial balance, P&L, balance sheet | 40 | **the trial balance balances**, which is the proof 38 to 40 landed |
+| 42 | **Service invoicing** — labour under a SAC, parts under an HSN, both on one job card, and an advance that carries tax | 41, 36 | a job card bills labour and parts as one document, and the trial balance still balances |
+| 43 | **Audit-ready** — period lock, audit register, gapless proof, two-way trace | 41 | an auditor's three questions answered on a screen, not in an argument about grants |
+| 44 | **The returns** — GSTR-1 per registration, GSTR-3B, TCS, e-invoicing on the B2B path | 43 | the return equals the books, tax head by tax head |
+| 45 | **The reconciliations** — ten, plus the graduation gate | 44 | every one names rows rather than a difference |
 
-**OBJ-40 sits where it does deliberately.** A trial balance is the cheapest
+**OBJ-41 sits where it does deliberately.** A trial balance is the cheapest
 possible proof that the double entry is complete, and finding a hole with three
-objectives spent costs far less than finding it with seven.
+objectives spent costs far less than finding it with seven. It is also why
+service invoicing follows rather than precedes it: adding a second document type
+to books not yet known to balance means two suspects for one difference.
 
 **Every report states the level it was drawn at.** Trial balance and balance
 sheet per entity. Returns per registration. Day close, branch P&L and stock per
@@ -4113,20 +4134,94 @@ authorises.
 | R-118 | **What is statutory is not ours to soften.** E-invoicing above ₹5 crore on the B2B path, TCS at 1% above ₹10 lakh collected on receipt, no GST on an advance for goods, and an invoice series unique per GSTIN per year. Each is a rule about the world, and a product that gets one wrong is a product that produces invalid documents | ○ |
 | R-119 | **The shape of a dealership is data, not a code path.** One accounting engine; the hierarchy is four foreign keys and the variability is a closed setting list. Two engines for two shapes would drift within a month, and reconciliation would be the first casualty — we would stop comparing the books against reality and start comparing two of our own systems with no way to say which was right | ○ |
 | R-120 | **A report states the level it was drawn at.** Trial balance and balance sheet per entity, returns per registration, day close and branch P&L per branch. A figure whose scope is ambiguous is a figure somebody will eventually add to another one | ○ |
-| R-121 | **A tax rate is a fact about the world, and the product holds the current one.** The slabs moved on 22 September 2025 and the code did not: two-wheelers are 18% under 350cc and 40% over it, cess on them is gone, parts and labour are 18%. A rate cannot be inferred from HSN either — `8711 30` spans the 350cc boundary — so it belongs on the price-list item and any default comes from engine capacity | ○ |
-| R-122 | **Ex-showroom is the price including tax, and tax is the residual.** The taxable value is back-calculated from what the customer agreed to pay; the tax is the difference and the CGST/SGST split takes the difference again. Computing either independently produces an invoice whose columns do not add to its own total, which is what a customer queries and an auditor circles | ○ |
+| R-121 | **A tax rate is a fact about the world, and the product holds the current one.** The slabs moved on 22 September 2025 and the code did not: two-wheelers are 18% up to 350cc and 40% above it, cess on them is gone, parts and labour are 18%. **The boundary is inclusive** — *exceeding 350cc* means exceeding, so a Classic 350 sits in the lower band, and a classifier that reads model names rather than capacity gets it wrong. The rate cannot be inferred from HSN either, since `8711 30` spans it. So it belongs on the price-list item, and the default comes from a **capacity field**, which is a column the product did not have | ✅ |
+| R-122 | **Ex-showroom is the price including tax, and tax is the residual.** The taxable value is back-calculated from what the customer agreed to pay; the tax is the difference and the CGST/SGST split takes the difference again. Computing either independently produces an invoice whose columns do not add to its own total, which is what a customer queries and an auditor circles | ✅ |
+| R-123 | **Labour and parts are different classifications even when the rate is the same.** Labour carries a SAC and parts an HSN. They sit at 18% together today, they did not before September 2025, and a product that collapsed them because the numbers happened to match would have to be unpicked the next time they diverge | ✅ |
 
-### Both questions are answered
+### What is settled, and what is next
 
-**The service centre invoices through DDMS.** So the Finance module covers
-service revenue: labour under a SAC code, parts under an HSN, both at 18%
-today, and advances against a service job carrying tax where a booking advance
-on a motorcycle does not.
+**The service centre invoices through DDMS**, so Finance covers service revenue:
+labour under a SAC code, parts under an HSN, both at 18% today, and advances
+against a service job carrying tax where a booking advance on a motorcycle does
+not. It is OBJ-42 rather than a footnote, because nothing in the first draft
+actually built the document.
 
 **Ex-showroom is the tax-inclusive price**, decided by research rather than by
 asking — it is a fact about the trade and not a choice a dealership makes. It
-therefore leaves the settings list and becomes a correction inside OBJ-36,
-alongside the September 2025 rates.
+therefore never became a setting, and is instead the substance of OBJ-36.
 
-Nothing is now blocking OBJ-36.
+**Nothing is blocking OBJ-36.**
 
+---
+
+## 3h. Built 13 August — OBJ-36, the tax basis
+
+The objective closed in one sitting, and three things came out of it that the
+plan did not contain.
+
+### What it turned out to be
+
+**The rate table went into `@workspace/quoting`, not into the API server.** It
+started life as `lib/dms/invoice/rates.ts` and moved before it was used twice,
+because `@workspace/quoting` is the package that exists for exactly this: the
+mock and the server share `panel` and `premium` so they cannot disagree about a
+quota or a premium. The **seeder** that builds a price list and the **generator**
+that raises an invoice off it must not be able to disagree about what 350cc
+means, and now they cannot — one table, three importers, and the sale form
+imports it too, so the screen offers the same default the seeder wrote.
+
+**The mirror does not carry engine capacity, and that is a fact rather than a
+gap.** The OEM's export records what was sold and for how much, not what the
+machine displaces. So a dealer bootstrapping a price list out of his own sales
+history has the prices and not the capacities — which is why `engine_cc` is
+nullable, why a missing one defaults to 18%, and why the typed form now asks for
+it directly. The fixture supplies capacities from a map that matches the mock
+catalogue; a real dealership supplies them once, per model, forever.
+
+**The old classifier was wrong about the boundary in the way everyone is.**
+`seed-pricelists.ts` matched on the model name — `/(350|390|classic|meteor)/` —
+and a Classic 350 is *exactly* 350cc. The law says *exceeding* 350cc, so it
+belongs in the lower band and the regex put it in the upper one. Under the old
+rates that was a cess wrongly charged; under the new ones it is 40% where 18% is
+due, on a bike that sells in volume. The verifier now asserts the boundary from
+both sides **and on it**.
+
+### What the verifier caught in itself
+
+The mutation test found a hole in the check rather than in the code, which is
+the outcome it exists for.
+
+Reverting `taxWithin` to `taxable = inclusive` makes the tax **zero** — and the
+headline check, *the columns add to the price the customer agreed to*, passed.
+It is trivially true when there is no tax. The check pinned one end of the
+arithmetic and left the other loose.
+
+So the section now asserts the reverse direction too: **the tax is a real rate
+on a real base**, non-zero, and within one paisa of the rate applied to the
+taxable value. The tolerance is that paisa and it is the residual, deliberately
+— `taxWithin` takes the difference rather than computing the product precisely
+so the invoice foots, and where the two disagree the footing wins.
+
+Both mutations now fail loudly: the zeroing one on ten checks, the genuine old
+exclusive basis on twelve.
+
+> **A footnote worth keeping.** Three checks failed on the first run for a reason
+> that was not the code: summing rupees as JavaScript floats. `67795.76 +
+> 6101.62 + 6101.62` is 79,999 in decimal and 79998.99999999999 in binary. The
+> figures were exact; the verifier's addition was not. Comparisons are now made
+> in **paise, as integers**, which is stricter than rounding the sum and is the
+> arithmetic Postgres `numeric` actually performs. It is the same reason the
+> schema has said *money as `numeric`, never `real`* since the first migration.
+
+### What is now true
+
+| | Before | After |
+|---|---|---|
+| Splendor quoted at ₹84,000 | invoiced ₹1,07,520 | **₹84,000** |
+| Transalp quoted at ₹11,00,000 | invoiced ₹14,41,000 | **₹11,00,000** |
+| Classic 350 | 28% + 3% cess | **18%** |
+| Electric | no band at all | **5%** |
+| Where the rate comes from | a regex on the model name | **engine capacity, one shared table** |
+
+R-121, R-122 and R-123 close. **OBJ-37, the hierarchy and the setup, is next and
+nothing blocks it.**

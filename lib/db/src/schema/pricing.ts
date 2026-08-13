@@ -101,8 +101,8 @@ export const priceListsTable = pgTable(
  * The tax fields live here rather than in a settings screen because that is
  * where the dealer's own system holds them and because they are **per model**:
  * the HSN code and the rate against it are facts about the goods, and a
- * motorcycle above 350cc attracts a cess the one below it does not. Putting a
- * single rate in a policy registry would have been tidier and wrong for half
+ * motorcycle above 350cc is taxed at more than double the one below it. Putting
+ * a single rate in a policy registry would have been tidier and wrong for half
  * the range.
  */
 export const priceListItemsTable = pgTable(
@@ -120,15 +120,53 @@ export const priceListItemsTable = pgTable(
     modelCode: text("model_code"),
     modelDescription: text("model_description").notNull(),
 
-    /** Money as `numeric`, never `real`. A fleet invoice exceeds float4 already. */
+    /**
+     * The price the dealer quotes, **including tax** (R-122).
+     *
+     * *Ex-showroom* is what the trade means by the price of a motorcycle:
+     * factory cost plus GST plus the dealer's margin, and excluding
+     * registration, road tax, insurance and accessories. It is the figure the
+     * customer recognises and agrees to, so the taxable value is back-calculated
+     * out of it rather than the tax being added on top.
+     *
+     * Money as `numeric`, never `real`. A fleet invoice exceeds float4 already.
+     */
     exShowroomAmount: numeric("ex_showroom_amount", { precision: 12, scale: 2 }).notNull(),
+
+    /**
+     * What the machine is, which is what the rate defaults from (R-121).
+     *
+     * Capacity and not the HSN, because `8711 30` spans 250cc to 500cc and the
+     * 18%/40% boundary cuts straight through it at 350. Capacity and not the
+     * model name either, because a Classic 350 is exactly 350cc — in the
+     * *lower* band, since the law says *exceeding* — and reads as big to
+     * anything matching on digits.
+     *
+     * Nullable, because a dealer bootstrapping a list from what he has been
+     * selling knows the price and may not have typed the capacity. A missing
+     * capacity defaults to 18%, which is most of the range.
+     */
+    engineCc: integer("engine_cc"),
+    propulsion: text("propulsion", { enum: ["PETROL", "ELECTRIC"] })
+      .notNull()
+      .default("PETROL"),
 
     /** Goods classification, and the rates that follow from it. */
     hsn: text("hsn"),
-    gstRatePct: numeric("gst_rate_pct", { precision: 5, scale: 2 }).notNull().default("28"),
     /**
-     * Compensation cess. Zero on most two-wheelers and three per cent above
-     * 350cc, which is precisely why it is per item.
+     * 18% up to 350cc, 40% above it, 5% electric — the rates in force from
+     * 22 September 2025. The default is the band most two-wheelers sit in;
+     * `rateFor` in the API server holds the table, and this column holds the
+     * answer for this model on this list, because a person may know something
+     * the capacity does not say.
+     */
+    gstRatePct: numeric("gst_rate_pct", { precision: 5, scale: 2 }).notNull().default("18"),
+    /**
+     * Compensation cess, and on a two-wheeler it is now always zero.
+     *
+     * The three per cent above 350cc was folded into the consolidated 40% band
+     * in September 2025. The column stays because cess still exists for cars,
+     * tobacco and coal, and a dealership that adds a car brand needs it.
      */
     cessRatePct: numeric("cess_rate_pct", { precision: 5, scale: 2 }).notNull().default("0"),
 
@@ -285,6 +323,14 @@ export const saleDocumentsTable = pgTable(
       .notNull()
       .default("N"),
 
+    /**
+     * The price agreed, **including tax** (R-122).
+     *
+     * `taxableAmount` below is back-calculated out of this less the discount,
+     * and the tax heads are the residual, so the columns of this row add to
+     * `totalAmount` exactly. An invoice that does not foot is one a customer
+     * queries and an auditor circles.
+     */
     exShowroomAmount: numeric("ex_showroom_amount", { precision: 12, scale: 2 }).notNull(),
 
     /**

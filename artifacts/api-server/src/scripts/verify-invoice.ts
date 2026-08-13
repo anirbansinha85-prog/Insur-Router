@@ -45,7 +45,7 @@ import {
   priceFor,
   money,
   round2,
-  taxOn,
+  taxWithin,
   decideKind,
   financialYear,
   listDocuments,
@@ -54,6 +54,7 @@ import {
   doubtful,
   type SaleFacts,
 } from "../lib/dms/invoice";
+import { rateFor } from "@workspace/quoting/tax";
 import { advanceJourneys, traceFor, journeyQueueRows, VEHICLE_SALE } from "../lib/dms/journeys";
 import { buildQueue } from "../lib/dms/queue";
 import { loadPolicy, setPolicy } from "../lib/dms/policy";
@@ -279,10 +280,50 @@ check(
 
 // ────────────────────────────────────────────────────────────────────────────
 
-section("3. the tax split, and the halves that add back up");
+/*
+ * Money adds up in paise, not in floats.
+ *
+ * `taxWithin` returns figures that sum to the price exactly in decimal, which is
+ * what Postgres `numeric` stores and what an invoice prints. Adding three of
+ * them as JavaScript numbers reintroduces binary error the module does not have
+ * — 67795.76 + 6101.62 + 6101.62 is 79999 in decimal and 79998.99999999999 in
+ * float. So the comparison is done in integers, which is stricter than
+ * rounding the sum and is the arithmetic the database performs.
+ */
+const paise = (n: number): number => Math.round(n * 100);
 
-const expected = taxOn({
-  taxable: money(doc.taxableAmount),
+section("3. the tax is inside the price, and the invoice foots");
+
+/*
+ * The check this section exists for (R-122).
+ *
+ * Ex-showroom is the price including GST. This used to add tax on top of it,
+ * which meant a bike quoted at eighty-four thousand invoiced at over a lakh —
+ * the largest correctness defect this product has had. So the taxable value is
+ * back-calculated out of the agreed price and the tax is the residual, and the
+ * proof is that the columns add to the price the customer agreed to, exactly,
+ * with nothing left over.
+ */
+const agreed = money(doc.exShowroomAmount) - money(doc.dealerDiscount);
+const columns =
+  paise(money(doc.taxableAmount)) +
+  paise(money(doc.cgstAmount)) +
+  paise(money(doc.sgstAmount)) +
+  paise(money(doc.cessAmount));
+
+check(
+  "**the tax is inside the price, not added to it**",
+  columns === paise(agreed),
+  `${rupees(columns / 100)} against the ${rupees(agreed)} agreed — to the paisa, not to the rupee`,
+);
+check(
+  "so the taxable value is *lower* than the price, which is the whole point",
+  money(doc.taxableAmount) < agreed,
+  `taxable ${rupees(money(doc.taxableAmount))} inside ${rupees(agreed)} at ${money(doc.gstRatePct)}%`,
+);
+
+const expected = taxWithin({
+  inclusive: agreed,
   gstRatePct: money(doc.gstRatePct),
   cessRatePct: money(doc.cessRatePct),
   interState: false,
@@ -294,15 +335,36 @@ check(
 );
 check("intra-state, so no IGST", money(doc.igstAmount) === 0);
 check(
-  "the total adds up",
-  Math.abs(
-    money(doc.taxableAmount) +
-      money(doc.cgstAmount) +
-      money(doc.sgstAmount) +
-      money(doc.cessAmount) +
-      money(doc.otherChargesTotal) -
-      money(doc.totalAmount),
-  ) < 0.01,
+  "the total is the price agreed plus what was collected for somebody else",
+  Math.abs(agreed + money(doc.otherChargesTotal) - money(doc.totalAmount)) < 0.005,
+  `${rupees(agreed)} + ${rupees(money(doc.otherChargesTotal))} = ${rupees(money(doc.totalAmount))}`,
+);
+/*
+ * And the tax heads are the rate applied to the taxable value.
+ *
+ * This check exists because the one above it is not enough on its own: if the
+ * tax came out as zero, "the columns add to the price" would be trivially true
+ * and the invoice would still be wrong. Asserting the reverse direction pins
+ * both ends — the columns foot, *and* the tax is a real rate on a real base.
+ *
+ * The tolerance is one paisa and it is the residual, deliberately. `taxWithin`
+ * takes the difference rather than computing this product, precisely so the
+ * invoice foots; where the two disagree by a paisa, the footing wins.
+ */
+const heads = paise(money(doc.cgstAmount) + money(doc.sgstAmount) + money(doc.cessAmount));
+const onBase = paise(
+  (money(doc.taxableAmount) * (money(doc.gstRatePct) + money(doc.cessRatePct))) / 100,
+);
+check(
+  "**and the tax is a real rate on a real base, not a zero that happens to add up**",
+  heads > 0 && Math.abs(heads - onBase) <= 1,
+  `${rupees(heads / 100)} charged against ${rupees(onBase / 100)} on the taxable value`,
+);
+
+check(
+  "and the rate is the one in force, not the one from two years ago",
+  money(doc.gstRatePct) === 18 && money(doc.cessRatePct) === 0,
+  `${money(doc.gstRatePct)}% GST, ${money(doc.cessRatePct)}% cess — the September 2025 table`,
 );
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -317,9 +379,14 @@ console.log(
 check("the full scheme is claimable", mine.schemeAmount === 5_000);
 check("even though none of it reached the customer", mine.passedOn === 0);
 check(
-  "and the taxable value only fell by what the customer was actually given",
-  money(doc.taxableAmount) === money(doc.exShowroomAmount) - 2_000,
+  "and the price fell by what the customer was actually given, and no more",
+  agreed === money(doc.exShowroomAmount) - 2_000,
   "the scheme he kept never reaches that line, because the customer never got it",
+);
+check(
+  "while the **taxable** value fell by less than the discount",
+  money(doc.exShowroomAmount) - money(doc.taxableAmount) > 2_000,
+  "part of what he was given back was tax, so the taxable value cannot fall by the whole of it",
 );
 console.log(`      across the outlet: ${rupees(claims.totalClaimable)} claimable, ${rupees(claims.totalRetained)} retained`);
 
@@ -830,7 +897,8 @@ const stated = await generateDocument({
     chassisNo: "MD626BG0ANP111222",
     engineNo: "BG0AN111222",
   },
-  statedPrice: { exShowroomAmount: 79_500, hsn: "8711", gstRatePct: 28, cessRatePct: 0 },
+  // No rate typed, so it comes from what the machine is: 199cc, therefore 18%.
+  statedPrice: { exShowroomAmount: 79_500, hsn: "8711", engineCc: 199 },
   intent: "SALE",
   otherCharges: [
     { label: "Insurance (1+5)", amount: 6_240 },
@@ -846,13 +914,22 @@ const stated = await generateDocument({
 check("it issues on a stated price", stated.ok, stated.ok ? stated.document.reference : stated.error);
 if (stated.ok) {
   const d = stated.document;
-  const gst = round2(79_500 * 0.28);
+  const taxable = round2(79_500 / 1.18);
+  const gst = round2(79_500 - taxable);
   check("the document says the price was stated, not looked up", d.priceOrigin === "STATED" && d.priceListName === null);
-  check("the arithmetic is the same arithmetic", money(d.taxableAmount) === 79_500 && money(d.cgstAmount) + money(d.sgstAmount) === gst,
-    `${rupees(79_500)} + ${rupees(gst)} GST`);
+  check(
+    "the rate came from the capacity, nobody having typed one",
+    money(d.gstRatePct) === 18 && money(d.cessRatePct) === 0,
+    "199cc, so 18% — and the same table the price list and the seeder use",
+  );
+  check(
+    "the arithmetic is the same arithmetic, and the tax is inside the price",
+    money(d.taxableAmount) === taxable && money(d.cgstAmount) + money(d.sgstAmount) === gst,
+    `${rupees(79_500)} = ${rupees(taxable)} + ${rupees(gst)} GST`,
+  );
   check(
     "and the pass-throughs are on it but not taxed",
-    money(d.otherChargesTotal) === 11_360 && money(d.totalAmount) === round2(79_500 + gst + 11_360),
+    money(d.otherChargesTotal) === 11_360 && money(d.totalAmount) === round2(79_500 + 11_360),
     `total ${rupees(money(d.totalAmount))}`,
   );
   console.log(`      ${d.reference} — ${d.customerName}, ${d.chassisNo}, no DMS anywhere near it`);
@@ -963,6 +1040,86 @@ const neither = await generateDocument({
   policy: await loadPolicy(OWNER),
 });
 check("and none at all", !neither.ok && neither.status === 400, neither.ok ? "it invented one" : neither.error);
+
+section("15. the rate table, and the boundary that used to be wrong (R-121)");
+
+/*
+ * These are arithmetic checks with no database in them, and they are here
+ * rather than nowhere because the thing they guard is a **statutory boundary**.
+ *
+ * The seeder used to classify on the model name — a regex matching `350`,
+ * `classic`, `meteor` — and a Classic 350 is exactly 350cc. The law says
+ * *exceeding* 350cc, so it belongs in the lower band and the regex put it in
+ * the upper one. Under the old rates that was a cess wrongly charged; under
+ * these it is 40% where 18% is due, on a bike that sells in volume.
+ *
+ * So the boundary is asserted from both sides and *on* it.
+ */
+const bands: Array<[string, { engineCc?: number | null; propulsion?: "PETROL" | "ELECTRIC" }, number]> = [
+  ["a 97cc Splendor", { engineCc: 97 }, 18],
+  ["a 349cc, one below the line", { engineCc: 349 }, 18],
+  ["**a Classic 350, exactly on it**", { engineCc: 350 }, 18],
+  ["a 351cc, one above", { engineCc: 351 }, 40],
+  ["a 500cc BigWing bike", { engineCc: 500 }, 40],
+  ["an electric scooter", { propulsion: "ELECTRIC" }, 5],
+  ["a model nobody typed a capacity for", { engineCc: null }, 18],
+];
+for (const [what, spec, want] of bands) {
+  const got = rateFor(spec);
+  check(`${what} is ${want}%`, got.gstRatePct === want, `${got.gstRatePct}%`);
+}
+check(
+  "and cess is zero in every branch, because it was folded into the 40%",
+  bands.every(([, spec]) => rateFor(spec).cessRatePct === 0),
+);
+check(
+  "an electric bike with a capacity is still electric",
+  rateFor({ engineCc: 400, propulsion: "ELECTRIC" }).gstRatePct === 5,
+  "propulsion decides before capacity does",
+);
+
+section("16. the residual, on prices chosen to make it hurt");
+
+/*
+ * The reason tax is the residual twice (R-122).
+ *
+ * A price that does not divide cleanly by 1.18 is the ordinary case, not the
+ * exotic one, and an invoice whose columns are each independently correct and
+ * do not add to its own total is what a customer queries and an auditor
+ * circles. These are prices picked to land badly.
+ */
+for (const [price, rate] of [
+  [84_000, 18],
+  [79_999, 18],
+  [1, 18],
+  [1_100_000, 40],
+  [123_457, 40],
+  [99_999.99, 5],
+] as const) {
+  const t = taxWithin({ inclusive: price, gstRatePct: rate, cessRatePct: 0, interState: false });
+  const sum = paise(t.taxable) + paise(t.cgst) + paise(t.sgst) + paise(t.cess);
+  const charged = paise(t.cgst + t.sgst + t.cess);
+  check(
+    `${rupees(price)} at ${rate}% foots exactly`,
+    sum === paise(price) &&
+      charged > 0 &&
+      Math.abs(charged - paise((t.taxable * rate) / 100)) <= 1,
+    `${t.taxable} + ${t.cgst} + ${t.sgst} = ${sum / 100}`,
+  );
+}
+const inter = taxWithin({ inclusive: 84_000, gstRatePct: 18, cessRatePct: 0, interState: true });
+check(
+  "inter-state is IGST alone, and it foots too",
+  inter.cgst === 0 && inter.sgst === 0 && paise(inter.taxable) + paise(inter.igst) === paise(84_000),
+  `taxable ${rupees(inter.taxable)} + IGST ${rupees(inter.igst)}`,
+);
+const withCess = taxWithin({ inclusive: 100_000, gstRatePct: 28, cessRatePct: 3, interState: false });
+check(
+  "and a rate that still carries cess divides by both, then foots",
+  paise(withCess.taxable) + paise(withCess.cgst) + paise(withCess.sgst) + paise(withCess.cess) ===
+    paise(100_000) && withCess.cess > 0,
+  `taxable ${rupees(withCess.taxable)} · cess ${rupees(withCess.cess)}`,
+);
 
 await reset();
 console.log("  (documents, sale journeys and the series switch reset, on the CLI credential)");

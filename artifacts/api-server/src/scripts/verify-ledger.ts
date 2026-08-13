@@ -172,11 +172,19 @@ const issued = await generateDocument({
     chassisNo: "VERIFY-LEDGER-CHASSIS-1",
     engineNo: "VERIFY-LEDGER-ENGINE-1",
   },
+  /*
+   * A Splendor Plus at eighty-four thousand, and eighty-four thousand is what
+   * the customer pays for the bike (R-122).
+   *
+   * No rate is typed: 97cc puts it in the 18% band, which is the September 2025
+   * table and not the 28%-plus-3%-cess this fixture used to state. The taxable
+   * value is back-calculated out of the price, so revenue booked to 4100 is
+   * about seventy-one thousand and the difference is the two tax heads.
+   */
   statedPrice: {
     exShowroomAmount: 84_000,
     hsn: "87112019",
-    gstRatePct: 28,
-    cessRatePct: 3,
+    engineCc: 97,
   },
   otherCharges: [
     { label: "Road Tax", amount: 8_400 },
@@ -332,7 +340,7 @@ if (known) {
       chassisNo: known.chassis,
       engineNo: "VERIFY-LEDGER-ENGINE-2",
     },
-    statedPrice: { exShowroomAmount: 84_000, hsn: "87112019", gstRatePct: 28, cessRatePct: 3 },
+    statedPrice: { exShowroomAmount: 84_000, hsn: "87112019", engineCc: 97 },
     otherCharges: [],
     userId: 1,
     userName: RUN_BY,
