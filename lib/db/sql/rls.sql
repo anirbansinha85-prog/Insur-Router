@@ -852,6 +852,105 @@ create policy gst_registrations_worker on public.gst_registrations
   for select to ddms_worker using (true);
 
 /*
+ * The period lock, and it is a trigger rather than an `if` (OBJ-43, R-112).
+ *
+ * A GST return filed on the twentieth is a statement to the government about a
+ * month. A voucher backdated into that month afterwards makes the filed return
+ * wrong retrospectively, and nobody finds out until a notice arrives.
+ *
+ * An application check would stop the screens and not a script, not a
+ * migration, and not the next thing somebody writes in a hurry at eleven at
+ * night. So the refusal lives here, beside the policies, for the same reason
+ * tenancy does (R-45): enforced by the database rather than by application code
+ * being careful.
+ *
+ * The trigger reaches the entity through the voucher's branch, because a lock
+ * covers a set of books and a voucher knows only which outlet it happened at.
+ */
+create or replace function app.refuse_locked_period()
+returns trigger
+language plpgsql
+as $$
+declare
+  locked_from date;
+  locked_to   date;
+begin
+  select pl.from_date, pl.to_date
+    into locked_from, locked_to
+    from public.period_locks pl
+    join public.showrooms s on s.entity_id = pl.entity_id
+   where s.id = new.showroom_id
+     and pl.status = 'LOCKED'
+     and new.voucher_date between pl.from_date and pl.to_date
+   limit 1;
+
+  if found then
+    raise exception
+      'The period % to % is closed for these books, so nothing may be posted into it. Reopening it is a named act with a reason.',
+      locked_from, locked_to
+      using errcode = 'check_violation';
+  end if;
+
+  return new;
+end;
+$$;
+
+/*
+ * One **live** lock per period, restated here because `drizzle-kit push` will
+ * not rewrite an index that already exists under the same name — so a predicate
+ * added later never lands, and the constraint silently stays wider than the
+ * schema file says.
+ *
+ * Without the predicate a month that was reopened for a correction could never
+ * be closed again, which is exactly backwards: closing it again is the point of
+ * the correction. The history has to accumulate — locked, reopened, locked
+ * again, each with its reason — because that sequence is what an auditor reads.
+ */
+drop index if exists period_locks_entity_period_unique;
+create unique index period_locks_entity_period_unique
+  on public.period_locks (entity_id, from_date, to_date)
+  where status = 'LOCKED';
+
+drop trigger if exists vouchers_refuse_locked_period on public.vouchers;
+create trigger vouchers_refuse_locked_period
+  before insert on public.vouchers
+  for each row execute function app.refuse_locked_period();
+
+/*
+ * The lock itself is readable by anybody signed in - a screen has to be able to
+ * say why a posting was refused - and writable through the request path only.
+ */
+drop policy if exists period_locks_own on public.period_locks;
+create policy period_locks_own on public.period_locks
+  for all to ddms_app
+  using (owner_id = app.current_owner_id())
+  with check (owner_id = app.current_owner_id());
+
+drop policy if exists period_locks_worker on public.period_locks;
+create policy period_locks_worker on public.period_locks
+  for select to ddms_worker using (true);
+
+/*
+ * The audit register, and the grants below are the answer to the auditor's
+ * first question (R-113).
+ *
+ * **Insert and select. No update, no delete, for any role.** That is the
+ * strongest statement this database can make about a table, it is readable
+ * straight out of `information_schema.role_table_grants`, and `auditTrailStatus`
+ * reads it rather than asserting a belief. A product that printed "the audit
+ * trail cannot be disabled" from a constant would be printing a claim.
+ */
+drop policy if exists audit_events_own on public.audit_events;
+create policy audit_events_own on public.audit_events
+  for all to ddms_app
+  using (owner_id = app.current_owner_id())
+  with check (owner_id = app.current_owner_id());
+
+drop policy if exists audit_events_worker on public.audit_events;
+create policy audit_events_worker on public.audit_events
+  for all to ddms_worker using (true) with check (true);
+
+/*
  * What the workshop bills (OBJ-42).
  *
  * Gated on `JOB_CARD` rather than `DEAL`, and that is the interesting part: a
@@ -1501,6 +1600,10 @@ grant select, insert, update on public.ingest_batches to ddms_app;
 -- migration or a named act, never a screen (OBJ-37).
 grant select on public.legal_entities to ddms_app;
 grant select on public.gst_registrations to ddms_app;
+grant select, insert, update on public.period_locks to ddms_app;
+-- Append-only, deliberately and demonstrably. No update and no delete here or
+-- anywhere below, for any role, including the one that runs migrations.
+grant select, insert on public.audit_events to ddms_app;
 grant select, insert, update on public.service_invoices to ddms_app;
 grant select, insert on public.service_invoice_lines to ddms_app;
 grant select, insert, update on public.money_documents to ddms_app;
@@ -1655,6 +1758,11 @@ grant select on public.legal_entities to ddms_worker;
 grant select on public.gst_registrations to ddms_worker;
 -- Select only, all four. A reconciliation pass reads what is owed; an
 -- unattended process that could open a bill could create a debt nobody agreed to.
+grant select on public.period_locks to ddms_worker;
+-- The scheduler may **write** to the register and to nothing else that is a
+-- record of money. An unattended pass that refused a posting has to be able to
+-- say so, and a trail with a hole where the robot was is not a trail.
+grant select, insert on public.audit_events to ddms_worker;
 grant select on public.service_invoices to ddms_worker;
 grant select on public.service_invoice_lines to ddms_worker;
 grant select on public.money_documents to ddms_worker;

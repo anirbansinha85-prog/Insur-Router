@@ -65,6 +65,8 @@ const SCOPED_TABLES = [
   "stock_moves",
   "money_documents",
   "service_invoices",
+  "period_locks",
+  "audit_events",
   "day_closes",
   "chassis_events",
   "legal_entities",

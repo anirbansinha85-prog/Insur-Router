@@ -569,8 +569,17 @@ export async function reverseVoucher(input: {
 
   const voucherNo = await nextVoucherNo(input.ownerId, "JOURNAL", original.financialYear);
 
-  const [reversal] = await db
-    .insert(vouchersTable)
+  /*
+   * The period lock is a database trigger, so a refusal arrives here as an
+   * exception rather than as a return value (R-112). Translating it is not
+   * cosmetic: a screen has to be able to show the dealership *why* it cannot
+   * undo something, and "check_violation" is not that sentence. The database's
+   * own message is, so it is carried through unchanged.
+   */
+  let reversal: typeof vouchersTable.$inferSelect | undefined;
+  try {
+    [reversal] = await db
+      .insert(vouchersTable)
     .values({
       ownerId: input.ownerId,
       showroomId: original.showroomId,
@@ -591,7 +600,14 @@ export async function reverseVoucher(input: {
       warnings: [],
       postedByUserId: input.userId ?? null,
     })
-    .returning();
+      .returning();
+  } catch (err) {
+    const cause = (err as { cause?: { code?: string; message?: string } }).cause;
+    if (cause?.code === "23514" && cause.message) {
+      return { ok: false, error: cause.message, warnings: [] };
+    }
+    throw err;
+  }
 
   await db.insert(voucherLinesTable).values(
     lines.map((l) => ({

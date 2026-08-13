@@ -14,3 +14,5 @@ export * from "./money";
 export * from "./books";
 // Billing a job card (OBJ-42, R-123).
 export * from "./service";
+// Audit-ready: the lock, the register and the two-way trace (OBJ-43).
+export * from "./audit";
