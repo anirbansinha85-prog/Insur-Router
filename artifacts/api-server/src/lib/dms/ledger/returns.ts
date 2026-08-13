@@ -2,6 +2,7 @@ import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
 
 import {
   db,
+  ledgerAccountsTable,
   showroomsTable,
   vouchersTable,
   voucherLinesTable,
@@ -370,9 +371,27 @@ export function gstr1Csv(r: Gstr1): { b2b: string; b2cs: string; hsn: string } {
  * Tally's import format is XML, and the tags below are Tally's own — a
  * `VOUCHER` inside a `TALLYMESSAGE` inside an `IMPORTDATA` envelope, with
  * `ALLLEDGERENTRIES.LIST` carrying one entry per line and `ISDEEMEDPOSITIVE`
- * marking the debits. `LEDGERNAME` uses each account's `tallyName` where the
- * dealership has set one, which is what makes the import land in *their* chart
- * rather than in twenty-six new ledgers named after ours.
+ * marking the debits.
+ *
+ * ## `LEDGERNAME` is the dealership's own name for the account
+ *
+ * Resolved by joining `ledger_accounts` at feed time and preferring
+ * `tallyName`, which is what makes the import land in *their* chart rather than
+ * in twenty-six new ledgers named after ours.
+ *
+ * **Joined rather than denormalised onto the line**, unlike `accountName`. The
+ * two answer different questions: `accountName` is what the account was called
+ * when the entry was posted and must not change afterwards, while `tallyName`
+ * is a mapping into somebody else's system that they may correct at any time.
+ * Freezing it at post time would mean a dealership remapping their chart still
+ * getting the old name on every historical voucher they re-send.
+ *
+ * > **This docstring claimed the `tallyName` behaviour before the code did
+ * > it.** The column existed, the sentence was written, and the emitter used
+ * > `accountName` — so the feature was documented, dead, and would have been
+ * > discovered by a dealership importing a file that created a parallel chart
+ * > inside their own books. A comment describing intent rather than behaviour
+ * > is worse than no comment: it stops anybody looking.
  */
 export interface FeedResult {
   xml: string;
@@ -428,6 +447,20 @@ export async function tallyFeed(input: {
     byVoucher.set(l.voucherId, arr);
   }
 
+  /*
+   * The dealership's own name for each account, read now rather than at
+   * posting time. See the note above: a mapping into somebody else's system is
+   * theirs to correct, and correcting it has to affect the next feed.
+   */
+  const chart = await db
+    .select({
+      code: ledgerAccountsTable.code,
+      tallyName: ledgerAccountsTable.tallyName,
+    })
+    .from(ledgerAccountsTable)
+    .where(eq(ledgerAccountsTable.ownerId, input.ownerId));
+  const tallyNameOf = new Map(chart.map((a) => [a.code, a.tallyName]));
+
   const body = wanted
     .map((v) => {
       const vl = byVoucher.get(v.id) ?? [];
@@ -449,18 +482,33 @@ export async function tallyFeed(input: {
         .map((l) => {
           const debit = Number(l.debit) > 0;
           const amount = debit ? -Number(l.debit) : Number(l.credit);
+          const ledgerName = tallyNameOf.get(l.accountCode) || l.accountName;
           return [
             "          <ALLLEDGERENTRIES.LIST>",
-            `            <LEDGERNAME>${xml(l.accountName)}</LEDGERNAME>`,
+            `            <LEDGERNAME>${xml(ledgerName)}</LEDGERNAME>`,
             `            <ISDEEMEDPOSITIVE>${debit ? "Yes" : "No"}</ISDEEMEDPOSITIVE>`,
             `            <AMOUNT>${amount.toFixed(2)}</AMOUNT>`,
-            l.partyName ? `            <PARTYLEDGERNAME>${xml(l.partyName)}</PARTYLEDGERNAME>` : "",
             "          </ALLLEDGERENTRIES.LIST>",
-          ]
-            .filter(Boolean)
-            .join("\n");
+          ].join("\n");
         })
         .join("\n");
+
+      /*
+       * The party goes on the voucher, not on a line.
+       *
+       * Tally reads `PARTYLEDGERNAME` at the voucher level; nested inside an
+       * `ALLLEDGERENTRIES.LIST` it is ignored, which the first version did — so
+       * every sale would have imported with no customer against it.
+       *
+       * **This is still not what Tally really wants**, and it is written down
+       * rather than glossed: in Tally each customer is their *own ledger* under
+       * the Sundry Debtors group, which is what makes a party statement and
+       * bill-wise tracking possible. DDMS posts every debtor to one account
+       * with the name as an attribute. The feed is importable and the party is
+       * visible; running a statement per customer inside Tally is not possible
+       * from it yet, and that needs party ledgers here first.
+       */
+      const party = vl.find((l) => l.partyName)?.partyName ?? null;
 
       return [
         "      <TALLYMESSAGE xmlns:UDF=\"TallyUDF\">",
@@ -468,11 +516,14 @@ export async function tallyFeed(input: {
         `          <DATE>${date}</DATE>`,
         `          <VOUCHERTYPENAME>${type}</VOUCHERTYPENAME>`,
         `          <VOUCHERNUMBER>${xml(v.voucherNo)}</VOUCHERNUMBER>`,
+        party ? `          <PARTYLEDGERNAME>${xml(party)}</PARTYLEDGERNAME>` : "",
         `          <NARRATION>${xml(v.narration ?? "")}</NARRATION>`,
         entries,
         "        </VOUCHER>",
         "      </TALLYMESSAGE>",
-      ].join("\n");
+      ]
+        .filter(Boolean)
+        .join("\n");
     })
     .filter(Boolean)
     .join("\n");

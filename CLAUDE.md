@@ -874,6 +874,14 @@ years. `isSystem` accounts rename and do not delete: a rule that cannot find its
 account has no honest behaviour — a substitute misstates silently, a skipped
 line will not balance.
 
+**Where it is not yet Tally-logical, and it matters.** Tally gives every
+customer their *own ledger* under the Sundry Debtors group, which is what makes
+a party statement and bill-wise tracking possible. DDMS posts every debtor to
+one `Sundry Debtors` account with the name as a line attribute, so the feed
+imports with the party visible and a per-customer statement inside Tally is not
+possible from it. There are also no receipt or payment vouchers, so debtors
+never clear. Both are the next piece of ledger work, not oversights.
+
 **The OEM scheme is deliberately not posted.** Whether it is income or a
 reduction of cost is the dealership's CA's judgement, and R-98 says feed their
 books rather than decide their policy. Named in the warnings, worked on the
