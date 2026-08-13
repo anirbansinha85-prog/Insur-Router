@@ -3487,6 +3487,17 @@ as a bug.
 
 ## 3f. Planned 12 August — accounting that a chartered accountant would sign
 
+> **Superseded in part by §3g, the same day.** This section planned against the
+> seed, which has Saraswati as a Delhi Pvt Ltd and Deccan as a Maharashtra LLP.
+> Anirban corrected the premise: the ordinary two-wheeler dealership is **one
+> company running several branches hub-and-spoke**, and a dealer network strong
+> enough to hold two legal entities is a large firm that has become a company
+> anyway. **OBJ-36 to 40 below are replaced by §3g''s OBJ-36 to 43.**
+>
+> What survives unchanged is the defect analysis that opens this section. The
+> one-directional ledger is still live and is still the reason reconciliation
+> cannot be bolted on — and R-109 to R-115 carry over into §3g intact.
+
 Anirban's ask, verbatim in substance: *the invoicing module should handle
 everything from generating the invoice to reconciliation and reporting to the
 CA, and all of it should be audit ready.*
@@ -3554,7 +3565,7 @@ a system that answers one direction answers half of them.
 
 | # | Objective | Fixes / unblocks | Depends on |
 |---|---|---|---|
-| 36 | **Parties, purchases and opening balances** | negative stock, input credit, the Tally party gap | 31 |
+| ~~36~~ | ~~**Parties, purchases and opening balances**~~ *(see §3g)* | negative stock, input credit, the Tally party gap | 31 |
 | 37 | **Receipts, payments and bill-wise allocation** | debtors that never clear, liabilities that never discharge, real ageing | 36 |
 | 38 | **Day book, ledger, trial balance, P&L, balance sheet** | proves 36 and 37 landed | 37 |
 | 39 | **Audit-ready: period lock, audit register, gapless proof, two-way trace** | the statutory half | 38 |
@@ -3741,4 +3752,258 @@ needs registration and a GSP in most cases; a downloaded JSON is what a CA
 actually has on their desk. *Recommendation: the file first, through the same
 drop-and-map path OBJ-24 already built, and the API only if a dealership turns
 out to have one.*
+
+## 3g. Finance, replanned 12 August — one company, many branches
+
+§3f planned the accounting against the seed data, which has Saraswati as a
+Delhi Pvt Ltd and Deccan as a Maharashtra LLP — two PANs, two states, two sets
+of books. Anirban corrected the premise, and the correction is worth stating
+because it makes the design **simpler**, not harder:
+
+> A two-wheeler dealership does not usually run several legal entities. If it
+> does, the network is strong enough that it is a large firm and has become a
+> company anyway. **The ordinary case is one owner, one company, several
+> branches, run hub-and-spoke from a main location.**
+
+The worked reference is Tansi Honda across Bengaluru — a 4S hub carrying the
+stockyard, the finance team and the parts warehouse; satellite 1S/2S showrooms
+for footfall and bookings; standalone authorised service centres; and a BigWing
+outlet for the 300cc+ range. All branches on **one state GSTIN**, each a
+distinct cost and profit centre, with cash, financier payouts and OEM claims
+consolidated centrally at the end of every business day.
+
+**§3f's objective table (OBJ-36 to 40) is superseded by this section.** Its
+defect analysis is not — the one-directional ledger is still the live problem
+and still the reason reconciliation cannot be bolted on.
+
+### What the correction changes
+
+| | §3f assumed | Actually |
+|---|---|---|
+| Legal entities | two (Pvt Ltd + LLP) | **one company** |
+| Sets of books | two balance sheets | **one** |
+| GST registrations | two, two states | **one, one state** |
+| A branch | its own entity | a **cost and profit centre** |
+| Hub → satellite stock move | a taxable inter-company sale | a **delivery challan, no tax** |
+
+The last row reverses completely, and it is the one that would have been most
+expensive to get wrong in either direction. Moving a chassis from the
+Ramagondanahalli hub to the Marathahalli satellite is **not a supply**: same
+legal person, same GSTIN, so no tax invoice and no GST. It is a Delivery
+Challan under Rule 55 with a Stock Transfer Note, and the stock simply changes
+branch.
+
+> **An e-way bill is still likely.** The consignment value of a motorcycle is
+> above ₹50,000, and a delivery challan does not exempt the movement. Part B —
+> the vehicle detail — is generally not required under fifty kilometres inside
+> the state. This is the one paragraph in this section their CA should confirm
+> against current Karnataka notifications rather than take from us.
+
+### The model, restated
+
+**The owner *is* the legal entity.** One PAN. `owners` gains `pan` and
+`legalName`; `gst_registrations` hangs off it, one row per state — almost always
+one. `showrooms.gstin` and `showrooms.legalName` move up and out, which is a
+migration and is the first thing OBJ-36 does.
+
+This is not a loss of generality. A group that genuinely holds two companies is
+**two owners**, which the multi-tenancy has handled since OBJ-1 — and a
+consolidated group view across two owners is a real but separate problem that no
+dealership of this size has.
+
+**A branch is a cost and profit centre**, and `showrooms.role` says which kind:
+
+| Role | What it is | Sells | Services | Holds stock |
+|---|---|---|---|---|
+| `HUB` | the 4S main dealership | yes | yes | the stockyard and the parts warehouse |
+| `SALES` | a 1S/2S satellite | yes | no | display models and fast-movers |
+| `SERVICE` | an authorised service centre | no | yes | consumables only |
+| `PREMIUM` | a BigWing outlet | yes | yes | its own range |
+
+Every voucher already carries `showroomId`. That column **is** the cost centre —
+no new dimension is needed, and every report becomes *per branch* or
+*consolidated* by grouping on it.
+
+### The document chain, and what each one posts
+
+This is the whole module in one table. Nine documents, and every entry in the
+books comes from exactly one of them.
+
+| # | Document | When | The entry |
+|---|---|---|---|
+| 1 | **Purchase invoice** (Honda → hub) | stock arrives | Dr Vehicle Stock, Dr Input IGST/Cess · Cr Honda |
+| 2 | **Delivery challan** (hub → satellite) | allocation | *branch moves, no accounting entry* — a stock-register movement |
+| 3 | **Booking receipt** | customer books | Dr Cash/Bank · Cr Customer *(advance)* |
+| 4 | **Tax invoice** | delivery | Dr Customer · Cr Sales, Output tax, pass-through liabilities · **and** Dr COGS · Cr Vehicle Stock |
+| 5 | **Financier receipt** | disbursement lands | Dr Bank · Cr Customer, allocated to the bill |
+| 6 | **Balance receipt** | on delivery | Dr Cash/Bank · Cr Customer |
+| 7 | **Payment** | RTO, insurer, Honda | Dr the liability / Cr Bank |
+| 8 | **OEM claim** | warranty, scheme | Dr Honda *(receivable)* · Cr the income or cost head |
+| 9 | **Day close** | every evening, per branch | cash counted vs cash booked; the difference is named |
+
+Row 2 is the one that is *not* an accounting entry and that is the point: a
+stock transfer changes which branch holds a chassis and changes no balance. It
+still needs a document, a number and an e-way bill.
+
+### The reports the CA asks for
+
+Not a wish list — this is what an Indian statutory audit and a monthly GST
+filing actually consume.
+
+**The books**
+
+| Report | Why it is on the list |
+|---|---|
+| Day book | every voucher in date order; the auditor's entry point |
+| Ledger — account-wise | the movement in any one account |
+| Ledger — party-wise | a customer's or supplier's statement, bill by bill |
+| **Trial balance** | the one that proves the double entry is complete |
+| Profit & loss | consolidated **and per branch**, since branches are profit centres |
+| Balance sheet | consolidated only — a branch has no balance sheet |
+| Cash book / bank book | per branch, and what the day close reconciles |
+
+**The registers**
+
+Sales register (invoice-wise with the tax split) · purchase register · **stock
+register, chassis-wise** (received → transferred → sold) · debtors ageing,
+bill-wise · creditors ageing · e-way bill register · voucher numbering gap
+report.
+
+**The returns**
+
+GSTR-1 · GSTR-3B with the tax-payment entry · the GSTR-2B match · the TCS
+statement where it applies.
+
+**The audit set**
+
+The audit trail register · the period-lock log · the two-way trace from a return
+row back to a deal.
+
+### Four statutory things that change the build
+
+**E-invoicing is B2B only, and it is a real gate.** Above ₹5 crore aggregate
+turnover a B2B invoice must be registered on the Invoice Registration Portal and
+carry an **IRN and a QR code, or it is not a valid tax invoice**. A multi-branch
+Honda dealer crosses ₹5 crore comfortably once service and parts are counted.
+
+The relief is that **most of a dealership's sales are B2C** — Mr Verma buying a
+Splendor needs no IRN — and DDMS already knows which is which, because
+`customerGstin` is the same field that decides B2B against B2CS in GSTR-1. So
+this is a capability on the B2B path, gated on the dealership's turnover, and
+not a change to every invoice. Above ₹10 crore there is also a **30-day
+reporting window** from the invoice date.
+
+**TCS at 1% above ₹10 lakh, and BigWing is why it matters.** Section 206C(1F)
+applies to the sale of a motor vehicle where the invoice value exceeds ₹10 lakh,
+collected **at the time of receipt** rather than at invoicing. A Splendor never
+reaches it; a Transalp does, and a Gold Wing is four times over. A BigWing
+outlet needs it and a 1S satellite never will — which is another reason the
+branch role is a real field rather than a label. (206C(1H), the ₹50 lakh
+provision, ceased from 1 April 2025.)
+
+**No GST on an advance for goods.** A booking advance against a motorcycle
+attracts no tax — the liability arises at the invoice. An advance against a
+*service* job does attract it. The module has to tell the two apart, and a
+dealership taking both routinely.
+
+**The invoice series is per GSTIN per financial year.** With several branches on
+one registration, either one central series or a distinct per-branch prefix —
+`HOO/26-27/0001`, `MAR/26-27/0001` — and both are permitted so long as they
+cannot collide. `series.ts` today issues one series per owner, which is correct
+for one branch and wrong for five.
+
+### The objectives
+
+Eight, and the module is called **Finance** in the product.
+
+| # | Objective | Depends on | Why here |
+|---|---|---|---|
+| 36 | **One company, many branches** — entity, GST registration, branch role, per-branch series | 31 | everything below keys off it, and it is a migration |
+| 37 | **Parties and purchases** — party ledgers, purchase vouchers, opening balances | 36 | fixes the live defect: stock is credited and never debited |
+| 38 | **Stock that moves without being sold** — delivery challan, chassis-wise register, e-way bill | 37 | the hub-and-spoke reality, and no accounting entry at all |
+| 39 | **Money in and out** — receipts, payments, bill-wise allocation, advances, the day close | 37 | debtors clear; liabilities discharge; ageing becomes true |
+| 40 | **The books a CA opens** — day book, ledgers, trial balance, P&L per branch, balance sheet | 39 | **the proof that 37, 38 and 39 landed** |
+| 41 | **Audit-ready** — period lock, audit register, gapless proof, two-way trace | 40 | the statutory half |
+| 42 | **The returns** — GSTR-1 rebuilt, GSTR-3B, TCS, e-invoicing on the B2B path | 41 | what the dealership actually files |
+| 43 | **The ten reconciliations** | 42 | R-98's graduation, with numbers behind it |
+
+OBJ-40 is placed where it is deliberately. **A trial balance is the cheapest
+possible proof that the double entry is complete**, and discovering a hole with
+three objectives spent costs far less than discovering it with seven.
+
+### The ten reconciliations
+
+Grouped by what they compare, and every one of them names rows rather than a
+difference (R-114).
+
+**Inside our own books**
+
+1. **Inter-branch** — transfers out equal transfers in, chassis by chassis. A
+   difference is a bike that left the hub and arrived nowhere.
+2. **Stock** — the book position against the chassis register against the DMS
+   mirror. Three sources that must agree, and the odd one out names itself.
+3. **Debtors** — the party ledger against `dms_receivables`, bill by bill.
+
+**Money**
+
+4. **Day close** — cash counted at each branch against cash booked, every
+   evening. The one control that catches a problem the same day.
+5. **Bank** — the statement against the cash and bank books.
+6. **Financier** — disbursements expected from live bookings against
+   disbursements received. Money a dealership is owed and routinely forgets.
+7. **The OEM** — Honda's statement against our creditor ledger *and* our claims
+   receivable. Warranty and scheme claims are where a dealer's money quietly
+   goes missing.
+
+**Statutory**
+
+8. **GSTR-1 against the sales register against the books.** Three views of one
+   month that must produce one number.
+9. **GSTR-3B against GSTR-1 and the ledger**, including the tax actually paid.
+10. **GSTR-2B against the purchase register** — matched, in 2B and not in our
+    books, and **in our books and not in 2B**. The last bucket is input credit
+    at risk, and it is worth chasing before the deadline rather than after.
+
+**And the eleventh, which is a product decision rather than an accounting one.**
+R-98 promised DDMS becomes the book of record only once its numbers have
+reconciled against whatever the dealership already keeps, for an agreed period.
+That needs a scorecard — month by month, sales, tax and debtor movement against
+their existing system, with the difference and its cause — and **N consecutive
+months inside tolerance before the product offers to graduate.** OBJ-26's ladder,
+applied to a product decision, with the dealership's consent as the thing that
+authorises.
+
+### New requirements
+
+| # | Requirement | Status |
+|---|---|---|
+| R-109 | **A ledger records every money event, not one.** Every account must have something that moves it back. A ledger holding only the sale balances per voucher and is unfilable in aggregate | ○ |
+| R-110 | **A party is a ledger, not a column.** A statement, a bill-wise allocation and an ageing report are all impossible without it | ○ |
+| R-111 | **Money is allocated to a bill, or it is on account and says so.** Spreading an unallocated receipt across the oldest invoices is a guess about which debt the customer meant to settle, and it is theirs to make | ○ |
+| R-112 | **A filed period is closed, and the refusal is at the database.** Reopening is a named act with a reason | ○ |
+| R-113 | **The audit trail cannot be switched off, and it is a screen rather than an argument.** DDMS is already stronger than the rule — no edit path, only reversal — and *stronger* is not *demonstrable* | ○ |
+| R-114 | **A reconciliation names the row, not the difference.** A variance figure is an afternoon in a spreadsheet; a list of documents is a morning's work | ○ |
+| R-115 | **The book of record is earned by reconciling, not claimed.** N months inside tolerance, then the product asks | ○ |
+| R-116 | **The owner is the legal entity; a branch is a cost centre.** One PAN, one set of books, one GST registration per state, and every voucher carrying its branch. A group holding two companies is two owners, and that is already how tenancy works | ○ |
+| R-117 | **Moving stock between branches is not a supply.** Same legal person, same GSTIN: a delivery challan and a stock-register movement, no tax invoice, no GST, and no accounting entry — but a document, a number and an e-way bill | ○ |
+| R-118 | **What is statutory is not ours to soften.** E-invoicing above ₹5 crore on the B2B path, TCS at 1% above ₹10 lakh collected on receipt, no GST on an advance for goods, and an invoice series unique per GSTIN per year. Each is a rule about the world, and a product that gets one wrong is a product that produces invalid documents | ○ |
+
+### Three things to settle before OBJ-36
+
+**The migration.** Saraswati and Deccan currently hold different GSTINs and
+different legal names in the seed. Under the new model both belong to one
+Bengaluru company on one Karnataka GSTIN — so the fixture needs rewriting, and
+so does anything that read a GSTIN off a showroom. It is a seed change and a
+schema change together, and doing it first is why OBJ-36 exists.
+
+**Whether a service centre invoices.** An ASC issues its own tax invoices for
+labour and parts under the same GSTIN. Whether those come through DDMS or stay
+in the DMS decides whether the Finance module covers service revenue or only
+vehicle sales — and it changes the trial balance materially, because labour is a
+different tax rate from a motorcycle.
+
+**Where the ₹ figure on the price list sits.** The code treats *ex-showroom* as
+the taxable value and adds 28% plus cess on top; the trade generally quotes
+ex-showroom as the tax-**inclusive** price. One of those is wrong for this
+dealership and it changes every invoice, every return and every reconciliation.
 
