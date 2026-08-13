@@ -386,12 +386,37 @@ export async function issueServiceInvoice(input: {
     };
   }
 
-  const fy = financialYearOf(input.invoiceDate);
-  const voucherNo = await nextVoucherNo(input.ownerId, "SALES", fy);
+  /*
+   * A job card with nothing to post, which is the commonest one in a workshop.
+   *
+   * A vehicle in for its second free service is charged nothing, and if no part
+   * was fitted there is no cost either — so there is no revenue, no debtor, no
+   * tax and no stock movement. **Not one voucher line.**
+   *
+   * The document is still issued, because the manufacturer's claim hangs off it
+   * and a free service that left no record is a free service nobody gets paid
+   * for. But posting an empty voucher would put a row in the day book that says
+   * nothing happened, and posting a zero-value one would be worse: an auditor
+   * counting vouchers would find entries with no entries in them.
+   */
+  const nothingToPost = lines.length === 0;
+  if (nothingToPost) {
+    warnings.push(
+      "Nothing on this job card was charged and no part was issued, so there is no accounting entry — " +
+        "only the document and the claim that hangs off it. That is what a free service looks like in a set of books.",
+    );
+  }
 
-  const [voucher] = await db
-    .insert(vouchersTable)
-    .values({
+  const fy = financialYearOf(input.invoiceDate);
+
+  let voucher: typeof vouchersTable.$inferSelect | undefined;
+  let voucherNo: string | null = null;
+
+  if (!nothingToPost) {
+    voucherNo = await nextVoucherNo(input.ownerId, "SALES", fy);
+    [voucher] = await db
+      .insert(vouchersTable)
+      .values({
       ownerId: input.ownerId,
       showroomId: input.showroomId,
       kind: "SALES",
@@ -404,11 +429,11 @@ export async function issueServiceInvoice(input: {
       totalDebit: money(totalDebit),
       totalCredit: money(totalCredit),
       warnings,
-      postedByUserId: input.userId ?? null,
-    })
-    .returning();
+        postedByUserId: input.userId ?? null,
+      })
+      .returning();
 
-  await db.insert(voucherLinesTable).values(
+    await db.insert(voucherLinesTable).values(
     lines.map((l, i) => {
       const a = need(l.accountCode);
       return {
@@ -427,7 +452,8 @@ export async function issueServiceInvoice(input: {
         taxRatePct: l.taxRatePct == null ? null : String(l.taxRatePct),
       };
     }),
-  );
+    );
+  }
 
   const [invoice] = await db
     .insert(serviceInvoicesTable)
@@ -456,7 +482,7 @@ export async function issueServiceInvoice(input: {
       payableAmount: money(payable),
       sellerLegalName: placement.entity.legalName,
       sellerGstin: placement.registration.gstin,
-      voucherId: voucher!.id,
+      voucherId: voucher?.id ?? null,
       narration: input.narration ?? null,
       issuedByUserId: input.userId ?? null,
     })
@@ -515,7 +541,7 @@ export async function issueServiceInvoice(input: {
     { ownerId: input.ownerId, invoiceNo, voucherNo, labourAmount, partsAmount },
     "Service invoice issued",
   );
-  return { ok: true, invoice: invoice!, voucherId: voucher!.id, warnings };
+  return { ok: true, invoice: invoice!, voucherId: voucher?.id, warnings };
 }
 
 /**

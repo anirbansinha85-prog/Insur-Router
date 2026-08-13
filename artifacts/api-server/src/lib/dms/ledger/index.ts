@@ -18,3 +18,5 @@ export * from "./service";
 export * from "./audit";
 // GSTR-3B, TCS and e-invoicing (OBJ-44, R-118).
 export * from "./returns3b";
+// The ten reconciliations and the graduation gate (OBJ-45, R-114, R-115).
+export * from "./reconcile";
