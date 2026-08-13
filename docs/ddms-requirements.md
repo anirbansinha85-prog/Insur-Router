@@ -3836,8 +3836,7 @@ whole of it, and conflating the two is where this gets complicated:
 
 | Setting | Level | What it changes |
 |---|---|---|
-| Ex-showroom is tax-inclusive | entity | every invoice, every return |
-| The service centre invoices through DDMS | registration | the trial balance — labour is a different rate |
+| The service centre invoices through DDMS | registration | the trial balance, and whether SAC lines exist at all — **answered: yes** |
 | Turnover band | entity | switches e-invoicing on the B2B path |
 | Regular or composition scheme | registration | GST entirely |
 | Series central, or prefixed per branch | registration | `HOO/26-27/0001` |
@@ -3853,6 +3852,95 @@ inter-company eliminations, no group P&L. That is honest and it is what their CA
 would produce anyway — a consolidated statement is a specific legal exercise
 rather than a report.
 
+### The tax basis, researched and decided
+
+Anirban answered the two open questions: **the service centre does invoice
+through DDMS**, and the ex-showroom question was handed back to be researched
+and decided. Doing that turned up something larger — **the rates in the code are
+two years out of date**, and the decision itself stops being a setting.
+
+#### What the rates actually are
+
+The 56th GST Council rationalised the slabs with effect from **22 September
+2025**. What the product currently believes, and what is true:
+
+| | In the code today | Actually, since 22 Sep 2025 |
+|---|---|---|
+| Two-wheeler ≤ 350cc | 28% + 0% cess | **18%** |
+| Two-wheeler > 350cc | 28% + 3% cess | **40%**, cess folded in |
+| Electric two-wheeler | — | **5%** |
+| Spare parts and accessories | 28% | **18%**, one uniform slab |
+| Repair and servicing labour | — | **18%** |
+
+`seed-pricelists.ts` hard-codes `gst: "28", cess: "3"`; the sale form defaults to
+28. Every seeded price list, every invoice raised from one, and the worked
+example in `verify-ledger` are wrong by the whole difference.
+
+**Compensation cess on two-wheelers is gone.** The columns stay — cess still
+exists for cars, tobacco and coal, and a dealership that adds a car brand would
+need them — but for every two-wheeler this product prices, cess is now zero and
+the 40% band is a single consolidated rate.
+
+> **The rate cannot be derived from the HSN code.** `8711 30` covers 250cc to
+> 500cc, and the 18%/40% boundary cuts straight through the middle of it at
+> 350cc. So the rate belongs on the price-list item — which it already does —
+> and any default has to be set from **engine capacity**, never from HSN. A
+> product that inferred the rate from HSN would put a CB350 and a CB500 in the
+> same band and be wrong about one of them.
+
+#### Ex-showroom is tax-inclusive, and it is not a setting
+
+The trade quotes **ex-showroom price as the price including GST**: factory cost
+plus GST plus the dealer's margin, and excluding registration, road tax,
+insurance, accessories and handling. On-road is ex-showroom plus those.
+
+That is a fact about the world rather than a choice a dealership makes, so it
+comes **off** the settings list. There is nothing to configure — a product that
+offered *is your ex-showroom price inclusive or exclusive?* would be asking a
+dealer to answer a question that has one answer, and half of them would get it
+wrong.
+
+The code today treats `exShowroomAmount` as the **taxable value** and adds tax on
+top. For a Splendor quoted at ₹84,000 that produces an invoice of ₹99,120 before
+a single pass-through charge — about ₹15,000 more than the customer agreed to
+pay. It is the single largest correctness defect in the product.
+
+**What replaces it.** The price list holds one figure, the one the dealer quotes
+and the customer recognises, and the taxable value is back-calculated:
+
+```
+  taxable  =  (ex-showroom − discount) ÷ (1 + rate)
+  tax      =  (ex-showroom − discount) − taxable        ← the residual
+  CGST     =  round(tax ÷ 2)
+  SGST     =  tax − CGST                                ← the residual again
+```
+
+**Tax is the residual, twice, and that is deliberate.** Computing it
+independently and printing both means the invoice does not foot when the paise
+round the wrong way, and an invoice whose columns do not add to its own total is
+one a customer queries and an auditor circles. Taking the difference guarantees
+`taxable + tax = the price agreed`, exactly, every time.
+
+#### What the service centre changes
+
+It invoices through DDMS, so the Finance module covers service revenue and not
+only vehicle sales. Three consequences:
+
+**Labour is a service and parts are goods.** Both sit at 18% today, which is
+convenient and is not a reason to conflate them: labour carries a **SAC** code
+and parts carry an **HSN**, GSTR-1 reports them in the same summary but under
+different codes, and the rates were different before September 2025 and could
+diverge again.
+
+**An advance for a service does attract GST**, unlike an advance against a
+motorcycle. A dealership taking a booking on a bike and a deposit on a
+restoration job is doing two different things, and the module has to know which.
+
+**A service invoice is a different document from a sale.** Same series rules,
+same registration, different line shape — labour lines, parts lines, and
+frequently both on one job card.
+
+
 ### The objectives
 
 Eight. The module is **Finance**, and every one of them is written against the
@@ -3860,7 +3948,7 @@ hierarchy above rather than against any one dealership.
 
 | # | Objective | Depends on | The claim it has to prove |
 |---|---|---|---|
-| 36 | **The hierarchy and the setup** — entity, registration, branch role, the closed setting list, and the migration off `showrooms.gstin` | 31 | one code path serves a one-branch sub-dealer, a five-branch hub-and-spoke, and a two-company group, with **no branch in the code** |
+| 36 | **The hierarchy, the setup and the tax basis** — entity, registration, branch role, the closed setting list, the migration off `showrooms.gstin`, **ex-showroom as the inclusive price, and the September 2025 rates** | 31 | one code path serves a one-branch sub-dealer, a five-branch hub-and-spoke and a two-company group with **no branch in the code**; and a bike quoted at ₹84,000 invoices at ₹84,000 |
 | 37 | **Parties and purchases** — party ledgers, purchase vouchers, opening balances per entity | 36 | a purchase and a sale of one chassis leave Vehicle Stock at zero |
 | 38 | **Stock that moves without being sold** — delivery challan, chassis register, e-way bill | 37 | **the structure decides the tax**: same registration is no supply, different registration is a taxable one, and nothing asks a person |
 | 39 | **Money** — receipts, payments, bill-wise allocation, advances, the day close | 37 | a customer who paid in three parts has a zero balance and no unallocated credit |
@@ -4025,25 +4113,20 @@ authorises.
 | R-118 | **What is statutory is not ours to soften.** E-invoicing above ₹5 crore on the B2B path, TCS at 1% above ₹10 lakh collected on receipt, no GST on an advance for goods, and an invoice series unique per GSTIN per year. Each is a rule about the world, and a product that gets one wrong is a product that produces invalid documents | ○ |
 | R-119 | **The shape of a dealership is data, not a code path.** One accounting engine; the hierarchy is four foreign keys and the variability is a closed setting list. Two engines for two shapes would drift within a month, and reconciliation would be the first casualty — we would stop comparing the books against reality and start comparing two of our own systems with no way to say which was right | ○ |
 | R-120 | **A report states the level it was drawn at.** Trial balance and balance sheet per entity, returns per registration, day close and branch P&L per branch. A figure whose scope is ambiguous is a figure somebody will eventually add to another one | ○ |
+| R-121 | **A tax rate is a fact about the world, and the product holds the current one.** The slabs moved on 22 September 2025 and the code did not: two-wheelers are 18% under 350cc and 40% over it, cess on them is gone, parts and labour are 18%. A rate cannot be inferred from HSN either — `8711 30` spans the 350cc boundary — so it belongs on the price-list item and any default comes from engine capacity | ○ |
+| R-122 | **Ex-showroom is the price including tax, and tax is the residual.** The taxable value is back-calculated from what the customer agreed to pay; the tax is the difference and the CGST/SGST split takes the difference again. Computing either independently produces an invoice whose columns do not add to its own total, which is what a customer queries and an auditor circles | ○ |
 
-### Two things to settle before OBJ-36
+### Both questions are answered
 
-**Whether a service centre invoices through DDMS.** An authorised service centre
-issues its own tax invoices for labour and parts under the same registration.
-Whether those come through this product or stay in the DMS decides whether the
-Finance module covers service revenue or only vehicle sales — and it changes the
-trial balance materially, because labour carries a different rate from a
-motorcycle. It is a **setting**, so the code takes both; what has to be settled
-is what the first dealership's answer actually is.
+**The service centre invoices through DDMS.** So the Finance module covers
+service revenue: labour under a SAC code, parts under an HSN, both at 18%
+today, and advances against a service job carrying tax where a booking advance
+on a motorcycle does not.
 
-**Where the figure on the price list sits.** The code treats *ex-showroom* as
-the taxable value and adds 28% plus cess on top; the trade generally quotes
-ex-showroom as the tax-**inclusive** price. One of those is wrong for this
-dealership, it changes every invoice, every return and every reconciliation, and
-it is the one question here that cannot be deferred by making it configurable —
-because the existing seeded invoices were priced one way and would all be wrong.
+**Ex-showroom is the tax-inclusive price**, decided by research rather than by
+asking — it is a fact about the trade and not a choice a dealership makes. It
+therefore leaves the settings list and becomes a correction inside OBJ-36,
+alongside the September 2025 rates.
 
-*(The seed rewrite is no longer a question. Under the settled hierarchy it is
-simply OBJ-36's migration: `showrooms.gstin` and `showrooms.legalName` move up
-to the entity, and the fixture is reseeded as one company with branches.)*
+Nothing is now blocking OBJ-36.
 
