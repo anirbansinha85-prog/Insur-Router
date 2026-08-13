@@ -3753,7 +3753,7 @@ actually has on their desk. *Recommendation: the file first, through the same
 drop-and-map path OBJ-24 already built, and the API only if a dealership turns
 out to have one.*
 
-## 3g. Finance, replanned 12 August — one company, many branches
+## 3g. Finance — the module, planned 12 August
 
 §3f planned the accounting against the seed data, which has Saraswati as a
 Delhi Pvt Ltd and Deccan as a Maharashtra LLP — two PANs, two states, two sets
@@ -3799,30 +3799,85 @@ branch.
 > the state. This is the one paragraph in this section their CA should confirm
 > against current Karnataka notifications rather than take from us.
 
-### The model, restated
+### The structure, settled
 
-**The owner *is* the legal entity.** One PAN. `owners` gains `pan` and
-`legalName`; `gst_registrations` hangs off it, one row per state — almost always
-one. `showrooms.gstin` and `showrooms.legalName` move up and out, which is a
-migration and is the first thing OBJ-36 does.
+One accounting engine. The dealership's shape is **data**, not a code path.
 
-This is not a loss of generality. A group that genuinely holds two companies is
-**two owners**, which the multi-tenancy has handled since OBJ-1 — and a
-consolidated group view across two owners is a real but separate problem that no
-dealership of this size has.
+```
+owner              the group — a commercial fact, not a legal one
+ └─ entity         one PAN · one set of books · one balance sheet
+     └─ registration    one GSTIN per state · one GSTR-1 · one GSTR-3B
+         └─ branch      a cost & profit centre, with a role
+```
 
-**A branch is a cost and profit centre**, and `showrooms.role` says which kind:
+Four foreign keys, and every shape a two-wheeler dealership takes falls out of
+them without a second engine:
 
-| Role | What it is | Sells | Services | Holds stock |
-|---|---|---|---|---|
-| `HUB` | the 4S main dealership | yes | yes | the stockyard and the parts warehouse |
-| `SALES` | a 1S/2S satellite | yes | no | display models and fast-movers |
-| `SERVICE` | an authorised service centre | no | yes | consumables only |
-| `PREMIUM` | a BigWing outlet | yes | yes | its own range |
+| Dealership | Entities | Registrations | Branches |
+|---|---|---|---|
+| Hub-and-spoke Honda dealer, one city | 1 | 1 | 5 — hub, satellites, ASC, BigWing |
+| One company, two states | 1 | 2 | n |
+| A group holding two companies | 2 | 2 | n |
+| The sub-dealer doing five units a month | 1 | 1 | 1 |
 
-Every voucher already carries `showroomId`. That column **is** the cost centre —
-no new dimension is needed, and every report becomes *per branch* or
-*consolidated* by grouping on it.
+The last row matters most: **the dealership OBJ-30 exists for is this same
+structure with every count at one.** Nothing special-cases it.
+
+> **Two engines was the tempting answer and it is the one failure this product
+> refuses everywhere else.** `applyAction` is one door; the overall view is not
+> allowed to know anything the module screens do not; GSTR-1 and the Tally feed
+> share a file so they cannot disagree. Two ledgers for two shapes would drift
+> within a month — and reconciliation would be the first casualty, because we
+> would stop reconciling the books against reality and start reconciling two of
+> our own systems against each other with no way to say which was right.
+
+**Structure is fixed; variability is a closed setting list.** The split is the
+whole of it, and conflating the two is where this gets complicated:
+
+| Setting | Level | What it changes |
+|---|---|---|
+| Ex-showroom is tax-inclusive | entity | every invoice, every return |
+| The service centre invoices through DDMS | registration | the trial balance — labour is a different rate |
+| Turnover band | entity | switches e-invoicing on the B2B path |
+| Regular or composition scheme | registration | GST entirely |
+| Series central, or prefixed per branch | registration | `HOO/26-27/0001` |
+| Who holds the tax-invoice series | registration | already exists — `SWITCH.DDMS_HOLDS_TAX_SERIES` |
+
+**Closed, like the policy registry, for R-52's reason.** An open *adjust as per
+requirement* layer becomes a configuration surface nobody can predict, and this
+product's customer has no administrator to untangle one.
+
+**Multi-entity is modelled and not featured.** A group holding two companies
+gets two clean sets of books and **no** consolidated balance sheet, no
+inter-company eliminations, no group P&L. That is honest and it is what their CA
+would produce anyway — a consolidated statement is a specific legal exercise
+rather than a report.
+
+### The objectives
+
+Eight. The module is **Finance**, and every one of them is written against the
+hierarchy above rather than against any one dealership.
+
+| # | Objective | Depends on | The claim it has to prove |
+|---|---|---|---|
+| 36 | **The hierarchy and the setup** — entity, registration, branch role, the closed setting list, and the migration off `showrooms.gstin` | 31 | one code path serves a one-branch sub-dealer, a five-branch hub-and-spoke, and a two-company group, with **no branch in the code** |
+| 37 | **Parties and purchases** — party ledgers, purchase vouchers, opening balances per entity | 36 | a purchase and a sale of one chassis leave Vehicle Stock at zero |
+| 38 | **Stock that moves without being sold** — delivery challan, chassis register, e-way bill | 37 | **the structure decides the tax**: same registration is no supply, different registration is a taxable one, and nothing asks a person |
+| 39 | **Money** — receipts, payments, bill-wise allocation, advances, the day close | 37 | a customer who paid in three parts has a zero balance and no unallocated credit |
+| 40 | **The books a CA opens** — day book, ledgers, trial balance, P&L, balance sheet | 39 | **the trial balance balances**, which is the proof 37 to 39 landed |
+| 41 | **Audit-ready** — period lock, audit register, gapless proof, two-way trace | 40 | an auditor's three questions answered on a screen, not in an argument about grants |
+| 42 | **The returns** — GSTR-1 per registration, GSTR-3B, TCS, e-invoicing on the B2B path | 41 | the return equals the books, tax head by tax head |
+| 43 | **The reconciliations** — ten, plus the graduation gate | 42 | every one names rows rather than a difference |
+
+**OBJ-40 sits where it does deliberately.** A trial balance is the cheapest
+possible proof that the double entry is complete, and finding a hole with three
+objectives spent costs far less than finding it with seven.
+
+**Every report states the level it was drawn at.** Trial balance and balance
+sheet per entity. Returns per registration. Day close, branch P&L and stock per
+branch. A figure whose scope is ambiguous is a figure somebody will eventually
+add to another one.
+
 
 ### The document chain, and what each one posts
 
@@ -3912,25 +3967,6 @@ one registration, either one central series or a distinct per-branch prefix —
 cannot collide. `series.ts` today issues one series per owner, which is correct
 for one branch and wrong for five.
 
-### The objectives
-
-Eight, and the module is called **Finance** in the product.
-
-| # | Objective | Depends on | Why here |
-|---|---|---|---|
-| 36 | **One company, many branches** — entity, GST registration, branch role, per-branch series | 31 | everything below keys off it, and it is a migration |
-| 37 | **Parties and purchases** — party ledgers, purchase vouchers, opening balances | 36 | fixes the live defect: stock is credited and never debited |
-| 38 | **Stock that moves without being sold** — delivery challan, chassis-wise register, e-way bill | 37 | the hub-and-spoke reality, and no accounting entry at all |
-| 39 | **Money in and out** — receipts, payments, bill-wise allocation, advances, the day close | 37 | debtors clear; liabilities discharge; ageing becomes true |
-| 40 | **The books a CA opens** — day book, ledgers, trial balance, P&L per branch, balance sheet | 39 | **the proof that 37, 38 and 39 landed** |
-| 41 | **Audit-ready** — period lock, audit register, gapless proof, two-way trace | 40 | the statutory half |
-| 42 | **The returns** — GSTR-1 rebuilt, GSTR-3B, TCS, e-invoicing on the B2B path | 41 | what the dealership actually files |
-| 43 | **The ten reconciliations** | 42 | R-98's graduation, with numbers behind it |
-
-OBJ-40 is placed where it is deliberately. **A trial balance is the cheapest
-possible proof that the double entry is complete**, and discovering a hole with
-three objectives spent costs far less than discovering it with seven.
-
 ### The ten reconciliations
 
 Grouped by what they compare, and every one of them names rows rather than a
@@ -3987,23 +4023,27 @@ authorises.
 | R-116 | **The owner is the legal entity; a branch is a cost centre.** One PAN, one set of books, one GST registration per state, and every voucher carrying its branch. A group holding two companies is two owners, and that is already how tenancy works | ○ |
 | R-117 | **Moving stock between branches is not a supply.** Same legal person, same GSTIN: a delivery challan and a stock-register movement, no tax invoice, no GST, and no accounting entry — but a document, a number and an e-way bill | ○ |
 | R-118 | **What is statutory is not ours to soften.** E-invoicing above ₹5 crore on the B2B path, TCS at 1% above ₹10 lakh collected on receipt, no GST on an advance for goods, and an invoice series unique per GSTIN per year. Each is a rule about the world, and a product that gets one wrong is a product that produces invalid documents | ○ |
+| R-119 | **The shape of a dealership is data, not a code path.** One accounting engine; the hierarchy is four foreign keys and the variability is a closed setting list. Two engines for two shapes would drift within a month, and reconciliation would be the first casualty — we would stop comparing the books against reality and start comparing two of our own systems with no way to say which was right | ○ |
+| R-120 | **A report states the level it was drawn at.** Trial balance and balance sheet per entity, returns per registration, day close and branch P&L per branch. A figure whose scope is ambiguous is a figure somebody will eventually add to another one | ○ |
 
-### Three things to settle before OBJ-36
+### Two things to settle before OBJ-36
 
-**The migration.** Saraswati and Deccan currently hold different GSTINs and
-different legal names in the seed. Under the new model both belong to one
-Bengaluru company on one Karnataka GSTIN — so the fixture needs rewriting, and
-so does anything that read a GSTIN off a showroom. It is a seed change and a
-schema change together, and doing it first is why OBJ-36 exists.
+**Whether a service centre invoices through DDMS.** An authorised service centre
+issues its own tax invoices for labour and parts under the same registration.
+Whether those come through this product or stay in the DMS decides whether the
+Finance module covers service revenue or only vehicle sales — and it changes the
+trial balance materially, because labour carries a different rate from a
+motorcycle. It is a **setting**, so the code takes both; what has to be settled
+is what the first dealership's answer actually is.
 
-**Whether a service centre invoices.** An ASC issues its own tax invoices for
-labour and parts under the same GSTIN. Whether those come through DDMS or stay
-in the DMS decides whether the Finance module covers service revenue or only
-vehicle sales — and it changes the trial balance materially, because labour is a
-different tax rate from a motorcycle.
-
-**Where the ₹ figure on the price list sits.** The code treats *ex-showroom* as
+**Where the figure on the price list sits.** The code treats *ex-showroom* as
 the taxable value and adds 28% plus cess on top; the trade generally quotes
 ex-showroom as the tax-**inclusive** price. One of those is wrong for this
-dealership and it changes every invoice, every return and every reconciliation.
+dealership, it changes every invoice, every return and every reconciliation, and
+it is the one question here that cannot be deferred by making it configurable —
+because the existing seeded invoices were priced one way and would all be wrong.
+
+*(The seed rewrite is no longer a question. Under the settled hierarchy it is
+simply OBJ-36's migration: `showrooms.gstin` and `showrooms.legalName` move up
+to the entity, and the fixture is reseeded as one company with branches.)*
 
