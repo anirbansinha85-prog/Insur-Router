@@ -22,8 +22,27 @@ of the other shapes a dealership takes.
   7  MUM-MALHOTRA     HUB       Malhotra Motors Pvt Ltd         27AAECM4411R1Z2   Maharashtra   (none)             empty
 ```
 
-One owner (`SARDECC`), **three legal entities**, three GST registrations, five
-branches, across **two states**.
+**Two owners**, and that is the first thing to get right about this fixture:
+
+```
+owner 1  SARDECC   Saraswati-Deccan Group   Saraswati (Delhi) + Deccan (Maharashtra)
+owner 4  MALHOTRA  Malhotra Motors          Malhotra (Mumbai)
+```
+
+Owner 1 holds **two legal entities across two states** — the group shape.
+Owner 4 is a **second tenant**, and it exists for exactly one reason, stated in
+`scripts/src/seed-users.ts`: *"each owner sees only their own data" is not a
+claim you can check with one tenant in the database. Every isolation test needs
+somebody to be isolated from.*
+
+> **Malhotra will not appear on owner 1's dashboard, and that is the boundary
+> passing its test rather than a bug.** The table above lists all five branches
+> because it was dumped on the `postgres` credential, which **bypasses
+> row-level security**. No screen in the product ever sees this view. The first
+> draft of this document called it "one owner, three entities" for precisely
+> that reason — read the fixture with the one credential that cannot see its
+> most important boundary and you will describe a dealership that does not
+> exist.
 
 ### Read it like this
 
@@ -89,10 +108,10 @@ appear nowhere in it.
 
 | # | Shape | Entities | Regns | Branches | In this fixture? |
 |---|---|---|---|---|---|
-| 1 | **A group of companies** | 2+ | 2+ | n | ✅ **live** — Saraswati, Deccan, Malhotra |
+| 1 | **A group of companies** | 2+ | 2+ | n | ✅ **live** — owner 1 holds Saraswati and Deccan |
 | 2 | **One company, two states** | 1 | 2 | n | ⚠️ built and torn down inside `verify-org.ts` |
 | 3 | **Hub-and-spoke, one city** | 1 | 1 | 3+ | ⚠️ structure live (Saraswati + 2 satellites), no data |
-| 4 | **The sub-dealer** | 1 | 1 | 1 | ✅ **live** — Deccan, and Malhotra |
+| 4 | **The sub-dealer** | 1 | 1 | 1 | ✅ **live** — Deccan under owner 1, and Malhotra as its own tenant |
 
 Shape 4 matters more than it looks: **the dealership OBJ-30 exists for is this
 same structure with every count at one.** Nothing special-cases it.
@@ -236,7 +255,9 @@ and nothing has been built for it yet.
 
 1. **Three branches are empty.** Janakpuri, Okhla and Malhotra resolve and post
    but hold no business. Hub-and-spoke is a structure here, not yet a screen.
-2. **Malhotra has no DMS account** — an unintentional gap in `seed-owners.ts`.
+2. **Malhotra has no DMS account, and does not need one.** It is a second
+   tenant seeded to be isolated from, not a dealership meant to trade. Nothing
+   is missing.
 3. **Five second sources do not exist**: a bank statement import, a GSTR-2B
    import, the financier's sanction list, a customer PAN for the TCS statement,
    and the IRP call that returns an IRN. Each is why the control that needs it
