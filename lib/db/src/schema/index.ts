@@ -26,6 +26,8 @@ export * from "./trace";
 export * from "./ledger";
 // The other half of every entry: parties, bills, purchases (OBJ-38, R-109..R-111).
 export * from "./parties";
+// Stock that moves without being sold, and the chassis register (OBJ-39, R-117).
+export * from "./stock_moves";
 // Three ways in, one record (OBJ-24, R-84).
 export * from "./ingest";
 // Price lists with history, and the document DDMS issues (OBJ-25, R-87..R-90).

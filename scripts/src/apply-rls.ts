@@ -62,6 +62,8 @@ const SCOPED_TABLES = [
   "outbound_messages",
   "dealer_policy",
   "showrooms",
+  "stock_moves",
+  "chassis_events",
   "legal_entities",
   "gst_registrations",
   "owners",

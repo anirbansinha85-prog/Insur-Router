@@ -12,6 +12,7 @@ import {
 import { logger } from "../../logger";
 import { accountsByCode, ensureChart } from "./accounts";
 import { ensureParty, openBill } from "./parties";
+import { recordChassisEvent } from "./moves";
 import { placementOf } from "../org";
 
 /**
@@ -468,6 +469,21 @@ export async function postSaleDocument(input: {
       sourceKind: "SALE_DOCUMENT",
       sourceId: doc.id,
     });
+
+    if (doc.chassisNo) {
+      await recordChassisEvent({
+        ownerId: input.ownerId,
+        chassisNo: doc.chassisNo,
+        showroomId: doc.showroomId,
+        kind: "SOLD",
+        eventDate: doc.documentDate,
+        sourceKind: "SALE_DOCUMENT",
+        sourceId: doc.id,
+        sourceRef: doc.taxInvoiceNo ?? doc.reference,
+        value: costRelieved || null,
+        narration: `Sold to ${doc.customerName ?? "a customer"}`,
+      });
+    }
 
     logger.info(
       { ownerId: input.ownerId, documentId: doc.id, voucherNo, warnings: warnings.length },

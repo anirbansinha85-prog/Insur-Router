@@ -852,6 +852,75 @@ create policy gst_registrations_worker on public.gst_registrations
   for select to ddms_worker using (true);
 
 /*
+ * Stock that moves without being sold (OBJ-39).
+ *
+ * A challan is visible to **both** ends of the movement, not only the branch
+ * that raised it. A satellite that could not see what was being sent to it
+ * could not confirm it arrived, and an unconfirmed arrival is the one thing the
+ * in-transit report exists to surface.
+ *
+ * Gated on `VEHICLE_STOCK` rather than `DEAL`: this is where the machines are,
+ * not what they sold for, and the person who counts the floor is not the person
+ * who sees a customer's discount.
+ */
+drop policy if exists stock_moves_own on public.stock_moves;
+create policy stock_moves_own on public.stock_moves
+  for all to ddms_app
+  using (
+    (from_showroom_id in (select app.owned_showroom_ids())
+     or to_showroom_id in (select app.owned_showroom_ids()))
+    and app.can_read('VEHICLE_STOCK')
+  )
+  with check (
+    from_showroom_id in (select app.visible_showroom_ids())
+    and app.can_read('VEHICLE_STOCK')
+  );
+
+drop policy if exists stock_moves_worker on public.stock_moves;
+create policy stock_moves_worker on public.stock_moves
+  for select to ddms_worker using (true);
+
+drop policy if exists stock_move_lines_own on public.stock_move_lines;
+create policy stock_move_lines_own on public.stock_move_lines
+  for all to ddms_app
+  using (
+    stock_move_id in (
+      select id from public.stock_moves
+      where from_showroom_id in (select app.owned_showroom_ids())
+         or to_showroom_id in (select app.owned_showroom_ids())
+    )
+    and app.can_read('VEHICLE_STOCK')
+  )
+  with check (
+    stock_move_id in (
+      select id from public.stock_moves
+      where from_showroom_id in (select app.visible_showroom_ids())
+    )
+    and app.can_read('VEHICLE_STOCK')
+  );
+
+drop policy if exists stock_move_lines_worker on public.stock_move_lines;
+create policy stock_move_lines_worker on public.stock_move_lines
+  for select to ddms_worker using (true);
+
+/*
+ * The chassis register is scoped by owner rather than by branch, deliberately.
+ *
+ * The whole value of a register is that it reads as one machine's history, and
+ * a history that stopped at the branch you happen to work at would be a history
+ * with holes in exactly the places somebody is asking about - the transfer.
+ */
+drop policy if exists chassis_events_own on public.chassis_events;
+create policy chassis_events_own on public.chassis_events
+  for all to ddms_app
+  using (owner_id = app.current_owner_id() and app.can_read('VEHICLE_STOCK'))
+  with check (owner_id = app.current_owner_id() and app.can_read('VEHICLE_STOCK'));
+
+drop policy if exists chassis_events_worker on public.chassis_events;
+create policy chassis_events_worker on public.chassis_events
+  for select to ddms_worker using (true);
+
+/*
  * Parties, bills and purchases (OBJ-38).
  *
  * A party is a customer or a supplier, so reading one is gated on `DEAL` for
@@ -1348,6 +1417,9 @@ grant select, insert, update on public.ingest_batches to ddms_app;
 -- migration or a named act, never a screen (OBJ-37).
 grant select on public.legal_entities to ddms_app;
 grant select on public.gst_registrations to ddms_app;
+grant select, insert, update on public.stock_moves to ddms_app;
+grant select, insert, update on public.stock_move_lines to ddms_app;
+grant select, insert on public.chassis_events to ddms_app;
 grant select, insert, update on public.parties to ddms_app;
 grant select, insert, update on public.party_bills to ddms_app;
 grant select, insert, update on public.purchase_invoices to ddms_app;
@@ -1491,6 +1563,9 @@ grant select on public.legal_entities to ddms_worker;
 grant select on public.gst_registrations to ddms_worker;
 -- Select only, all four. A reconciliation pass reads what is owed; an
 -- unattended process that could open a bill could create a debt nobody agreed to.
+grant select on public.stock_moves to ddms_worker;
+grant select on public.stock_move_lines to ddms_worker;
+grant select on public.chassis_events to ddms_worker;
 grant select on public.parties to ddms_worker;
 grant select on public.party_bills to ddms_worker;
 grant select on public.purchase_invoices to ddms_worker;

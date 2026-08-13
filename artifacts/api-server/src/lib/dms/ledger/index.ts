@@ -6,3 +6,5 @@ export * from "./returns";
 export * from "./parties";
 export * from "./purchase";
 export * from "./opening";
+// Delivery challans, the chassis register and what is in transit (OBJ-39).
+export * from "./moves";

@@ -50,6 +50,7 @@ import {
 import { logger } from "../../logger";
 import { accountsByCode, ensureChart } from "./accounts";
 import { openBill } from "./parties";
+import { recordChassisEvent } from "./moves";
 import { financialYearOf, nextVoucherNo, type Line, type PostResult } from "./post";
 import { placementOf } from "../org";
 
@@ -413,6 +414,22 @@ export async function postPurchaseInvoice(input: {
         )
         .returning({ id: dmsVehicleStockTable.id });
       placed += res.length;
+
+      // The register, which is written rather than derived: an auditor tracing
+      // one machine wants received -> transferred -> sold on one page, and a
+      // register assembled at read time would answer differently next March.
+      await recordChassisEvent({
+        ownerId: input.ownerId,
+        chassisNo: l.chassisNo,
+        showroomId: inv.showroomId,
+        kind: "PURCHASED",
+        eventDate: inv.invoiceDate,
+        sourceKind: "PURCHASE_INVOICE",
+        sourceId: inv.id,
+        sourceRef: inv.supplierInvoiceNo,
+        value: n(l.unitCost),
+        narration: `${l.modelDescription} received`,
+      });
     }
     if (lineRows.some((l) => l.chassisNo) && placed === 0) {
       warnings.push(
