@@ -17,6 +17,7 @@
     "moves": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-moves.ts",
     "money": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-money.ts",
     "books": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-books.ts",
+    "service": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-service.ts",
     "export-reports": "tsx --env-file-if-exists=../.env ./src/export-reports.ts",
     "rls": "tsx --env-file-if-exists=../.env ./src/apply-rls.ts",
     "probe": "tsx --env-file-if-exists=../.env ./src/rls-probe.ts",

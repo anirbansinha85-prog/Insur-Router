@@ -116,6 +116,22 @@ export const CHART: SeedAccount[] = [
     tallyName: "Purchase Accounts",
     group: "EXPENSE",
   },
+  /*
+   * Parts have their own cost head, and it is not fussiness (OBJ-42).
+   *
+   * A workshop's margin on parts and a showroom's margin on machines are two
+   * different businesses inside one dealership, and they behave differently:
+   * parts margin is steady and small, vehicle margin is thin and volume-driven.
+   * Posting both to one head produces a gross-profit figure that is the average
+   * of two numbers a dealer needs to see separately, and it is the figure he
+   * would use to decide which side of the business to invest in.
+   */
+  {
+    code: "5110",
+    name: "Cost of Goods Sold — Spare Parts",
+    tallyName: "Purchase Accounts",
+    group: "EXPENSE",
+  },
   { code: "5200", name: "Discount Allowed", tallyName: "Indirect Expenses", group: "EXPENSE" },
 ];
 

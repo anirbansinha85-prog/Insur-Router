@@ -852,6 +852,46 @@ create policy gst_registrations_worker on public.gst_registrations
   for select to ddms_worker using (true);
 
 /*
+ * What the workshop bills (OBJ-42).
+ *
+ * Gated on `JOB_CARD` rather than `DEAL`, and that is the interesting part: a
+ * service advisor works job cards all day and has no business seeing what a
+ * customer paid for a motorcycle. The two modules were kept apart in OBJ-8 for
+ * exactly this reason and billing does not merge them.
+ */
+drop policy if exists service_invoices_own on public.service_invoices;
+create policy service_invoices_own on public.service_invoices
+  for all to ddms_app
+  using (showroom_id in (select app.owned_showroom_ids()) and app.can_read('JOB_CARD'))
+  with check (showroom_id in (select app.visible_showroom_ids()) and app.can_read('JOB_CARD'));
+
+drop policy if exists service_invoices_worker on public.service_invoices;
+create policy service_invoices_worker on public.service_invoices
+  for select to ddms_worker using (true);
+
+drop policy if exists service_invoice_lines_own on public.service_invoice_lines;
+create policy service_invoice_lines_own on public.service_invoice_lines
+  for all to ddms_app
+  using (
+    service_invoice_id in (
+      select id from public.service_invoices
+      where showroom_id in (select app.owned_showroom_ids())
+    )
+    and app.can_read('JOB_CARD')
+  )
+  with check (
+    service_invoice_id in (
+      select id from public.service_invoices
+      where showroom_id in (select app.visible_showroom_ids())
+    )
+    and app.can_read('JOB_CARD')
+  );
+
+drop policy if exists service_invoice_lines_worker on public.service_invoice_lines;
+create policy service_invoice_lines_worker on public.service_invoice_lines
+  for select to ddms_worker using (true);
+
+/*
  * Money, allocation and the day close (OBJ-40).
  *
  * Gated on `DEAL`, like the bills they settle. What a customer has paid and
@@ -1461,6 +1501,8 @@ grant select, insert, update on public.ingest_batches to ddms_app;
 -- migration or a named act, never a screen (OBJ-37).
 grant select on public.legal_entities to ddms_app;
 grant select on public.gst_registrations to ddms_app;
+grant select, insert, update on public.service_invoices to ddms_app;
+grant select, insert on public.service_invoice_lines to ddms_app;
 grant select, insert, update on public.money_documents to ddms_app;
 -- Insert only on allocations: an allocation that could be edited is a record of
 -- a decision that quietly became a different decision. Undoing one posts its
@@ -1613,6 +1655,8 @@ grant select on public.legal_entities to ddms_worker;
 grant select on public.gst_registrations to ddms_worker;
 -- Select only, all four. A reconciliation pass reads what is owed; an
 -- unattended process that could open a bill could create a debt nobody agreed to.
+grant select on public.service_invoices to ddms_worker;
+grant select on public.service_invoice_lines to ddms_worker;
 grant select on public.money_documents to ddms_worker;
 grant select on public.bill_allocations to ddms_worker;
 grant select on public.day_closes to ddms_worker;
