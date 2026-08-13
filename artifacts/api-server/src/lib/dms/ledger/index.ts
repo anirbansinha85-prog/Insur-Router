@@ -10,3 +10,5 @@ export * from "./opening";
 export * from "./moves";
 // Money in, money out, and where it was meant to go (OBJ-40).
 export * from "./money";
+// The books a chartered accountant opens (OBJ-41, R-120).
+export * from "./books";
