@@ -3722,13 +3722,13 @@ consent as the thing that authorises.
 
 | # | Requirement | Status |
 |---|---|---|
-| R-109 | **A ledger records every money event, not one.** Every account must have something that moves it back, or the balance is a running total rather than a position. The four events in a dealership's life are the vehicle arriving, the sale, the customer paying and the dealership paying onward — and a ledger holding one of them balances per voucher while being unfilable in aggregate | ○ |
-| R-110 | **A party is a ledger, not a column.** A statement of account, a bill-wise allocation and an ageing report are all impossible without it, and an import that lands every customer in one lump creates a parallel chart inside somebody else's books | ○ |
-| R-111 | **Money is allocated to a bill, or it is on account and says so.** An unallocated receipt is not an error and must not be silently spread across the oldest invoices — that is a guess about which debt a customer intended to settle, and it is theirs to make | ○ |
-| R-112 | **A filed period is closed, and the refusal is at the database.** A voucher dated into a month whose return has been lodged makes the filed return disagree with the books. Reopening is a named act with a reason and should be rare enough to notice | ○ |
-| R-113 | **The audit trail cannot be switched off, and it is a screen rather than an argument.** India requires it of companies from FY 2023-24. DDMS is already stronger than the rule — there is no edit path, only reversal — and *stronger* is not *demonstrable* | ○ |
-| R-114 | **A reconciliation names the row, not the difference.** A variance figure sends somebody to a spreadsheet; a list of documents is a morning's work. Every one of the five must produce the second | ○ |
-| R-115 | **The book of record is earned by reconciling, not claimed.** N months inside tolerance against what the dealership already keeps, then the product asks. R-98's graduation with a number against it, and the dealership's consent is what authorises | ○ |
+| R-109 | **A ledger records every money event, not one.** Every account must have something that moves it back, or the balance is a running total rather than a position. The four events in a dealership's life are the vehicle arriving, the sale, the customer paying and the dealership paying onward — and a ledger holding one of them balances per voucher while being unfilable in aggregate | ✅ |
+| R-110 | **A party is a ledger, not a column.** A statement of account, a bill-wise allocation and an ageing report are all impossible without it, and an import that lands every customer in one lump creates a parallel chart inside somebody else's books | ✅ |
+| R-111 | **Money is allocated to a bill, or it is on account and says so.** An unallocated receipt is not an error and must not be silently spread across the oldest invoices — that is a guess about which debt a customer intended to settle, and it is theirs to make | ✅ |
+| R-112 | **A filed period is closed, and the refusal is at the database.** A voucher dated into a month whose return has been lodged makes the filed return disagree with the books. Reopening is a named act with a reason and should be rare enough to notice | ✅ |
+| R-113 | **The audit trail cannot be switched off, and it is a screen rather than an argument.** India requires it of companies from FY 2023-24. DDMS is already stronger than the rule — there is no edit path, only reversal — and *stronger* is not *demonstrable* | ✅ |
+| R-114 | **A reconciliation names the row, not the difference.** A variance figure sends somebody to a spreadsheet; a list of documents is a morning's work. Every one of the five must produce the second | ✅ |
+| R-115 | **The book of record is earned by reconciling, not claimed.** N months inside tolerance against what the dealership already keeps, then the product asks. R-98's graduation with a number against it, and the dealership's consent is what authorises | ✅ |
 
 ### Three forks, and they change the build
 
@@ -3963,18 +3963,18 @@ generator in the codebase is built around one chassis and one ex-showroom
 figure. It is now OBJ-42, sitting *after* the trial balance so the vehicle path
 is proved complete before a second document type joins it.
 
-| # | Objective | Depends on | The claim it has to prove |
-|---|---|---|---|
-| 36 | **The tax basis** — the September 2025 rates, engine capacity as the field they default from, and ex-showroom as the price **including** tax | 31 | a bike quoted at ₹84,000 invoices at ₹84,000, and a Classic 350 is taxed at 18% |
-| 37 | **The hierarchy and the setup** — entity, registration, branch role, the closed setting list, the migration off `showrooms.gstin` | 31 | one code path serves a one-branch sub-dealer, a five-branch hub-and-spoke and a two-company group, with **no branch in the code** |
-| 38 | **Parties and purchases** — party ledgers, purchase vouchers, opening balances per entity | 37 | a purchase and a sale of one chassis leave Vehicle Stock at zero |
-| 39 | **Stock that moves without being sold** — delivery challan, chassis register, e-way bill | 38 | **the structure decides the tax**: same registration is no supply, different registration is a taxable one, and nothing asks a person |
-| 40 | **Money** — receipts, payments, bill-wise allocation, advances, the day close | 38 | a customer who paid in three parts has a zero balance and no unallocated credit |
-| 41 | **The books a CA opens** — day book, ledgers, trial balance, P&L, balance sheet | 40 | **the trial balance balances**, which is the proof 38 to 40 landed |
-| 42 | **Service invoicing** — labour under a SAC, parts under an HSN, both on one job card, and an advance that carries tax | 41, 36 | a job card bills labour and parts as one document, and the trial balance still balances |
-| 43 | **Audit-ready** — period lock, audit register, gapless proof, two-way trace | 41 | an auditor's three questions answered on a screen, not in an argument about grants |
-| 44 | **The returns** — GSTR-1 per registration, GSTR-3B, TCS, e-invoicing on the B2B path | 43 | the return equals the books, tax head by tax head |
-| 45 | **The reconciliations** — ten, plus the graduation gate | 44 | every one names rows rather than a difference |
+| # | Objective | Depends on | The claim it has to prove | |
+|---|---|---|---|---|
+| 36 | **The tax basis** — the September 2025 rates, engine capacity as the field they default from, and ex-showroom as the price **including** tax | 31 | a bike quoted at ₹84,000 invoices at ₹84,000, and a Classic 350 is taxed at 18% | ✅ |
+| 37 | **The hierarchy and the setup** — entity, registration, branch role, the closed setting list, the migration off `showrooms.gstin` | 31 | one code path serves a one-branch sub-dealer, a five-branch hub-and-spoke and a two-company group, with **no branch in the code** | ✅ |
+| 38 | **Parties and purchases** — party ledgers, purchase vouchers, opening balances per entity | 37 | a purchase and a sale of one chassis leave Vehicle Stock at zero | ✅ |
+| 39 | **Stock that moves without being sold** — delivery challan, chassis register, e-way bill | 38 | **the structure decides the tax**: same registration is no supply, different registration is a taxable one, and nothing asks a person | ✅ |
+| 40 | **Money** — receipts, payments, bill-wise allocation, advances, the day close | 38 | a customer who paid in three parts has a zero balance and no unallocated credit | ✅ |
+| 41 | **The books a CA opens** — day book, ledgers, trial balance, P&L, balance sheet | 40 | **the trial balance balances**, which is the proof 38 to 40 landed | ✅ |
+| 42 | **Service invoicing** — labour under a SAC, parts under an HSN, both on one job card, and an advance that carries tax | 41, 36 | a job card bills labour and parts as one document, and the trial balance still balances | ✅ |
+| 43 | **Audit-ready** — period lock, audit register, gapless proof, two-way trace | 41 | an auditor's three questions answered on a screen, not in an argument about grants | ✅ |
+| 44 | **The returns** — GSTR-1 per registration, GSTR-3B, TCS, e-invoicing on the B2B path | 43 | the return equals the books, tax head by tax head | ✅ |
+| 45 | **The reconciliations** — ten, plus the graduation gate | 44 | every one names rows rather than a difference | ✅ |
 
 **OBJ-41 sits where it does deliberately.** A trial balance is the cheapest
 possible proof that the double entry is complete, and finding a hole with three
@@ -4122,18 +4122,18 @@ authorises.
 
 | # | Requirement | Status |
 |---|---|---|
-| R-109 | **A ledger records every money event, not one.** Every account must have something that moves it back. A ledger holding only the sale balances per voucher and is unfilable in aggregate | ○ |
-| R-110 | **A party is a ledger, not a column.** A statement, a bill-wise allocation and an ageing report are all impossible without it | ○ |
-| R-111 | **Money is allocated to a bill, or it is on account and says so.** Spreading an unallocated receipt across the oldest invoices is a guess about which debt the customer meant to settle, and it is theirs to make | ○ |
-| R-112 | **A filed period is closed, and the refusal is at the database.** Reopening is a named act with a reason | ○ |
-| R-113 | **The audit trail cannot be switched off, and it is a screen rather than an argument.** DDMS is already stronger than the rule — no edit path, only reversal — and *stronger* is not *demonstrable* | ○ |
-| R-114 | **A reconciliation names the row, not the difference.** A variance figure is an afternoon in a spreadsheet; a list of documents is a morning's work | ○ |
-| R-115 | **The book of record is earned by reconciling, not claimed.** N months inside tolerance, then the product asks | ○ |
-| R-116 | **The owner is the legal entity; a branch is a cost centre.** One PAN, one set of books, one GST registration per state, and every voucher carrying its branch. A group holding two companies is two owners, and that is already how tenancy works | ○ |
-| R-117 | **Moving stock between branches is not a supply.** Same legal person, same GSTIN: a delivery challan and a stock-register movement, no tax invoice, no GST, and no accounting entry — but a document, a number and an e-way bill | ○ |
-| R-118 | **What is statutory is not ours to soften.** E-invoicing above ₹5 crore on the B2B path, TCS at 1% above ₹10 lakh collected on receipt, no GST on an advance for goods, and an invoice series unique per GSTIN per year. Each is a rule about the world, and a product that gets one wrong is a product that produces invalid documents | ○ |
-| R-119 | **The shape of a dealership is data, not a code path.** One accounting engine; the hierarchy is four foreign keys and the variability is a closed setting list. Two engines for two shapes would drift within a month, and reconciliation would be the first casualty — we would stop comparing the books against reality and start comparing two of our own systems with no way to say which was right | ○ |
-| R-120 | **A report states the level it was drawn at.** Trial balance and balance sheet per entity, returns per registration, day close and branch P&L per branch. A figure whose scope is ambiguous is a figure somebody will eventually add to another one | ○ |
+| R-109 | **A ledger records every money event, not one.** Every account must have something that moves it back. A ledger holding only the sale balances per voucher and is unfilable in aggregate | ✅ |
+| R-110 | **A party is a ledger, not a column.** A statement, a bill-wise allocation and an ageing report are all impossible without it | ✅ |
+| R-111 | **Money is allocated to a bill, or it is on account and says so.** Spreading an unallocated receipt across the oldest invoices is a guess about which debt the customer meant to settle, and it is theirs to make | ✅ |
+| R-112 | **A filed period is closed, and the refusal is at the database.** Reopening is a named act with a reason | ✅ |
+| R-113 | **The audit trail cannot be switched off, and it is a screen rather than an argument.** DDMS is already stronger than the rule — no edit path, only reversal — and *stronger* is not *demonstrable* | ✅ |
+| R-114 | **A reconciliation names the row, not the difference.** A variance figure is an afternoon in a spreadsheet; a list of documents is a morning's work | ✅ |
+| R-115 | **The book of record is earned by reconciling, not claimed.** N months inside tolerance, then the product asks | ✅ |
+| R-116 | **The owner is the legal entity; a branch is a cost centre.** One PAN, one set of books, one GST registration per state, and every voucher carrying its branch. A group holding two companies is two owners, and that is already how tenancy works | ✅ |
+| R-117 | **Moving stock between branches is not a supply.** Same legal person, same GSTIN: a delivery challan and a stock-register movement, no tax invoice, no GST, and no accounting entry — but a document, a number and an e-way bill | ✅ |
+| R-118 | **What is statutory is not ours to soften.** E-invoicing above ₹5 crore on the B2B path, TCS at 1% above ₹10 lakh collected on receipt, no GST on an advance for goods, and an invoice series unique per GSTIN per year. Each is a rule about the world, and a product that gets one wrong is a product that produces invalid documents | ✅ |
+| R-119 | **The shape of a dealership is data, not a code path.** One accounting engine; the hierarchy is four foreign keys and the variability is a closed setting list. Two engines for two shapes would drift within a month, and reconciliation would be the first casualty — we would stop comparing the books against reality and start comparing two of our own systems with no way to say which was right | ✅ |
+| R-120 | **A report states the level it was drawn at.** Trial balance and balance sheet per entity, returns per registration, day close and branch P&L per branch. A figure whose scope is ambiguous is a figure somebody will eventually add to another one | ✅ |
 | R-121 | **A tax rate is a fact about the world, and the product holds the current one.** The slabs moved on 22 September 2025 and the code did not: two-wheelers are 18% up to 350cc and 40% above it, cess on them is gone, parts and labour are 18%. **The boundary is inclusive** — *exceeding 350cc* means exceeding, so a Classic 350 sits in the lower band, and a classifier that reads model names rather than capacity gets it wrong. The rate cannot be inferred from HSN either, since `8711 30` spans it. So it belongs on the price-list item, and the default comes from a **capacity field**, which is a column the product did not have | ✅ |
 | R-122 | **Ex-showroom is the price including tax, and tax is the residual.** The taxable value is back-calculated from what the customer agreed to pay; the tax is the difference and the CGST/SGST split takes the difference again. Computing either independently produces an invoice whose columns do not add to its own total, which is what a customer queries and an auditor circles | ✅ |
 | R-123 | **Labour and parts are different classifications even when the rate is the same.** Labour carries a SAC and parts an HSN. They sit at 18% together today, they did not before September 2025, and a product that collapsed them because the numbers happened to match would have to be unpicked the next time they diverge | ✅ |
@@ -4225,3 +4225,89 @@ exclusive basis on twelve.
 
 R-121, R-122 and R-123 close. **OBJ-37, the hierarchy and the setup, is next and
 nothing blocks it.**
+
+---
+
+## 3i. Built 13 August — OBJ-37 to OBJ-45, the Finance module
+
+Ten objectives in one sitting, and the register is now closed: **every
+requirement from R-1 to R-123 is done.** What follows is what the building
+taught that the planning did not.
+
+### The defect the module existed for, closed in OBJ-38
+
+R-109 was the live one. The ledger knew **one** of the four money events: every
+sale credited `1200` Vehicle Stock and nothing debited it, every sale debited
+`1100` Sundry Debtors and nothing credited it. A month of trading left a large
+negative asset with every individual voucher balancing — a ledger that balances
+per voucher and is unfilable in aggregate, which is the worst possible failure
+because every entry passes its own check.
+
+OBJ-41's trial balance is the proof it closed:
+
+| | |
+|---|---|
+| Vehicle Stock | **zero** — bought and sold |
+| Sundry Debtors | **zero** — because he paid |
+| Revenue on a ₹92,400 invoice | **₹71,186.44** — the tax and the road tax are somebody else's money |
+
+### Nine bugs the verifiers caught, and what each one was really about
+
+Every one of these was mine, and every one was found by a check written to fail
+rather than to pass.
+
+| Where | What | The lesson under it |
+|---|---|---|
+| OBJ-38 | pass-through lines inherited the customer's `party_id`, so an ₹8,400 road-tax credit landed on his account | the trial balance was correct throughout and his statement was wrong — which is exactly what a subsidiary ledger exists to surface |
+| OBJ-40 | `unallocated` was pre-deducted and then the allocation loop found nothing left, refusing every allocation it had just been handed | the only sign was a warning nobody was asserting on; the check now fails on any warning |
+| OBJ-40 | the returned document was the pre-allocation snapshot | a returned row that disagrees with the database is a trap for every caller |
+| OBJ-40 | §1 opened a bill with no sale behind it | half an entry: three credits and no debit, a statement that could never close at zero |
+| OBJ-42 | parts cost landed in *Cost of Goods Sold — Vehicles* | it averages a workshop's steady margin with a showroom's thin one into a figure a dealer would invest on |
+| OBJ-43 | the lock's unique index would have made a reopened month impossible to close again | exactly backwards: closing it again *is* the correction |
+| OBJ-43 | `drizzle-kit push` will not rewrite an index that already exists under the same name | the predicate never landed and the constraint stayed silently wider than the schema file said |
+| OBJ-44 | the set-off check assumed surplus credit | a guess about the fixture rather than about the rule — the rule is better proved by credit *running out*, which shows the order |
+| OBJ-45 | a pure free-service job card produced no voucher lines at all and the insert failed | the commonest job card in a two-wheeler workshop |
+
+### Three places where the honest answer was to admit a limit
+
+**Two of the ten reconciliations cannot run.** Nothing imports a bank statement
+and nothing imports GSTR-2B. `ran` and `clean` are separate fields precisely so
+those two report *not run* rather than *clean* — a tick beside a control nobody
+has performed is worse than the gap, because a dealership stops looking.
+
+**One constraint could not be a constraint.** *One machine on one open challan*
+needs the parent's status, and Postgres will not take a subquery in an index
+predicate. It is a checked refusal with the schema saying so, rather than a
+denormalised status quietly going stale.
+
+**The graduation scorecard compares against nothing, not against zero.** Nothing
+imports the dealership's existing system yet. Zero would read as a hundred per
+cent variance and report every month as failed, and a dealership would conclude
+the product disagrees with its own books when in fact nobody has typed theirs
+in.
+
+### What the structure bought
+
+The claim in OBJ-37 was that one code path serves four shapes. It held, and the
+place it paid off was OBJ-39: `transferIsSupply` decides from two placements and
+nothing asks a person, so **one company's branches in two states is a taxable
+supply** and hub-to-satellite is not — the case a reader gets wrong, decided by
+four foreign keys rather than by a checkbox somebody ticks in a hurry.
+
+### Where the product now stands
+
+| | |
+|---|---|
+| Objectives | **45 of 45** |
+| Requirements | **123 of 123** |
+| Verifiers | **21**, all green |
+| Money events | all four — purchase, sale, receipt, payment |
+| Documents | sale, purchase, challan, service, receipt, payment, day close, opening |
+| Returns | GSTR-1, GSTR-3B, TCS, e-invoicing readiness |
+| Reconciliations | 8 that run, 2 that say why they cannot |
+
+**Not built, and named rather than left to be discovered:** a bank statement
+import, a GSTR-2B import, the financier's sanction list, a customer PAN for the
+TCS statement, and the actual IRP call that returns an IRN. Each of those is a
+second source this product does not have, and each is why the control that needs
+it says so on its face.
