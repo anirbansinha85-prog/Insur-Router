@@ -7,6 +7,14 @@ AD-0417-07,Farida Sheikh,SERVICE_ADVISOR,15/03/2025,30/06/2026,N,,
 AD-0417-09,Harish Rawal,SERVICE_ADVISOR,08/08/2023,,Y,9810044209,harish.rawal@saraswatiauto.example
 AD-0417-12,Nusrat Jahan,SERVICE_ADVISOR,27/05/2025,,Y,9810044212,nusrat.jahan@saraswatiauto.example
 MG-0417-01,Anand Saraswat,MANAGER,01/04/2018,,Y,9810044201,anand.saraswat@saraswatiauto.example
+NET-BW-01,Arjun Mehra,SALES_EXEC,15/08/2026,,Y,9810450005,
+NET-BW-02,Ritika Sood,RTO_AGENT,15/08/2026,,Y,9810450006,
+NET-DWK-01,Simran Kaur,SALES_EXEC,15/08/2026,,Y,9810450003,
+NET-DWK-02,Naveen Yadav,RTO_AGENT,15/08/2026,,Y,9810450004,
+NET-JNK-01,Rohit Bhatia,SALES_EXEC,15/08/2026,,Y,9810450001,
+NET-JNK-02,Farida Qureshi,RTO_AGENT,15/08/2026,,Y,9810450002,
+NET-OKH-01,Salim Ansari,SERVICE_ADVISOR,15/08/2026,,Y,9810450007,
+NET-OKH-02,Devender Singh,TECHNICIAN,15/08/2026,,Y,9810450008,
 RT-0417-02,Jaswinder Sethi,RTO_AGENT,03/03/2019,,Y,9810044202,jaswinder.sethi@saraswatiauto.example
 SA-0417-19,Vikram Chandel,SALES_EXEC,11/04/2022,,Y,9810044219,vikram.chandel@saraswatiauto.example
 SA-0417-21,Imtiaz Khan,SALES_EXEC,19/08/2023,28/02/2026,N,,
@@ -22,4 +30,4 @@ TE-0417-16,Aslam Qureshi,TECHNICIAN,12/11/2024,15/05/2026,N,,
 TE-0417-18,Mukesh Tomar,TECHNICIAN,14/02/2022,,Y,9810044218,mukesh.tomar@saraswatiauto.example
 TE-0417-21,Irfan Sheikh,TECHNICIAN,09/10/2023,,Y,9810044221,irfan.sheikh@saraswatiauto.example
 TE-0417-23,Sandeep Panwar,TECHNICIAN,05/06/2025,,Y,9810044223x,sandeep.panwar@saraswatiauto.example
-Total,21 employees,,,,,,
+Total,29 employees,,,,,,

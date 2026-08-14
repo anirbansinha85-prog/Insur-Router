@@ -1,0 +1,67 @@
+"Reconciliations — Saraswati Automobiles Pvt Ltd · 2026-11 — 4 clean of 9 that ran, out of 10. **A reconciliation that could not run is not clean**, and reporting it as clean would be a tick beside a control nobody performed"
+
+#,Control,Compares,Ran?,Clean?,Reference,Detail,Amount
+1,Inter-branch,what left a branch against what arrived at another,yes,yes,,,
+2,Stock,the chassis register against the dealer's own stock,yes,no,MBLHAR0748NK65027,"register says branch nowhere, the dealer's system says branch 1",
+2,Stock,the chassis register against the dealer's own stock,yes,no,MBLHAR0748NK65026,"register says branch nowhere, the dealer's system says branch 1",
+2,Stock,the chassis register against the dealer's own stock,yes,no,MBLHAR0748NK52204,"register says branch nowhere, the dealer's system says branch 1",
+2,Stock,the chassis register against the dealer's own stock,yes,no,NET-CH-0001,"register says branch nowhere, the dealer's system says branch 9",
+2,Stock,the chassis register against the dealer's own stock,yes,no,NET-CH-0002,"register says branch nowhere, the dealer's system says branch 9",
+2,Stock,the chassis register against the dealer's own stock,yes,no,NET-CH-0003,"register says branch nowhere, the dealer's system says branch 9",
+2,Stock,the chassis register against the dealer's own stock,yes,no,NET-CH-0004,"register says branch nowhere, the dealer's system says branch 101",
+2,Stock,the chassis register against the dealer's own stock,yes,no,NET-CH-0005,"register says branch nowhere, the dealer's system says branch 101",
+2,Stock,the chassis register against the dealer's own stock,yes,no,NET-CH-0009,"register says branch nowhere, the dealer's system says branch 9",
+2,Stock,the chassis register against the dealer's own stock,yes,no,NET-CH-0010,"register says branch nowhere, the dealer's system says branch 9",
+2,Stock,the chassis register against the dealer's own stock,yes,no,NET-CH-0011,"register says branch nowhere, the dealer's system says branch 101",
+2,Stock,the chassis register against the dealer's own stock,yes,no,NET-CH-0015,"register says branch nowhere, the dealer's system says branch 9",
+2,Stock,the chassis register against the dealer's own stock,yes,no,NET-CH-0017,"register says branch nowhere, the dealer's system says branch 101",
+2,Stock,the chassis register against the dealer's own stock,yes,no,NET-CH-0022,"register says branch nowhere, the dealer's system says branch 1",
+2,Stock,the chassis register against the dealer's own stock,yes,no,NET-CH-0025,"register says branch nowhere, the dealer's system says branch 9",
+2,Stock,the chassis register against the dealer's own stock,yes,no,NET-CH-0026,"register says branch nowhere, the dealer's system says branch 101",
+2,Stock,the chassis register against the dealer's own stock,yes,no,NET-CH-0029,"register says branch nowhere, the dealer's system says branch 9",
+2,Stock,the chassis register against the dealer's own stock,yes,no,NET-CH-0030,"register says branch nowhere, the dealer's system says branch 101",
+2,Stock,the chassis register against the dealer's own stock,yes,no,NET-CH-0032,"register says branch nowhere, the dealer's system says branch 102",
+2,Stock,the chassis register against the dealer's own stock,yes,no,NET-CH-0033,"register says branch nowhere, the dealer's system says branch 102",
+2,Stock,the chassis register against the dealer's own stock,yes,no,NET-CH-0040,"register says branch nowhere, the dealer's system says branch 102",
+2,Stock,the chassis register against the dealer's own stock,yes,no,NET-CH-0041,"register says branch nowhere, the dealer's system says branch 1",
+2,Stock,the chassis register against the dealer's own stock,yes,no,NET-CH-0043,"register says branch nowhere, the dealer's system says branch 102",
+2,Stock,the chassis register against the dealer's own stock,yes,no,NET-CH-0044,"register says branch nowhere, the dealer's system says branch 1",
+3,Debtors,"each customer's ledger against Sundry Debtors, and against the dealer's own receivables",yes,yes,,"The dealer's own system is chasing 33 customer(s) for ₹24,64,598. Compare that against the ₹22,24,452.4 our books show outstanding — while the books are young these will differ, and the gap is the graduation scorecard's subject.",
+4,Day close,cash counted at each branch against cash the books expected,yes,no,2026-11-30 · branch 101,excess — miscount: Counted twice; the difference stands.,₹ 200.00
+5,Bank,the bank statement against the bank book,NO,no,,"**This reconciliation has not been performed.** Nothing imports a bank statement, so there is no second side. 6 non-cash movement(s) this month are what a statement would be matched against, and 0 of them carry no reference, which is what makes matching hard. Reporting this as clean would be a tick beside a control nobody has run.",
+6,Financier,disbursements expected against disbursements received,yes,no,SC-2627-00003,"2026-08-13 — Ledger Test Customer, still unpaid; if a financier agreed to this one, chase them","₹ 1,01,750.00"
+6,Financier,disbursements expected against disbursements received,yes,no,SC-2627-00003,"2026-08-13 — Ledger Test Customer, still unpaid; if a financier agreed to this one, chase them","₹ 1,01,750.00"
+6,Financier,disbursements expected against disbursements received,yes,no,SC-2627-00004,"2026-08-13 — Ledger Test Customer Two, still unpaid; if a financier agreed to this one, chase them","₹ 84,000.00"
+6,Financier,disbursements expected against disbursements received,yes,no,SC-2627-00004,"2026-08-13 — Ledger Test Customer Two, still unpaid; if a financier agreed to this one, chase them","₹ 84,000.00"
+6,Financier,disbursements expected against disbursements received,yes,no,SC-2627-00003,"2026-08-13 — Ledger Test Customer, still unpaid; if a financier agreed to this one, chase them","₹ 1,01,750.00"
+6,Financier,disbursements expected against disbursements received,yes,no,SC-2627-00003,"2026-08-13 — Ledger Test Customer, still unpaid; if a financier agreed to this one, chase them","₹ 1,01,750.00"
+6,Financier,disbursements expected against disbursements received,yes,no,SC-2627-00004,"2026-08-13 — Ledger Test Customer Two, still unpaid; if a financier agreed to this one, chase them","₹ 84,000.00"
+6,Financier,disbursements expected against disbursements received,yes,no,SC-2627-00004,"2026-08-13 — Ledger Test Customer Two, still unpaid; if a financier agreed to this one, chase them","₹ 84,000.00"
+6,Financier,disbursements expected against disbursements received,yes,no,SC-2627-00003,"2026-08-13 — Ledger Test Customer, still unpaid; if a financier agreed to this one, chase them","₹ 1,01,750.00"
+6,Financier,disbursements expected against disbursements received,yes,no,SC-2627-00004,"2026-08-13 — Ledger Test Customer Two, still unpaid; if a financier agreed to this one, chase them","₹ 84,000.00"
+6,Financier,disbursements expected against disbursements received,yes,no,SC-2627-00003,"2026-08-13 — Ledger Test Customer, still unpaid; if a financier agreed to this one, chase them","₹ 1,01,750.00"
+6,Financier,disbursements expected against disbursements received,yes,no,SC-2627-00004,"2026-08-13 — Ledger Test Customer Two, still unpaid; if a financier agreed to this one, chase them","₹ 84,000.00"
+6,Financier,disbursements expected against disbursements received,yes,no,SC-2627-00003,"2026-08-13 — Ledger Test Customer, still unpaid; if a financier agreed to this one, chase them","₹ 1,01,750.00"
+6,Financier,disbursements expected against disbursements received,yes,no,SC-2627-00004,"2026-08-13 — Ledger Test Customer Two, still unpaid; if a financier agreed to this one, chase them","₹ 84,000.00"
+6,Financier,disbursements expected against disbursements received,yes,no,SC-2627-00003,"2026-08-13 — Ledger Test Customer, still unpaid; if a financier agreed to this one, chase them","₹ 1,01,750.00"
+6,Financier,disbursements expected against disbursements received,yes,no,SC-2627-00004,"2026-08-13 — Ledger Test Customer Two, still unpaid; if a financier agreed to this one, chase them","₹ 84,000.00"
+6,Financier,disbursements expected against disbursements received,yes,no,SC-2627-00005,"2026-08-14 — Ledger Test Customer Two, still unpaid; if a financier agreed to this one, chase them","₹ 84,000.00"
+6,Financier,disbursements expected against disbursements received,yes,no,SC-2627-00027,"2026-08-14 — Ledger Test Customer Two, still unpaid; if a financier agreed to this one, chase them","₹ 84,000.00"
+6,Financier,disbursements expected against disbursements received,yes,no,SC-2627-00004,"2026-08-14 — Ledger Test Customer, still unpaid; if a financier agreed to this one, chase them","₹ 1,01,750.00"
+6,Financier,disbursements expected against disbursements received,yes,no,SC-2627-00026,"2026-08-14 — Ledger Test Customer, still unpaid; if a financier agreed to this one, chase them","₹ 1,01,750.00"
+6,Financier,disbursements expected against disbursements received,yes,no,SRV/2026-27/0002,"2026-09-16 — Ramesh Duggal, still unpaid; if a financier agreed to this one, chase them","₹ 2,383.60"
+6,Financier,disbursements expected against disbursements received,yes,no,SC-2627-00006,"2026-09-19 — Kapil Dogra, still unpaid; if a financier agreed to this one, chase them","₹ 19,462.00"
+6,Financier,disbursements expected against disbursements received,yes,no,SRV/2026-27/0004,"2026-10-07 — Jasbir Walia, still unpaid; if a financier agreed to this one, chase them","₹ 2,383.60"
+6,Financier,disbursements expected against disbursements received,yes,no,SC-2627-00014,"2026-10-12 — Mohit Sehgal, still unpaid; if a financier agreed to this one, chase them","₹ 14,886.00"
+6,Financier,disbursements expected against disbursements received,yes,no,SC-2627-00023,"2026-10-14 — Zubair Ahmed, still unpaid; if a financier agreed to this one, chase them","₹ 18,392.00"
+6,Financier,disbursements expected against disbursements received,yes,no,SC-2627-00009,"2026-10-29 — Preeti Sabharwal, still unpaid; if a financier agreed to this one, chase them","₹ 29,488.00"
+6,Financier,disbursements expected against disbursements received,yes,no,SC-2627-00019,"2026-10-31 — Shalini Kapoor, still unpaid; if a financier agreed to this one, chase them","₹ 43,320.00"
+6,Financier,disbursements expected against disbursements received,yes,no,SRV/2026-27/0007,"2026-11-04 — Om Prakash, still unpaid; if a financier agreed to this one, chase them","₹ 2,383.60"
+6,Financier,disbursements expected against disbursements received,yes,no,SRV/2026-27/0008,"2026-11-12 — Anjali Bisht, still unpaid; if a financier agreed to this one, chase them","₹ 2,383.60"
+6,Financier,disbursements expected against disbursements received,yes,no,SC-2627-00011,"2026-11-21 — Ravinder Chadha, still unpaid; if a financier agreed to this one, chase them","₹ 79,430.00"
+6,Financier,disbursements expected against disbursements received,yes,no,SC-2627-00017,"2026-11-26 — Kritika Malhotra, still unpaid; if a financier agreed to this one, chase them","₹ 1,52,440.00"
+7,The manufacturer,what we owe them for stock against what they owe us for warranty and schemes,yes,no,SRV/2026-27/0009,"2026-11-24 — warranty: Warranty repair — clutch assembly (DL 6S JK 5567), claimable and not yet claimed","₹ 1,200.00"
+7,The manufacturer,what we owe them for stock against what they owe us for warranty and schemes,yes,no,SRV/2026-27/0009,"2026-11-24 — warranty: Clutch plate set (DL 6S JK 5567), claimable and not yet claimed","₹ 1,850.00"
+8,GSTR-1 against the books,"what the return reports against what the ledger holds, tax head by tax head",yes,yes,,,
+9,GSTR-3B against GSTR-1,"the summary against the invoice-wise return, and against the tax actually paid",yes,yes,,"₹0 was debited to the output tax heads this month, which is what a payment against the return looks like in the books. Both sides of this check are drawn from the same ledger, so it confirms the arithmetic rather than the sources — the sources diverge only once a return is filed from somewhere other than these books.",
+10,GSTR-2B against purchases,input credit our books claim against input credit the portal shows,yes,no,NET/HMC/2026/1103,2026-11-03 — not yet checked against 2B,"₹ 1,76,382.00"

@@ -1,0 +1,17 @@
+"Balance Sheet — Saraswati Automobiles Pvt Ltd · the company only, never a branch · as at 31/03/2027"
+
+Side,Account,Amount
+Asset,Sundry Debtors,"₹ 3,76,486.80"
+Asset,Vehicle Stock,"₹ 15,93,100.00"
+Asset,Spare Parts Stock,"₹ -12,270.00"
+Asset,Cash,"₹ 4,85,164.00"
+Asset,Bank Accounts,"₹ 20,42,848.00"
+Asset,Input IGST,"₹ 6,93,393.00"
+Liability,Sundry Creditors,"₹ 42,35,193.00"
+Liability,Output CGST,"₹ 2,10,067.04"
+Liability,Output SGST,"₹ 2,10,066.91"
+Liability,Road Tax Payable,"₹ 1,84,800.00"
+Liability,Insurance Premium Payable,"₹ 1,37,280.00"
+Equity,Profit for the period,"₹ 2,01,314.85"
+,TOTAL ASSETS,"₹ 51,78,721.80"
+,TOTAL LIABILITIES & EQUITY,"₹ 51,78,721.80"

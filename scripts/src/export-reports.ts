@@ -55,7 +55,21 @@ import {
   dmsVehicleStockTable,
 } from "@workspace/db";
 
-const OUT = join(process.cwd(), "..", "sample-reports");
+/*
+ * `from-the-dealer`, and the folder name is the whole distinction.
+ *
+ * These files come *in*: they are what a dealership's own system exports and
+ * what DDMS reads. What DDMS produces goes to `from-ddms` and is written by
+ * `export-books`. Two directions in one unlabelled folder is how, in six
+ * months, nobody can say which file proves what.
+ *
+ * Keyed by **dealer code and not by branch**, because that is how the export
+ * actually arrives: Hero knows the dealership, not which shopfront a machine is
+ * standing in. Saraswati's five branches share `HMC-DL-0417`, so they share one
+ * stock register — and a per-branch view of it is a DDMS report rather than a
+ * dealer one.
+ */
+const OUT = join(process.cwd(), "..", "sample-reports", "from-the-dealer");
 
 // ── Their formats ───────────────────────────────────────────────────────────
 

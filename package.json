@@ -11,6 +11,7 @@
     "db:seed-applications": "pnpm --filter @workspace/scripts run seed-applications",
     "db:seed-pricelists": "pnpm --filter @workspace/scripts run seed-pricelists",
     "db:export-reports": "pnpm --filter @workspace/scripts run export-reports",
+    "db:export-books": "pnpm --filter @workspace/scripts run export-books",
     "db:seed-users": "pnpm --filter @workspace/scripts run seed-users",
     "db:migrate-org": "pnpm --filter @workspace/scripts run migrate-org",
     "db:seed-network": "pnpm --filter @workspace/scripts run seed-network",

@@ -24,6 +24,7 @@
     "returns": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-returns.ts",
     "reconcile": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-reconcile.ts",
     "export-reports": "tsx --env-file-if-exists=../.env ./src/export-reports.ts",
+    "export-books": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/export-books.ts",
     "rls": "tsx --env-file-if-exists=../.env ./src/apply-rls.ts",
     "probe": "tsx --env-file-if-exists=../.env ./src/rls-probe.ts",
     "agent": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-agent.ts",

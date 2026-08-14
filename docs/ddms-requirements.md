@@ -4311,3 +4311,104 @@ import, a GSTR-2B import, the financier's sanction list, a customer PAN for the
 TCS statement, and the actual IRP call that returns an IRN. Each of those is a
 second source this product does not have, and each is why the control that needs
 it says so on its face.
+
+---
+
+## 3j. Planned 13 August — the network, and the three gaps it exposed
+
+Saraswati was one shop pretending to be a dealership: every deal, every machine
+and every job card at one address in Naraina, with two empty branches beside it.
+It now runs as a network — a 4S hub, two satellites, a service outlet and a
+premium outlet, five branches on one company and one GSTIN, with three months of
+business through all of them.
+
+**Delhi throughout, deliberately.** Which state a dealership is in changes a
+two-digit code on a GSTIN and the place of supply, and nothing else. Moving it
+would have meant rewriting the 78 sale documents that carry Delhi stamped on
+their face — which they record on purpose and never re-derive, so a reprint next
+year shows what was charged.
+
+### The operating model, mapped against what exists
+
+The reference is how a multi-location Honda dealership actually runs. Six
+processes; three were already built, and building the fixture proved which:
+
+| | Process | Status |
+|---|---|---|
+| 1 | Stock arrives at the central yard, not at branches | ✅ a purchase invoice carries a branch |
+| 2 | Daily allocation from the yard to the satellites | ⚠️ **OBJ-47** |
+| 3 | Inter-branch transfer without a sale | ✅ OBJ-39 — eight challans, **not one voucher** |
+| 4 | RTO and insurance | ✅ **and per branch, never central** |
+| 5 | Spare parts from the central warehouse | ⚠️ **OBJ-46** |
+| 6 | Daily central consolidation | ◐ one GSTIN ✅, branch P&L ✅ — **OBJ-48** for the roll-up |
+
+### Why RTO and insurance stay at the branch
+
+A reference dealership centralises this into one desk at head office. **This
+product must not**, and the code already agreed before anybody checked:
+
+- **The insurance intermediary is per outlet.** `insuranceChannel` and
+  `intermediaryCode` sit on `showroom_dms_accounts` — Saraswati sells as a
+  `BROKER` under `IRDAI/DB/0417`, Deccan as a `DIRECT_AGENT` under
+  `AGY-MH-1182`. A policy issued under the wrong code pays commission to the
+  wrong party.
+- **The RTO follows the customer.** `rtoForPincode` resolves from the *buyer's*
+  pincode, so a Dwarka buyer files at a different zonal office than a Naraina
+  buyer. The branch that made the sale holds the papers and the customer.
+
+A user with `showroomId = null` *can* see across branches — `buildQueue` loops
+every visible outlet — and that was briefly mistaken for the design. **Being
+able to do something is not the same as it being right.** No central desk is
+seeded, and `buildRegistrationWorklist({ showroomId })` being per branch is
+correct rather than a limitation.
+
+### New objectives
+
+| # | Objective | The claim it has to prove |
+|---|---|---|
+| 46 | **Parts move between branches** — `stock_move_lines` gains a `kind` (`VEHICLE` or `PART`), `chassisNo` becomes nullable, and the daily intra-city dispatch gets a document | a brake shoe travels from the central warehouse to an ASC on a challan, and the shelf at both ends agrees |
+| 47 | **The daily allocation run** — the hub allocates to satellites on open bookings and local demand, as a batch a person approves | one morning's allocation to three branches is one decision, not seven challans |
+| 48 | **The central end-of-day** — one consolidation across branches: cash counted, financier payouts received, OEM claims raised | the evening figure for the whole company reconciles to the sum of its branches, and names the branch that is out |
+
+**OBJ-46 is the one that looks small and is not.** A challan carries a chassis
+today, and the whole stock-move design assumes one — `stock_move_lines.chassisNo`
+is `notNull`, the register is chassis-keyed, and `PART_REQUEST_TRANSFER` exists
+in `actions.ts` as an agent *suggestion* with no document behind it.
+
+**OBJ-47 may never be needed** and is registered so the decision is deliberate: a
+satellite manager who wants two Activas will raise a challan, and a batch that
+saves six clicks a morning is not obviously worth a screen. It is written down
+so that watching the fixture run can settle it.
+
+### New requirements
+
+| # | Requirement | Status |
+|---|---|---|
+| R-124 | **A dealership's shape is proved by data, not by structure.** OBJ-37 made hub-and-spoke expressible; until business ran through five branches it was a diagram. Three of the six operating processes turned out to be built, one turned out to be built *wrongly centralised in the plan*, and two were missing — and none of that was visible from the schema | ✅ |
+| R-125 | **Registration and insurance are branch work.** The intermediary code is on the outlet and the RTO follows the buyer's pincode, so a central desk pays commission to the wrong party and files at the wrong office. A permission that allows cross-branch visibility is not a design that requires it | ✅ |
+| R-126 | **A fixture is seeded through the product's own doors.** Rows inserted straight into tables are rows the product has never processed: they look right on a screen and prove nothing. The only exceptions are the mirror tables, which stand in for a sync that would otherwise have to run | ✅ |
+| R-127 | **The two directions of a corpus are named.** What a dealership exports and what this product produces are opposite, and one unlabelled folder is how nobody can later say which file proves what | ✅ |
+
+### What the fixture now holds
+
+```
+  HUB      DEL-SARASWATI   Naraina      7 new invoices · 115 on the floor
+  SALES    DEL-SAR-JANAK   Janakpuri    8 invoices
+  SALES    DEL-SAR-DWK     Dwarka       6 invoices
+  SERVICE  DEL-SAR-OKHLA   Okhla        9 job cards
+  PREMIUM  DEL-SAR-BW      Aerocity     4 invoices
+```
+
+Three consignments, 44 machines, eight challans, 22 sales, ₹25.3 lakh collected
+across three receipts each, ₹3.57 lakh deliberately left outstanding so the
+ageing report has debt in more than one bucket, nine job cards including free
+services and warranty work, eight day closes with one short and one over.
+
+**The 40% GST band had never been exercised by fixture data.** Every seeded model
+was 200cc or under, or electric, so the boundary `rateFor` exists to get right
+was proved by unit checks and never by a document. A Mavrick 440 fixes that.
+
+**TCS still fires nowhere, and that is correct.** It needs an invoice over ten
+lakh; Hero's range tops out near two. `verify-returns` covers the path
+synthetically with a Gold Wing, and collecting anyway would put a charge on an
+invoice that owes none.

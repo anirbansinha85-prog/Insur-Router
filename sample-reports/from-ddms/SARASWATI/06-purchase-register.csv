@@ -1,0 +1,6 @@
+Purchase Register — Saraswati Automobiles Pvt Ltd · the whole company · 01/04/2026 to 31/03/2027 — and the 2B column is input credit at risk until it says MATCHED
+
+Date,Supplier Invoice,Supplier,GSTIN,Received At,Inter-state,Taxable,CGST,SGST,IGST,Total,In GSTR-2B,Status
+02/09/2026,NET/HMC/2026/0901,Hero MotoCorp Ltd,06AAACH1234M1ZQ,DEL-SARASWATI,Y,"₹ 10,60,800.00",₹ 0.00,₹ 0.00,"₹ 1,90,944.00","₹ 12,56,244.00",UNCHECKED,POSTED
+05/10/2026,NET/HMC/2026/1002,Hero MotoCorp Ltd,06AAACH1234M1ZQ,DEL-SARASWATI,Y,"₹ 14,90,100.00",₹ 0.00,₹ 0.00,"₹ 3,26,067.00","₹ 18,20,167.00",UNCHECKED,POSTED
+03/11/2026,NET/HMC/2026/1103,Hero MotoCorp Ltd,06AAACH1234M1ZQ,DEL-SARASWATI,Y,"₹ 9,79,900.00",₹ 0.00,₹ 0.00,"₹ 1,76,382.00","₹ 11,58,782.00",UNCHECKED,POSTED

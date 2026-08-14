@@ -1,0 +1,11 @@
+"Day Close Register — Saraswati Automobiles Pvt Ltd · **per branch**, because a till belongs to a branch · 01/04/2026 to 31/03/2027"
+
+Date,Branch,Booked Cash,Counted Cash,Difference,Reason,Note,Bank Receipts,Bank Payments
+30/09/2026,DEL-SARASWATI,₹ 0.00,₹ 0.00,₹ 0.00,EXACT,,₹ 0.00,₹ 0.00
+30/09/2026,DEL-SAR-JANAK,₹ 0.00,₹ 0.00,₹ 0.00,EXACT,,₹ 0.00,₹ 0.00
+31/10/2026,DEL-SARASWATI,₹ 0.00,₹ 0.00,₹ 0.00,EXACT,,₹ 0.00,₹ 0.00
+31/10/2026,DEL-SAR-JANAK,₹ 0.00,₹ -450.00,₹ -450.00,UNEXPLAINED,Counted twice; the difference stands.,₹ 0.00,₹ 0.00
+31/10/2026,DEL-SAR-DWK,₹ 0.00,₹ 0.00,₹ 0.00,EXACT,,₹ 0.00,₹ 0.00
+30/11/2026,DEL-SARASWATI,₹ 0.00,₹ 0.00,₹ 0.00,EXACT,,₹ 0.00,₹ 0.00
+30/11/2026,DEL-SAR-JANAK,₹ -450.00,₹ -450.00,₹ 0.00,EXACT,,₹ 0.00,₹ 0.00
+30/11/2026,DEL-SAR-DWK,₹ 0.00,₹ 200.00,₹ 200.00,MISCOUNT,Counted twice; the difference stands.,₹ 0.00,₹ 0.00
