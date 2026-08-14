@@ -915,6 +915,62 @@ one. `pnpm run verify:ledger`, thirty checks.
 > `record_activities` began refusing its own inserts, and it read as six
 > unrelated regressions rather than one missing command.
 
+## The network: what moves, who decides, who checks
+
+`lib/dms/ledger/moves.ts`, `allocation.ts` and `eod.ts` (OBJ-46 to OBJ-48,
+R-128 to R-132). One question at three levels — what moves between branches, who
+decides that it moves, and who checks at the end of the day that it added up.
+
+**A challan carries machines or parts.** `stock_move_lines.kind` is `VEHICLE` or
+`PART`; a machine has a chassis and a life on the register, a part has a number
+and a quantity and no register at all. A database check constraint enforces
+exactly one identifier per line, because a guarantee that only holds for callers
+who went through TypeScript is not a guarantee.
+
+> **The shelf falls on despatch and rises on receipt — the opposite of a
+> machine.** A vehicle's mirror row moves branch on arrival and the chassis
+> register says *nowhere* in between, which the stock reconciliation reads. A
+> part has no register, so if the count only fell on arrival the sending branch's
+> shelf would overstate for as long as the van was out. The difference between
+> the two ends **is** the goods in transit, and that is what the first
+> reconciliation reports.
+
+> **A shelf may go negative and is never clamped.** Below zero is the books
+> saying the branch shipped or issued more than it held (R-129). Clamping
+> destroys the only evidence it happened. `negativeShelves` names the branch and
+> the part, under the stock reconciliation — which for parts is not two sources
+> compared but *the one thing a shelf cannot be*, because a quantity has no
+> second opinion anywhere.
+
+**Receiving a part at a branch that has never held it writes a mirror row**, and
+that is the one place this product does. Refusing would mean the box arrived and
+nothing recorded it. The line carries the *sending* branch's dealer code and the
+warning says the dealership's own system does not know; at a branch that syncs,
+the next pull marks it disappeared, which is the honest signal rather than a
+defect.
+
+**`planAllocation` reads; `commitAllocation` refuses without a named approver**
+(R-130). One morning's allocation is one decision and still as many challans as
+there are destinations, because a delivery challan carries one consignee.
+Demand is open bookings plus the display floor — **an enquiry is not demand**.
+Supply is the yard minus anything allocated or already on an open challan, oldest
+first, deterministic. Nothing goes to a `SERVICE` branch, decided by `role` and
+never by name. `ALLOCATION.DISPLAY_FLOOR` and `ALLOCATION.MAX_PER_BRANCH` are the
+dealership's, and are per **owner** rather than per branch — a real limit, not an
+oversight.
+
+**`centralEndOfDay` is derived, stores nothing and closes nothing** (R-131). It
+is a sum of branch day-closes; a stored roll-up would come to disagree with them,
+and a company-level close would journal something no branch authorised. A branch
+that never closed is an **absence, not a zero**, so `reconciles` needs both
+conditions: every branch closed, and every close agreed. Financier and OEM
+receipts are read off `parties.kind` and sit beside the cash, never inside it.
+
+`pnpm run verify:allocation`, `pnpm run verify:eod`, and §8 of
+`pnpm run verify:moves` — whose claim is **conservation** rather than arrival: a
+version that raised the destination and forgot the source would pass "the
+workshop received four" while manufacturing stock on every van run.
+
 ## Three ways in, one record
 
 `lib/dms/ingest/` — the mirror no longer assumes an OEM API (OBJ-24, R-84). A
@@ -1909,6 +1965,9 @@ pnpm run db:seed-users  # sign-in accounts, plus a second owner to isolate from
 pnpm run db:seed-applications  # a book of applications across both outlets
 pnpm run db:rls         # create the three restricted roles and apply RLS
 pnpm run db:probe       # print what each login can actually read, as ddms_app
+pnpm run db:seed-network       # the two extra branches, hub-and-spoke
+pnpm run db:seed-branch-data   # three months of trading across all five
+pnpm run db:export-books       # the 13 reports a CA opens, per company
 ```
 
 Order matters twice. `db:seed-owners` must run **after** `db:seed` — panel

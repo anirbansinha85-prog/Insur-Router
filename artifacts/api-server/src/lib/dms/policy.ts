@@ -429,6 +429,50 @@ const THRESHOLD_KEYS: PolicyKey[] = [
     max: 180,
     unit: "days",
   },
+  /*
+   * The two numbers the morning allocation run reads (OBJ-47).
+   *
+   * They belong here rather than as constants in the planner for the reason the
+   * whole registry exists: how many machines should stand on a showroom floor is
+   * a judgement about this dealership's market, and nobody at this end of the
+   * wire has stood in the showroom. The planner states which numbers it used, so
+   * a plan somebody disagrees with is a number they can change rather than an
+   * argument with the product.
+   *
+   * **They are per owner and not per branch, and the honest consequence is that
+   * a group cannot yet want three on the floor at a main-road satellite and one
+   * behind a market.** `dealer_policy` is keyed on the owner; making it
+   * per-branch is a real change to that table and to every reader of it, and it
+   * is not worth making before a dealership has said the single number is wrong.
+   */
+  {
+    key: "ALLOCATION.DISPLAY_FLOOR",
+    group: "THRESHOLD",
+    section: "Vehicle stock",
+    label: "Machines to keep on the floor, per model",
+    help:
+      "How many of a model a showroom should have standing where a customer can sit on it, "
+      + "beyond the ones already sold. The morning allocation tops the floor up to this and "
+      + "stops. Nothing is sent to a workshop, which sells nothing.",
+    default: 1,
+    min: 0,
+    max: 20,
+    unit: "count",
+  },
+  {
+    key: "ALLOCATION.MAX_PER_BRANCH",
+    group: "THRESHOLD",
+    section: "Vehicle stock",
+    label: "Most a branch may be sent in one morning",
+    help:
+      "A ceiling on one day's allocation to one showroom, so a demand figure that has gone "
+      + "wrong empties the yard into one branch overnight. Anything above it is proposed, "
+      + "named as trimmed, and waits for the next run.",
+    default: 6,
+    min: 1,
+    max: 50,
+    unit: "count",
+  },
 ];
 
 const SECTION_OF: Record<string, string> = {

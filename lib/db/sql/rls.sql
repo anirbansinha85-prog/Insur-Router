@@ -911,6 +911,30 @@ create unique index period_locks_entity_period_unique
   on public.period_locks (entity_id, from_date, to_date)
   where status = 'LOCKED';
 
+/*
+ * The challan line's two identifiers, restated here for the same reason as the
+ * lock above (OBJ-46).
+ *
+ * `stock_move_lines_move_chassis_unique` already exists as a total unique
+ * index. Adding `where chassis_no is not null` in the schema file changes
+ * nothing at the database, because push leaves an index that already carries
+ * the name — so it is dropped and recreated here, where it will actually land.
+ *
+ * The behaviour is the same either way (Postgres treats nulls as distinct); the
+ * difference is that the constraint now *says* what it means, and a reader who
+ * finds a part line with no chassis on it does not have to work out whether the
+ * index was meant to allow that.
+ */
+drop index if exists stock_move_lines_move_chassis_unique;
+create unique index stock_move_lines_move_chassis_unique
+  on public.stock_move_lines (stock_move_id, chassis_no)
+  where chassis_no is not null;
+
+drop index if exists stock_move_lines_move_part_unique;
+create unique index stock_move_lines_move_part_unique
+  on public.stock_move_lines (stock_move_id, part_no)
+  where part_no is not null;
+
 drop trigger if exists vouchers_refuse_locked_period on public.vouchers;
 create trigger vouchers_refuse_locked_period
   before insert on public.vouchers

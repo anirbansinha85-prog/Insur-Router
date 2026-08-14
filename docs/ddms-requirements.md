@@ -4336,11 +4336,11 @@ processes; three were already built, and building the fixture proved which:
 | | Process | Status |
 |---|---|---|
 | 1 | Stock arrives at the central yard, not at branches | ✅ a purchase invoice carries a branch |
-| 2 | Daily allocation from the yard to the satellites | ⚠️ **OBJ-47** |
+| 2 | Daily allocation from the yard to the satellites | ✅ OBJ-47, built 14 August |
 | 3 | Inter-branch transfer without a sale | ✅ OBJ-39 — eight challans, **not one voucher** |
 | 4 | RTO and insurance | ✅ **and per branch, never central** |
-| 5 | Spare parts from the central warehouse | ⚠️ **OBJ-46** |
-| 6 | Daily central consolidation | ◐ one GSTIN ✅, branch P&L ✅ — **OBJ-48** for the roll-up |
+| 5 | Spare parts from the central warehouse | ✅ OBJ-46, built 14 August |
+| 6 | Daily central consolidation | ✅ OBJ-48, built 14 August |
 
 ### Why RTO and insurance stay at the branch
 
@@ -4366,9 +4366,9 @@ correct rather than a limitation.
 
 | # | Objective | The claim it has to prove |
 |---|---|---|
-| 46 | **Parts move between branches** — `stock_move_lines` gains a `kind` (`VEHICLE` or `PART`), `chassisNo` becomes nullable, and the daily intra-city dispatch gets a document | a brake shoe travels from the central warehouse to an ASC on a challan, and the shelf at both ends agrees |
-| 47 | **The daily allocation run** — the hub allocates to satellites on open bookings and local demand, as a batch a person approves | one morning's allocation to three branches is one decision, not seven challans |
-| 48 | **The central end-of-day** — one consolidation across branches: cash counted, financier payouts received, OEM claims raised | the evening figure for the whole company reconciles to the sum of its branches, and names the branch that is out |
+| 46 ✅ | **Parts move between branches** — `stock_move_lines` gains a `kind` (`VEHICLE` or `PART`), `chassisNo` becomes nullable, and the daily intra-city dispatch gets a document | a brake shoe travels from the central warehouse to an ASC on a challan, and the shelf at both ends agrees |
+| 47 ✅ | **The daily allocation run** — the hub allocates to satellites on open bookings and local demand, as a batch a person approves | one morning's allocation to three branches is one decision, not seven challans |
+| 48 ✅ | **The central end-of-day** — one consolidation across branches: cash counted, financier payouts received, OEM claims raised | the evening figure for the whole company reconciles to the sum of its branches, and names the branch that is out |
 
 **OBJ-46 is the one that looks small and is not.** A challan carries a chassis
 today, and the whole stock-move design assumes one — `stock_move_lines.chassisNo`
@@ -4379,6 +4379,12 @@ in `actions.ts` as an agent *suggestion* with no document behind it.
 satellite manager who wants two Activas will raise a challan, and a batch that
 saves six clicks a morning is not obviously worth a screen. It is written down
 so that watching the fixture run can settle it.
+
+> Settled on 14 August, and the answer was that the clicks were never the point.
+> What the batch buys is a **plan somebody can look at whole** — six challans
+> typed one after another is six chances to send the wrong bike to the wrong
+> branch, with no artefact anywhere saying what the morning actually decided.
+> See §3k.
 
 ### New requirements
 
@@ -4412,3 +4418,153 @@ was proved by unit checks and never by a document. A Mavrick 440 fixes that.
 lakh; Hero's range tops out near two. `verify-returns` covers the path
 synthetically with a Gold Wing, and collecting anyway would put a charge on an
 invoice that owes none.
+
+---
+
+## 3k. Built 14 August — OBJ-46 to OBJ-48, the three gaps closed
+
+The register's own advice was to wait and see which of the three actually bit.
+All three were built together instead, and that turned out to be the right call
+for one reason worth writing down: **they are not three features, they are one
+question asked at three levels** — what moves between branches, who decides that
+it moves, and who checks at the end of the day that it added up. Building the
+first two apart would have produced an allocation run that could not despatch
+what a workshop actually needs.
+
+### OBJ-46 — a part travels, and it cost more than it looked like it would
+
+The register said this one *"looks small and is not"*, and the reason was
+`stock_move_lines.chassisNo` being `notNull`. That held up. What it did not
+anticipate was where the interesting decision was.
+
+**The shelf falls on despatch, not on receipt — the opposite of a machine.** A
+vehicle's mirror row moves branch on arrival, and while it is on the road the
+chassis register says *nowhere*, which is what the stock reconciliation reads. A
+part has no register. Had the count only fallen on arrival, the sending branch's
+shelf would have overstated for as long as the van was out and a counter clerk
+would have promised a part that had already left the building. Source falls now,
+destination rises on arrival, and **the difference is the goods in transit** —
+which is exactly what the first reconciliation already reports.
+
+**A shelf is allowed to go negative.** Despatching more than the branch holds is
+warned about and permitted, and the on-hand figure goes below zero rather than
+being clamped. A clamp destroys the only evidence that the books say the branch
+shipped more than it had. The stock reconciliation names the branch and the part.
+
+**A row was written into a mirror table, deliberately, and it is worth naming.**
+When a part arrives at a branch that has never held it, there is no shelf line
+to raise. Refusing would mean the box physically arrived and the product recorded
+it nowhere, which is the failure the objective exists to close. So a line is
+opened, carrying the *sending* branch's dealer code, and the warning says plainly
+that the dealership's own system does not know. At a branch that syncs, the next
+pull marks it disappeared — and that is the honest signal rather than a defect:
+*the transfer happened and nobody keyed it into the DMS.*
+
+**There is no eleventh reconciliation, and the reason is a limit rather than a
+choice.** There is no second source for a part's quantity. A chassis reconciles
+because two systems each hold an opinion about where one frame is; a brake shoe
+has a count, in one place. So the parts check is folded into the second
+reconciliation as *what our own documents imply about a shelf* — and the one
+implication that cannot be right is a branch holding less than nothing.
+
+### OBJ-47 — one decision, and the documents the law still needs
+
+> **One morning's allocation is one decision. It is still as many documents as
+> the law requires.**
+
+A delivery challan carries one consignor and one consignee, so three
+destinations is three challans and no arrangement of this makes it one piece of
+paper. What became one is the *choosing*.
+
+**`commitAllocation` refuses without a named approver, and that refusal is the
+objective.** Every other guard in the file protects the dealership from a bad
+allocation; this one is R-49 as control flow. A proposal that can commit itself
+is not a proposal.
+
+Four rules decide the plan and a person could re-derive every one of them:
+
+| | |
+|---|---|
+| Demand | open bookings — a quotation with no chassis on it — plus whatever the display floor is short by. **An enquiry is not demand**: counting interest as commitment is how a yard empties into showrooms and a dealership finances stock it has not sold |
+| Supply | in the hub's yard, not allocated to a deal, **not already on an open challan** — the third is what stops a second run of the morning proposing the six machines the first one sent |
+| Order | oldest first, because ageing stock is stock the dealership is paying interest on, and because it is deterministic: two runs propose the same machines |
+| Priority | committed demand **across every branch** before any display floor anywhere, or the first branch alphabetically takes the last machine for its window while a customer at the last one waits |
+
+**Nothing is allocated to a workshop, and that is decided by `role`.** OBJ-37's
+column earning its keep: the planner never knows a branch by name, so it runs
+unchanged for a dealership with one satellite and for one with nine.
+
+The two numbers it reads — the display floor and the ceiling per branch per
+morning — are in the policy registry, and **they are per owner rather than per
+branch.** That is a real limit, written down rather than discovered: a group
+cannot yet want three on the floor at a main-road satellite and one behind a
+market. `dealer_policy` is keyed on the owner, and changing that is a change to
+every reader of it, not worth making before a dealership says the single number
+is wrong.
+
+### OBJ-48 — the company's evening, derived and stored nowhere
+
+**There is no table, and that is the design.** Every other document in the module
+is written down because it is a statement about a moment. This is a *sum of
+those*, and a stored sum comes to disagree with the things it was a sum of — a
+branch that reopens and re-closes a day would leave a roll-up quoting last
+night's answer, and it would be quoted, because that is what a head-office
+number is for. The same argument the mirror's reconciliation rests on.
+
+**It closes nothing, and there is no `closeCompanyDay`.** A company-level close
+would either post a journal nobody at a branch authorised, or lock five branches
+out of correcting their own evening.
+
+**A branch that never closed is an absence, not a zero**, and the two read
+identically on any screen that sums and moves on. `reconciles` therefore has two
+conditions — every branch closed, *and* every close agreed — because a day where
+four balanced and the fifth never counted is not a clean day. The fixture proves
+it the unflattering way: **Saraswati's corpus says `does not reconcile` on all
+three evenings**, because only two or three of five branches ever counted a till.
+That is the report working.
+
+Financier payouts and OEM settlements are reported by **who paid**, read off
+`parties.kind`, so nothing in the file classifies anything. They sit beside the
+cash and never inside it — a bank payout in the cash figure is money somebody
+would go looking for in a drawer.
+
+### The bug this work found in something already shipped
+
+`verify:parties` had been deleting any party holding Hero's GSTIN as part of its
+own tidy-up. That was safe for exactly as long as no real Hero row existed. Once
+the network fixture started buying stock, `06AAACH1234M1ZQ` stopped being a
+throwaway supplier and became the dealership's actual creditor with three
+purchase invoices against it — and the tidy-up would have deleted a party the
+books depend on. **It did not, because the foreign key refused**, which is the
+only reason this was a red verifier rather than a silent hole in a ledger.
+
+Third time this shape has appeared — `verify:invoice` deleting two invoices a
+person had raised, and now this. The fix is the same one: **register for removal
+only what this run created.** `ensureParty` already returns `created`, and it is
+now read.
+
+### New requirements
+
+| # | Requirement | Status |
+|---|---|---|
+| R-128 | **Goods in transit belong to nobody's shelf.** A part's count falls at the sending branch on despatch and rises at the receiving branch on arrival, so the difference between them is the consignment on the road. Falling only on arrival overstates a shelf a counter clerk is quoting from | ✅ |
+| R-129 | **A stock figure may go negative and may not be clamped.** A shelf below zero is the books saying the branch shipped or issued more than it held. Clamping at zero destroys the only evidence that it happened | ✅ |
+| R-130 | **A plan is a proposal and cannot commit itself.** The allocation run works out what should move; a named person decides that it does. R-49 as control flow rather than as a convention | ✅ |
+| R-131 | **A consolidation is derived, never stored, and closes nothing.** A head-office figure is a sum of branch documents; storing it creates a second answer that can disagree with them, and posting one would journal something no branch authorised | ✅ |
+| R-132 | **A verifier registers for removal only what it created.** Not what it found, and not everything matching a key a real record could hold. Third occurrence of this defect, and the first two each destroyed real rows | ✅ |
+
+### Where the product now stands
+
+| | |
+|---|---|
+| Objectives | **48 of 48** |
+| Requirements | **132 of 132** |
+| Verifiers | **23**, all green |
+| Challans carry | machines **and** parts, on one document, one consignment value |
+| Reports per company | **13**, the thirteenth being head office's evening |
+
+**Not built, and named rather than left to be discovered:** a parts *register*
+comparable to the chassis register (there is no second source to reconcile a
+quantity against), a per-branch display floor (`dealer_policy` is owner-keyed),
+and an allocation that reads the manufacturer's own pipeline rather than only the
+yard.

@@ -44,7 +44,7 @@ import {
 } from "@workspace/db";
 
 import { branchesOfEntity, branchesOfRegistration } from "../org";
-import { inTransit, stockPositionCheck } from "./moves";
+import { inTransit, stockPositionCheck, negativeShelves } from "./moves";
 import { ageing, controlAccountCheck } from "./parties";
 import { dayCloseDifferences } from "./money";
 import { inputCreditAtRisk } from "./purchase";
@@ -112,18 +112,29 @@ export async function reconcileInterBranch(input: ReconcileInput): Promise<Recon
     compares: "what left a branch against what arrived at another",
     ran: true,
     clean: open.rows.length === 0,
-    rows: open.rows.flatMap((r) =>
-      r.chassisNos.map((c) => ({
+    rows: open.rows.flatMap((r) => [
+      ...r.chassisNos.map((c) => ({
         ref: r.challanNo,
         detail: `${c} — left ${r.challanDate}, ${r.days} day(s) ago, arrived nowhere`,
         amount: null,
       })),
-    ),
+      /*
+       * Part lines belong here too and for a sharper reason than symmetry
+       * (OBJ-46). A part's shelf falls on despatch and rises on receipt, so an
+       * unreceived challan is a quantity the company owns and no branch is
+       * counting. Left out, it would be invisible in a way a bike never is.
+       */
+      ...r.parts.map((pt) => ({
+        ref: r.challanNo,
+        detail: `${pt.qty} × ${pt.partNo} — left ${r.challanDate}, ${r.days} day(s) ago, on nobody's shelf`,
+        amount: null,
+      })),
+    ]),
     total: open.total,
     note:
       open.rows.length === 0
         ? null
-        : "A machine that left the hub and arrived nowhere is standing in a yard nobody has recorded, or it has walked.",
+        : "A machine that left the hub and arrived nowhere is standing in a yard nobody has recorded, or it has walked. A part in the same state is on no shelf in the company.",
   };
 }
 
@@ -131,6 +142,8 @@ export async function reconcileInterBranch(input: ReconcileInput): Promise<Recon
 export async function reconcileStock(input: ReconcileInput): Promise<Reconciliation> {
   const { to } = monthRange(input.period);
   const pos = await stockPositionCheck({ ownerId: input.ownerId, asOf: to });
+
+  const short = await negativeShelves({ ownerId: input.ownerId });
 
   const rows = [
     ...pos.mismatched.map((m) => ({
@@ -143,12 +156,25 @@ export async function reconcileStock(input: ReconcileInput): Promise<Reconciliat
       detail: "in our register, not in the dealer's system",
       amount: null,
     })),
+    /*
+     * Parts under the same heading, and it is a **different kind of check**
+     * (OBJ-46): there is no second opinion about a quantity, so this is not two
+     * sources compared but the one thing a shelf cannot be. Under the same
+     * heading anyway, because to whoever reads it at eight in the morning both
+     * sentences say "the stock figures are wrong and here is where".
+     */
+    ...short.map((sh) => ({
+      ref: `${sh.branchCode} · ${sh.partNo}`,
+      detail: `shelf is at ${sh.qtyOnHand} — the branch has despatched or issued more than it held`,
+      amount: null,
+    })),
   ];
 
   return {
     key: "STOCK",
     title: "Stock",
-    compares: "the chassis register against the dealer's own stock",
+    compares:
+      "the chassis register against the dealer's own stock, and every parts shelf against zero",
     ran: true,
     clean: rows.length === 0,
     rows,

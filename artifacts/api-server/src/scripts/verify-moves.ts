@@ -18,6 +18,10 @@
  * left the hub and arrived nowhere is the first reconciliation's whole subject
  * and can only be found if *left* and *arrived* are two separate facts.
  *
+ * §8 is OBJ-46, and its claim is **conservation** rather than arrival. A version
+ * that raised the destination and forgot to lower the source would pass "the
+ * workshop received four" while manufacturing stock on every van run.
+ *
  * `pnpm --filter @workspace/scripts run moves`.
  */
 
@@ -31,6 +35,7 @@ import {
   vouchersTable,
   voucherLinesTable,
   dmsVehicleStockTable,
+  dmsPartStockTable,
   showroomsTable,
   showroomDmsAccountsTable,
   legalEntitiesTable,
@@ -46,6 +51,7 @@ import {
   inTransit,
   chassisRegister,
   stockPositionCheck,
+  negativeShelves,
   EWAY_THRESHOLD,
 } from "../lib/dms/ledger/moves";
 
@@ -55,6 +61,10 @@ const C1 = "VERIFY-MOVES-CHASSIS-1";
 const C2 = "VERIFY-MOVES-CHASSIS-2";
 const C3 = "VERIFY-MOVES-CHASSIS-3";
 const ALL_CHASSIS = [C1, C2, C3];
+/* OBJ-46: a part has a number and a quantity, and no identity at all. */
+const P1 = "VERIFY-MOVES-PART-1";
+const P2 = "VERIFY-MOVES-PART-2";
+const ALL_PARTS = [P1, P2];
 
 let failures = 0;
 function check(label: string, ok: boolean, detail = ""): void {
@@ -88,6 +98,7 @@ console.log(`\nOBJ-39 — stock that moves without being sold, run by ${RUN_BY}\
   await ownerDb
     .delete(dmsVehicleStockTable)
     .where(inArray(dmsVehicleStockTable.chassisNo, ALL_CHASSIS));
+  await ownerDb.delete(dmsPartStockTable).where(inArray(dmsPartStockTable.partNo, ALL_PARTS));
   await ownerDb.delete(showroomsTable).where(eq(showroomsTable.code, "TMP-MOVES-KA"));
   await ownerDb
     .delete(gstRegistrationsTable)
@@ -478,6 +489,242 @@ check(
 
 // ────────────────────────────────────────────────────────────────────────────
 
+section("8. OBJ-46 — a part travels, and the shelf at both ends agrees");
+
+/*
+ * The claim this section exists to fail:
+ *
+ *   > A brake shoe travels from the central warehouse to a workshop on a
+ *   > challan, and the shelf at both ends agrees.
+ *
+ * "Agrees" means **conservation**: the company holds the same number of them
+ * afterwards as before. That is the check a bug cannot pass by accident, and it
+ * is deliberately not "the destination went up by four" — a version that
+ * incremented the destination and forgot the source would pass that one while
+ * quietly manufacturing stock every time a van went out.
+ */
+
+const SHELF_START = 10;
+await ownerDb.insert(dmsPartStockTable).values({
+  showroomId: hub.id,
+  dealerCode: dealer?.code ?? "HMC-DL-0417",
+  partNo: P1,
+  partDesc: "Brake shoe set, rear",
+  qtyOnHand: SHELF_START,
+  costAmount: 240,
+  raw: { partNo: P1, source: RUN_BY },
+  rawHash: `${RUN_BY}-${P1}`,
+});
+
+const shelfAt = async (showroomId: number, partNo: string): Promise<number | null> => {
+  const [row] = await ownerDb
+    .select({ q: dmsPartStockTable.qtyOnHand })
+    .from(dmsPartStockTable)
+    .where(and(eq(dmsPartStockTable.showroomId, showroomId), eq(dmsPartStockTable.partNo, partNo)));
+  return row ? row.q : null;
+};
+const companyHolds = async (partNo: string): Promise<number> => {
+  const rows = await ownerDb
+    .select({ q: dmsPartStockTable.qtyOnHand })
+    .from(dmsPartStockTable)
+    .where(eq(dmsPartStockTable.partNo, partNo));
+  return rows.reduce((a, r) => a + r.q, 0);
+};
+
+const beforeTotal = await companyHolds(P1);
+
+const partMove = await createStockMove({
+  ownerId: OWNER,
+  fromShowroomId: hub.id,
+  toShowroomId: sat.id,
+  challanDate: "2026-08-12",
+  lines: [
+    {
+      kind: "PART",
+      partNo: P1,
+      qty: 4,
+      modelDescription: "Brake shoe set, rear",
+      hsn: "87141090",
+      value: 960,
+      gstRatePct: 18,
+    },
+  ],
+  narration: "verify-moves: the daily parts run",
+});
+check(
+  "a challan carrying only parts raises",
+  partMove.ok,
+  partMove.ok ? partMove.move!.challanNo : partMove.error!,
+);
+if (!partMove.ok) throw new Error(partMove.error);
+
+check(
+  "and it is **under** the e-way threshold, which the vehicle path never exercises",
+  partMove.move!.ewayStatus === "NOT_REQUIRED",
+  `${rupees(n(partMove.move!.consignmentValue))} against the ${rupees(EWAY_THRESHOLD)} threshold`,
+);
+check(
+  "same GSTIN, so it is not a supply — the answer does not depend on what is in the van",
+  partMove.move!.isSupply === "N",
+  partMove.move!.supplyReason ?? "",
+);
+
+await despatchStockMove({ ownerId: OWNER, stockMoveId: partMove.move!.id });
+
+check(
+  "**the sending shelf falls on despatch, not on arrival**",
+  (await shelfAt(hub.id, P1)) === SHELF_START - 4,
+  `${hub.code} holds ${await shelfAt(hub.id, P1)} of ${SHELF_START}; a counter clerk must not be able to promise a part that has left the building`,
+);
+check(
+  "the receiving branch has not gained them yet, because they are on a van",
+  (await shelfAt(sat.id, P1)) === null,
+  "in transit is a real state for a part exactly as it is for a machine",
+);
+check(
+  "so the difference is goods in transit, and the reconciliation names it",
+  (await companyHolds(P1)) === beforeTotal - 4,
+  `${await companyHolds(P1)} on shelves against ${beforeTotal} owned — the missing 4 are on the road`,
+);
+
+const partTransit = await withWorkerScope(() => inTransit({ ownerId: OWNER, asOf: "2026-08-13" }));
+const partRow = partTransit.rows.find((r) => r.challanNo === partMove.move!.challanNo);
+check(
+  "the in-transit list names the part and the quantity, not a value",
+  Boolean(partRow) && partRow!.parts.some((pt) => pt.partNo === P1 && pt.qty === 4),
+  partRow ? partRow.parts.map((pt) => `${pt.qty} × ${pt.partNo}`).join(", ") : "not found",
+);
+
+const partRecv = await receiveStockMove({ ownerId: OWNER, stockMoveId: partMove.move!.id, receivedDate: "2026-08-13" });
+check("it arrives", partRecv.ok, partRecv.ok ? "received" : partRecv.error!);
+
+check(
+  "the receiving branch now has them",
+  (await shelfAt(sat.id, P1)) === 4,
+  `${sat.code} holds ${await shelfAt(sat.id, P1)}`,
+);
+check(
+  "**and the company still owns exactly what it owned** — nothing was created by moving it",
+  (await companyHolds(P1)) === beforeTotal,
+  `${await companyHolds(P1)} across every shelf, against ${beforeTotal} before the van left`,
+);
+check(
+  "opening a shelf the branch never had is warned about rather than done silently",
+  partRecv.warnings.some((w) => w.includes(P1) && w.includes("does not know")),
+  partRecv.warnings.find((w) => w.includes(P1)) ?? "(no warning)",
+);
+check(
+  "and no voucher was posted for any of it",
+  partRecv.voucherId === undefined,
+  "one legal person moving its own stock, whether the stock is a motorcycle or a box of brake shoes",
+);
+
+check(
+  "a part gets **no chassis event**, because a part has no life to record",
+  (
+    await ownerDb
+      .select({ id: chassisEventsTable.id })
+      .from(chassisEventsTable)
+      .where(eq(chassisEventsTable.chassisNo, P1))
+  ).length === 0,
+  "a register of every brake shoe this dealership has ever owned is a table nobody would read",
+);
+
+// ── the refusals ──────────────────────────────────────────────────────────
+
+const zero = await createStockMove({
+  ownerId: OWNER,
+  fromShowroomId: hub.id,
+  toShowroomId: sat.id,
+  challanDate: "2026-08-14",
+  lines: [{ kind: "PART", partNo: P2, qty: 0, modelDescription: "Air filter", value: 0 }],
+  narration: "verify-moves: nothing of it",
+});
+check("a part line for none of them is refused", !zero.ok, zero.error ?? "it raised");
+
+const sameTwice = await createStockMove({
+  ownerId: OWNER,
+  fromShowroomId: hub.id,
+  toShowroomId: sat.id,
+  challanDate: "2026-08-14",
+  lines: [
+    { kind: "PART", partNo: P1, qty: 1, modelDescription: "Brake shoe set, rear", value: 240 },
+    { kind: "PART", partNo: P1, qty: 2, modelDescription: "Brake shoe set, rear", value: 480 },
+  ],
+  narration: "verify-moves: the same part twice",
+});
+check(
+  "the same part on two lines of one challan is refused, not added up",
+  !sameTwice.ok,
+  sameTwice.error ?? "it raised",
+);
+
+/*
+ * The shape constraint, tested where it actually lives. The typed API cannot
+ * express a line carrying both identifiers, which is exactly why the check has
+ * to be proved at the database — the guarantee is worth nothing if it only
+ * holds for callers who went through TypeScript.
+ */
+let shapeRefused = "";
+try {
+  await ownerDb.insert(stockMoveLinesTable).values({
+    stockMoveId: partMove.move!.id,
+    seq: 99,
+    kind: "PART",
+    chassisNo: "SHOULD-NOT-BE-HERE",
+    partNo: P2,
+    qty: 1,
+    modelDescription: "both at once",
+    value: "1.00",
+  });
+} catch (e) {
+  const chain: string[] = [];
+  for (let err: unknown = e; err; err = (err as { cause?: unknown }).cause) {
+    chain.push(String((err as Error).message ?? err));
+  }
+  shapeRefused = chain.join(" | ");
+}
+check(
+  "**the database refuses a line carrying both a chassis and a part number**",
+  shapeRefused.includes("kind_shape"),
+  shapeRefused.split(" | ").find((m) => m.includes("kind_shape")) ?? shapeRefused ?? "it inserted",
+);
+
+// ── a shelf below zero is a finding, not a clamp ───────────────────────────
+
+const overdraw = await createStockMove({
+  ownerId: OWNER,
+  fromShowroomId: hub.id,
+  toShowroomId: sat.id,
+  challanDate: "2026-08-15",
+  lines: [
+    { kind: "PART", partNo: P1, qty: 50, modelDescription: "Brake shoe set, rear", value: 12_000 },
+  ],
+  narration: "verify-moves: more than the shelf holds",
+});
+check(
+  "despatching more than the shelf holds is warned about and permitted",
+  overdraw.ok && overdraw.warnings.some((w) => w.includes("negative")),
+  overdraw.warnings.find((w) => w.includes("negative")) ?? overdraw.error ?? "(no warning)",
+);
+if (overdraw.ok) {
+  await despatchStockMove({ ownerId: OWNER, stockMoveId: overdraw.move!.id });
+  const short = await shelfAt(hub.id, P1);
+  check(
+    "**the shelf goes negative rather than being clamped at zero**",
+    short !== null && short < 0,
+    `${hub.code} is at ${short} — a clamp would have destroyed the only evidence that the branch shipped more than it had`,
+  );
+  const flagged = await withWorkerScope(() => negativeShelves({ ownerId: OWNER }));
+  check(
+    "and the stock reconciliation names the branch and the part",
+    flagged.some((f) => f.partNo === P1 && f.showroomId === hub.id),
+    flagged.map((f) => `${f.branchCode} ${f.partNo} at ${f.qtyOnHand}`).join(", ") || "(none)",
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+
 const mine = await ownerDb
   .select({ id: stockMovesTable.id, voucherId: stockMovesTable.voucherId })
   .from(stockMovesTable)
@@ -492,13 +739,15 @@ for (const m of mine) {
 }
 await ownerDb.delete(chassisEventsTable).where(inArray(chassisEventsTable.chassisNo, ALL_CHASSIS));
 await ownerDb.delete(dmsVehicleStockTable).where(inArray(dmsVehicleStockTable.chassisNo, ALL_CHASSIS));
+await ownerDb.delete(dmsPartStockTable).where(inArray(dmsPartStockTable.partNo, ALL_PARTS));
 await ownerDb.delete(showroomsTable).where(eq(showroomsTable.code, "TMP-MOVES-KA"));
 await ownerDb.delete(gstRegistrationsTable).where(eq(gstRegistrationsTable.gstin, "29AAACS1234A1Z1"));
 console.log("\n  (every challan, register entry, mirror row and temporary branch this run made, removed)");
 
 console.log(
   failures === 0
-    ? "\nAll checks passed. The structure decides the tax, and an internal transfer posts nothing.\n"
+    ? "\nAll checks passed. The structure decides the tax, an internal transfer posts nothing, and a part\n" +
+      "travels on the same challan a machine does without pretending to have a life of its own.\n"
     : `\n${failures} check(s) FAILED.\n`,
 );
 process.exit(failures === 0 ? 0 : 1);

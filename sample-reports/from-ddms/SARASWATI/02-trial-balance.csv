@@ -1,20 +1,20 @@
 Trial Balance — Saraswati Automobiles Pvt Ltd · the whole company · 01/04/2026 to 31/03/2027
 
 Code,Account,Group,Opening Dr,Opening Cr,Debit,Credit,Closing Dr,Closing Cr
-1100,Sundry Debtors,ASSET,,,"₹ 29,04,498.80","₹ 25,28,012.00","₹ 3,76,486.80",
+1100,Sundry Debtors,ASSET,,,"₹ 29,23,567.60","₹ 25,28,012.00","₹ 3,95,555.60",
 1200,Vehicle Stock,ASSET,,,"₹ 35,41,800.00","₹ 19,48,700.00","₹ 15,93,100.00",
-1210,Spare Parts Stock,ASSET,,,,"₹ 12,270.00",,"₹ 12,270.00"
+1210,Spare Parts Stock,ASSET,,,,"₹ 24,540.00",,"₹ 24,540.00"
 1400,Cash,ASSET,,,"₹ 4,85,164.00",,"₹ 4,85,164.00",
 1500,Bank Accounts,ASSET,,,"₹ 20,42,848.00",,"₹ 20,42,848.00",
 1620,Input IGST,ASSET,,,"₹ 6,93,393.00",,"₹ 6,93,393.00",
 2100,Sundry Creditors,LIABILITY,,,,"₹ 42,35,193.00",,"₹ 42,35,193.00"
-2200,Output CGST,LIABILITY,,,,"₹ 2,10,067.04",,"₹ 2,10,067.04"
-2210,Output SGST,LIABILITY,,,,"₹ 2,10,066.91",,"₹ 2,10,066.91"
+2200,Output CGST,LIABILITY,,,,"₹ 2,11,521.44",,"₹ 2,11,521.44"
+2210,Output SGST,LIABILITY,,,,"₹ 2,11,521.31",,"₹ 2,11,521.31"
 2300,Road Tax Payable,LIABILITY,,,,"₹ 1,84,800.00",,"₹ 1,84,800.00"
 2320,Insurance Premium Payable,LIABILITY,,,,"₹ 1,37,280.00",,"₹ 1,37,280.00"
 4100,Vehicle Sales,INCOME,,,,"₹ 21,46,124.85",,"₹ 21,46,124.85"
-4200,Spare Parts Sales,INCOME,,,,"₹ 8,960.00",,"₹ 8,960.00"
-4300,Labour Income,INCOME,,,,"₹ 7,200.00",,"₹ 7,200.00"
+4200,Spare Parts Sales,INCOME,,,,"₹ 17,920.00",,"₹ 17,920.00"
+4300,Labour Income,INCOME,,,,"₹ 14,400.00",,"₹ 14,400.00"
 5100,Cost of Goods Sold — Vehicles,EXPENSE,,,"₹ 19,48,700.00",,"₹ 19,48,700.00",
-5110,Cost of Goods Sold — Spare Parts,EXPENSE,,,"₹ 12,270.00",,"₹ 12,270.00",
-,TOTAL,,,,,,"₹ 71,51,961.80","₹ 71,51,961.80"
+5110,Cost of Goods Sold — Spare Parts,EXPENSE,,,"₹ 24,540.00",,"₹ 24,540.00",
+,TOTAL,,,,,,"₹ 71,83,300.60","₹ 71,83,300.60"

@@ -183,9 +183,25 @@ console.log(
     await ownerDb.delete(saleDocumentsTable).where(eq(saleDocumentsTable.id, d.id));
   }
   await ownerDb.delete(dmsVehicleStockTable).where(eq(dmsVehicleStockTable.chassisNo, CHASSIS));
+  /*
+   * The two Sharmas, and **not the manufacturer**.
+   *
+   * This used to delete anything holding Hero's GSTIN as well, which was safe
+   * for exactly as long as no real Hero row existed. Once the network fixture
+   * started buying stock, `06AAACH1234M1ZQ` stopped being this file's throwaway
+   * supplier and became the dealership's actual creditor with three purchase
+   * invoices against it — and the tidy-up would have deleted a party the books
+   * depend on. It did not, because the foreign key refused, which is the only
+   * reason this was a red verifier rather than a silent hole in a ledger.
+   *
+   * The verifier still *uses* Hero, and §1 is the reason: matching an existing
+   * party by GSTIN is the behaviour being proved. What it may not do is take
+   * back something it did not create — the same lesson `verify:invoice` paid
+   * for when it deleted two invoices a person had raised.
+   */
   await ownerDb
     .delete(partiesTable)
-    .where(sql`${partiesTable.mobile} in ('9811100001','9811100002') or ${partiesTable.gstin} = '06AAACH1234M1ZQ'`);
+    .where(sql`${partiesTable.mobile} in ('9811100001','9811100002')`);
 }
 
 const created = {
@@ -208,7 +224,13 @@ const honda = await ensureParty({
   gstin: "06AAACH1234M1ZQ",
   state: "Haryana",
 });
-created.partyIds.push(honda.party.id);
+/*
+ * Registered for removal **only if this run created it**. On a fixture that has
+ * already bought stock from Hero, `ensureParty` finds the existing row — which
+ * is the feature — and deleting it afterwards would be this verifier tidying
+ * away the dealership's own creditor.
+ */
+if (honda.created) created.partyIds.push(honda.party.id);
 check("the manufacturer gets a ledger row", honda.party.id > 0, honda.party.name);
 
 const again = await ensureParty({
@@ -238,7 +260,8 @@ const sharmaB = await ensureParty({
   name: "Rakesh Sharma",
   mobile: "9811100002",
 });
-created.partyIds.push(sharmaA.party.id, sharmaB.party.id);
+if (sharmaA.created) created.partyIds.push(sharmaA.party.id);
+if (sharmaB.created) created.partyIds.push(sharmaB.party.id);
 check(
   "**two Sharmas on two mobiles stay two people**",
   sharmaA.party.id !== sharmaB.party.id,

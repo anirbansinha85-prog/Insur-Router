@@ -2,15 +2,15 @@
 
 Head,Account,Amount,,
 Income,Vehicle Sales,"₹ 21,46,124.85",,
-Income,Spare Parts Sales,"₹ 8,960.00",,
-Income,Labour Income,"₹ 7,200.00",,
+Income,Spare Parts Sales,"₹ 17,920.00",,
+Income,Labour Income,"₹ 14,400.00",,
 Expense,Cost of Goods Sold — Vehicles,"₹ 19,48,700.00",,
-Expense,Cost of Goods Sold — Spare Parts,"₹ 12,270.00",,
-,PROFIT,"₹ 2,01,314.85",,
+Expense,Cost of Goods Sold — Spare Parts,"₹ 24,540.00",,
+,PROFIT,"₹ 2,05,204.85",,
 ,,,,
 Branch,Role,Income,Expenses,Profit
 DEL-SAR-BW,PREMIUM,"₹ 5,96,462.22","₹ 5,75,400.00","₹ 21,062.22"
 DEL-SAR-DWK,SALES,"₹ 4,92,331.32","₹ 4,32,600.00","₹ 59,731.32"
 DEL-SAR-JANAK,SALES,"₹ 6,17,000.81","₹ 5,44,300.00","₹ 72,700.81"
-DEL-SAR-OKHLA,SERVICE,"₹ 16,160.00","₹ 12,270.00","₹ 3,890.00"
+DEL-SAR-OKHLA,SERVICE,"₹ 32,320.00","₹ 24,540.00","₹ 7,780.00"
 DEL-SARASWATI,HUB,"₹ 4,40,330.50","₹ 3,96,400.00","₹ 43,930.50"

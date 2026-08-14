@@ -29,6 +29,8 @@
     "verify:trace": "pnpm --filter @workspace/scripts run trace",
     "verify:ledger": "pnpm --filter @workspace/scripts run ledger",
     "verify:agents": "pnpm --filter @workspace/scripts run agents",
+    "verify:allocation": "pnpm --filter @workspace/scripts run allocation",
+    "verify:eod": "pnpm --filter @workspace/scripts run eod",
     "db:probe": "pnpm --filter @workspace/scripts run probe",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"

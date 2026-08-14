@@ -23,6 +23,8 @@
     "audit": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-audit.ts",
     "returns": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-returns.ts",
     "reconcile": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-reconcile.ts",
+    "allocation": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-allocation.ts",
+    "eod": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-eod.ts",
     "export-reports": "tsx --env-file-if-exists=../.env ./src/export-reports.ts",
     "export-books": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/export-books.ts",
     "rls": "tsx --env-file-if-exists=../.env ./src/apply-rls.ts",

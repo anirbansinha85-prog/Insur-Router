@@ -75,12 +75,12 @@ survive, and the total row is the one that once arrived as a deal priced at 78.
 
 ## `from-ddms/` — what a chartered accountant opens
 
-Twelve reports per **legal entity**, plus the returns per **registration**.
+Thirteen reports per **legal entity**, plus the returns per **registration**.
 
 ```
 from-ddms/
   SARASWATI/
-    01-day-book.csv .. 12-reconciliations.csv
+    01-day-book.csv .. 13-central-end-of-day.csv
     returns-07AAACS1234A1Z5-2026-11/    gstr1-b2b · gstr1-b2cs · gstr3b
   DECCAN/
 ```
@@ -92,9 +92,15 @@ figure somebody will eventually add to another one:
 
 | Question | Level | Files |
 |---|---|---|
-| Whose money is this? | **entity** | trial balance, P&L, balance sheet |
+| Whose money is this? | **entity** | trial balance, P&L, balance sheet, the central end of day |
 | Who files this return? | **registration** | GSTR-1, GSTR-3B |
 | Where did this happen? | **branch** | day closes, and the branch P&L block |
+
+The day close and the central end of day are the same evening at two levels, and
+that is deliberate rather than duplication: a till belongs to a branch and the
+cash belongs to a company. The second is a **sum of the first** and is computed
+nowhere — it is derived every time it is read, because a stored roll-up quoting
+last night's figure is exactly what somebody at head office would quote.
 
 The profit & loss carries both: consolidated, then a block per branch, because a
 branch is a profit centre. The **balance sheet is per entity only** — a branch
@@ -111,6 +117,19 @@ Saraswati row says **No**: same GSTIN, one legal person moving its own stock
 between its own branches, so a delivery challan, no tax invoice, no GST and **no
 accounting entry at all**. A `YES — taxable` on an internal transfer would mean
 the GST return is being inflated every month.
+
+> The *Kind* column carries `VEHICLE` or `PART` since OBJ-46. The daily van to
+> the Okhla workshop is on the same document a motorcycle travels on, because it
+> is the same movement — and it is the only place in the corpus where the e-way
+> column reads `NOT_REQUIRED`, a consignment of brake shoes being a long way
+> under fifty thousand rupees.
+
+**`13-central-end-of-day.csv`** — and it says **`does not reconcile`** on every
+evening in this fixture, which is the report working rather than failing. Only
+two or three of the five branches ever counted a till, and the *Closed?* column
+is what makes that visible: a branch that never counted contributes nothing to a
+total and reads identically to a branch that counted zero. Two conditions have to
+hold before an evening is clean — every branch closed, and every close agreed.
 
 **`12-reconciliations.csv`** — the *Ran?* column is separate from *Clean?* on
 purpose. Two of the ten cannot run: nothing imports a bank statement and nothing

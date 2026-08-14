@@ -30,6 +30,7 @@ import {
   vouchersTable,
   voucherLinesTable,
   dmsVehicleStockTable,
+  dmsPartStockTable,
   showroomsTable,
   type StockMoveRow,
   type ChassisEventRow,
@@ -56,7 +57,11 @@ const round2 = (x: number): number => Math.round((x + Number.EPSILON) * 100) / 1
  */
 export const EWAY_THRESHOLD = 50_000;
 
-export interface MoveLineInput {
+/**
+ * A machine. One frame, one identity, one life on the register.
+ */
+export interface VehicleMoveLine {
+  kind?: "VEHICLE";
   chassisNo: string;
   engineNo?: string | null;
   modelDescription: string;
@@ -65,6 +70,29 @@ export interface MoveLineInput {
   value: number;
   gstRatePct?: number | null;
 }
+
+/**
+ * A quantity of a part (OBJ-46). No identity, and therefore no register.
+ *
+ * A brake shoe is not traced from the factory to a customer; it is counted on a
+ * shelf. So a part line records what the shelf has to change by, and the check
+ * that matters is **conservation** — what left one branch arrived at the other
+ * and the company still owns the same number of them.
+ */
+export interface PartMoveLine {
+  kind: "PART";
+  partNo: string;
+  qty: number;
+  modelDescription: string;
+  hsn?: string | null;
+  /** The **line total** at cost, not a unit rate. */
+  value: number;
+  gstRatePct?: number | null;
+}
+
+export type MoveLineInput = VehicleMoveLine | PartMoveLine;
+
+const isPart = (l: MoveLineInput): l is PartMoveLine => l.kind === "PART";
 
 /** Our own challan series, per owner per financial year. Gapless. */
 async function nextChallanNo(ownerId: number, onDate: string): Promise<string> {
@@ -103,14 +131,35 @@ export async function createStockMove(input: {
   const warnings: string[] = [];
 
   if (input.lines.length === 0) {
-    return { ok: false, error: "A challan with no machines on it records nothing.", warnings };
+    return { ok: false, error: "A challan with nothing on it records nothing.", warnings };
   }
   if (input.fromShowroomId === input.toShowroomId) {
     return {
       ok: false,
-      error: "A machine cannot be transferred to the branch it is already at.",
+      error: "Stock cannot be transferred to the branch it is already at.",
       warnings,
     };
+  }
+
+  /*
+   * Each line is one shape or the other, checked here as well as by the
+   * database (OBJ-46). The constraint is the guarantee; this is the sentence.
+   */
+  for (const l of input.lines) {
+    if (isPart(l)) {
+      if (!l.partNo?.trim()) {
+        return { ok: false, error: "A part line needs a part number.", warnings };
+      }
+      if (!Number.isInteger(l.qty) || l.qty < 1) {
+        return {
+          ok: false,
+          error: `${l.partNo} is on the challan for ${l.qty}. A part travels in whole units and at least one of them.`,
+          warnings,
+        };
+      }
+    } else if (!l.chassisNo?.trim()) {
+      return { ok: false, error: "A machine line needs a chassis number.", warnings };
+    }
   }
 
   const from = await placementOf(input.fromShowroomId);
@@ -144,8 +193,11 @@ export async function createStockMove(input: {
    * the same second could both win - which is a race worth losing to, given the
    * alternative was a denormalised status quietly going stale.
    */
-  const chassisNos = input.lines.map((l) => l.chassisNo.trim());
-  const alreadyOpen = await db
+  const vehicleLines = input.lines.filter((l): l is VehicleMoveLine => !isPart(l));
+  const partLines = input.lines.filter(isPart);
+
+  const chassisNos = vehicleLines.map((l) => l.chassisNo.trim());
+  const alreadyOpen = chassisNos.length === 0 ? [] : await db
     .select({
       chassisNo: stockMoveLinesTable.chassisNo,
       challanNo: stockMovesTable.challanNo,
@@ -169,6 +221,51 @@ export async function createStockMove(input: {
         "genuinely gone missing, and both deserve a refusal rather than a second document.",
       warnings,
     };
+  }
+
+  /*
+   * Is the part actually on the sending branch's shelf?
+   *
+   * **A warning and not a refusal**, deliberately, and the reasoning is the
+   * same as the vehicle path's: the shelf figure is a *mirror* of the dealer's
+   * own system and is only as fresh as the last sync. Refusing a real van that
+   * is loading because a nightly pull has not run yet would make the document
+   * useless on exactly the mornings it matters. The counter clerk can see the
+   * shelf and we cannot.
+   *
+   * What is *not* done is quietly clamping the shelf at zero on despatch. A
+   * negative on-hand is the books saying the branch shipped more than it had,
+   * which is a finding; clamping destroys the only evidence of it.
+   */
+  if (partLines.length > 0) {
+    const shelf = await db
+      .select({ partNo: dmsPartStockTable.partNo, qtyOnHand: dmsPartStockTable.qtyOnHand })
+      .from(dmsPartStockTable)
+      .where(
+        and(
+          eq(dmsPartStockTable.showroomId, input.fromShowroomId),
+          inArray(
+            dmsPartStockTable.partNo,
+            partLines.map((l) => l.partNo.trim()),
+          ),
+        ),
+      );
+    const onHand = new Map(shelf.map((r) => [r.partNo, r.qtyOnHand]));
+    for (const l of partLines) {
+      const have = onHand.get(l.partNo.trim());
+      if (have === undefined) {
+        warnings.push(
+          `${from.branchName} has no shelf record for ${l.partNo}, so the challan records ${l.qty} leaving a shelf ` +
+            "the dealer's system does not know exists. Either it has never been stocked here or the mirror is stale.",
+        );
+      } else if (have < l.qty) {
+        warnings.push(
+          `${from.branchName} shows ${have} of ${l.partNo} on the shelf and ${l.qty} are on this challan. ` +
+            "The shelf will go negative on despatch rather than being clamped, because a shelf below zero is the " +
+            "finding and a clamp would hide it.",
+        );
+      }
+    }
   }
 
   const supply = transferIsSupply(from, to);
@@ -217,8 +314,11 @@ export async function createStockMove(input: {
       input.lines.map((l, i) => ({
         stockMoveId: move!.id,
         seq: i + 1,
-        chassisNo: l.chassisNo.trim(),
-        engineNo: l.engineNo?.trim() || null,
+        kind: isPart(l) ? ("PART" as const) : ("VEHICLE" as const),
+        chassisNo: isPart(l) ? null : l.chassisNo.trim(),
+        engineNo: isPart(l) ? null : l.engineNo?.trim() || null,
+        partNo: isPart(l) ? l.partNo.trim() : null,
+        qty: isPart(l) ? l.qty : 1,
         modelDescription: l.modelDescription,
         hsn: l.hsn ?? null,
         value: money(l.value),
@@ -233,6 +333,23 @@ export async function createStockMove(input: {
       return {
         ok: false,
         error: "The same machine appears twice on this challan.",
+        warnings,
+      };
+    }
+    if (cause?.code === "23505" && cause.constraint?.includes("part")) {
+      return {
+        ok: false,
+        error:
+          "The same part appears twice on this challan. Put the quantity on one line — two lines add up " +
+          "and then only one of them gets corrected.",
+        warnings,
+      };
+    }
+    if (cause?.code === "23514" && cause.constraint?.includes("kind_shape")) {
+      return {
+        ok: false,
+        error:
+          "A line carried both a chassis number and a part number, or neither. One thing travels per line.",
         warnings,
       };
     }
@@ -285,11 +402,40 @@ export async function despatchStockMove(input: {
     .returning();
 
   for (const l of lines) {
+    if (l.kind === "PART") {
+      /*
+       * The shelf falls **here**, on despatch, and not on arrival — which is
+       * the opposite of the vehicle path and is deliberate (OBJ-46).
+       *
+       * A machine's mirror row moves branch on receipt because it is one row
+       * that has to be somewhere, and while it is in transit the chassis
+       * register says *nowhere*, which is what the stock reconciliation reads.
+       * A part has no register. If the count only fell on arrival, the sending
+       * branch's shelf would overstate for as long as the van was on the road,
+       * and a counter clerk would promise a part that had already left the
+       * building.
+       *
+       * So the source falls now, the destination rises on receipt, and the
+       * difference between them **is** the goods in transit — which is exactly
+       * what the inter-branch reconciliation reports.
+       */
+      await db
+        .update(dmsPartStockTable)
+        .set({ qtyOnHand: sql`${dmsPartStockTable.qtyOnHand} - ${l.qty}` })
+        .where(
+          and(
+            eq(dmsPartStockTable.showroomId, move.fromShowroomId),
+            eq(dmsPartStockTable.partNo, l.partNo!),
+          ),
+        );
+      continue;
+    }
+
     await db
       .insert(chassisEventsTable)
       .values({
         ownerId: input.ownerId,
-        chassisNo: l.chassisNo,
+        chassisNo: l.chassisNo!,
         showroomId: move.fromShowroomId,
         kind: "DESPATCHED",
         eventDate: move.challanDate,
@@ -303,7 +449,12 @@ export async function despatchStockMove(input: {
   }
 
   logger.info(
-    { ownerId: input.ownerId, challanNo: move.challanNo, units: lines.length },
+    {
+      ownerId: input.ownerId,
+      challanNo: move.challanNo,
+      units: lines.filter((l) => l.kind !== "PART").length,
+      partLines: lines.filter((l) => l.kind === "PART").length,
+    },
     "Stock despatched",
   );
   return { ok: true, move: updated!, warnings };
@@ -462,14 +613,75 @@ export async function receiveStockMove(input: {
     .returning();
 
   let moved = 0;
+  let createdShelves = 0;
   for (const l of lines) {
+    if (l.kind === "PART") {
+      const bumped = await db
+        .update(dmsPartStockTable)
+        .set({
+          qtyOnHand: sql`${dmsPartStockTable.qtyOnHand} + ${l.qty}`,
+          lastReceivedDate: receivedDate,
+        })
+        .where(
+          and(
+            eq(dmsPartStockTable.showroomId, move.toShowroomId),
+            eq(dmsPartStockTable.partNo, l.partNo!),
+          ),
+        )
+        .returning({ id: dmsPartStockTable.id });
+
+      if (bumped.length === 0) {
+        /*
+         * The receiving branch has never held this part, so there is no shelf
+         * row to raise. One is written, and it is worth being precise about
+         * what that is: a **mirror** row that no dealer system produced.
+         *
+         * The alternative was to refuse, and refusing would mean the box
+         * physically arrived and the product recorded it nowhere - the exact
+         * failure OBJ-46 exists to close. So it is written, carrying the
+         * *sending* branch's dealer code because that is whose parts ledger it
+         * came off, and the warning says plainly that the dealership's own
+         * system does not know. At a branch that syncs, the next pull will mark
+         * it disappeared, and that is the honest signal rather than a defect:
+         * the transfer happened and nobody keyed it into the DMS.
+         */
+        const [source] = await db
+          .select({ dealerCode: dmsPartStockTable.dealerCode, partDesc: dmsPartStockTable.partDesc })
+          .from(dmsPartStockTable)
+          .where(
+            and(
+              eq(dmsPartStockTable.showroomId, move.fromShowroomId),
+              eq(dmsPartStockTable.partNo, l.partNo!),
+            ),
+          );
+
+        await db.insert(dmsPartStockTable).values({
+          showroomId: move.toShowroomId,
+          dealerCode: source?.dealerCode ?? "",
+          partNo: l.partNo!,
+          partDesc: source?.partDesc ?? l.modelDescription,
+          qtyOnHand: l.qty,
+          lastReceivedDate: receivedDate,
+          raw: { createdBy: "DDMS_STOCK_MOVE", challanNo: move.challanNo, qty: l.qty },
+          rawHash: `challan:${move.challanNo}:${l.partNo}`,
+        });
+        createdShelves++;
+        warnings.push(
+          `${l.partNo} had never been held at the receiving branch, so a shelf line has been opened for it ` +
+            `with ${l.qty} on hand. The dealership's own system does not know this part is there — ` +
+            "key the transfer into it, or the next sync will report the line as gone.",
+        );
+      }
+      continue;
+    }
+
     const res = await db
       .update(dmsVehicleStockTable)
       .set({ showroomId: move.toShowroomId })
       .where(
         and(
           eq(dmsVehicleStockTable.showroomId, move.fromShowroomId),
-          eq(dmsVehicleStockTable.chassisNo, l.chassisNo),
+          eq(dmsVehicleStockTable.chassisNo, l.chassisNo!),
         ),
       )
       .returning({ id: dmsVehicleStockTable.id });
@@ -479,7 +691,7 @@ export async function receiveStockMove(input: {
       .insert(chassisEventsTable)
       .values({
         ownerId: input.ownerId,
-        chassisNo: l.chassisNo,
+        chassisNo: l.chassisNo!,
         showroomId: move.toShowroomId,
         kind: "RECEIVED",
         eventDate: receivedDate,
@@ -492,14 +704,21 @@ export async function receiveStockMove(input: {
       .onConflictDoNothing();
   }
 
-  if (moved < lines.length) {
+  const vehicleCount = lines.filter((l) => l.kind !== "PART").length;
+  if (moved < vehicleCount) {
     warnings.push(
-      `${lines.length - moved} of ${lines.length} machine(s) on ${move.challanNo} were not found in the despatching branch's stock, so the register records the arrival and the mirror does not show the move. The stock reconciliation will name them.`,
+      `${vehicleCount - moved} of ${vehicleCount} machine(s) on ${move.challanNo} were not found in the despatching branch's stock, so the register records the arrival and the mirror does not show the move. The stock reconciliation will name them.`,
     );
   }
 
   logger.info(
-    { ownerId: input.ownerId, challanNo: move.challanNo, units: moved, voucherId },
+    {
+      ownerId: input.ownerId,
+      challanNo: move.challanNo,
+      units: moved,
+      createdShelves,
+      voucherId,
+    },
     "Stock received",
   );
   return { ok: true, move: updated!, voucherId, warnings };
@@ -524,6 +743,8 @@ export async function inTransit(input: {
     fromShowroomId: number;
     toShowroomId: number;
     chassisNos: string[];
+    /** Part lines on the same challan, which travel in the same van (OBJ-46). */
+    parts: Array<{ partNo: string; qty: number }>;
     value: number;
     days: number;
     stale: boolean;
@@ -557,9 +778,16 @@ export async function inTransit(input: {
     );
 
   const byMove = new Map<number, string[]>();
+  const partsByMove = new Map<number, Array<{ partNo: string; qty: number }>>();
   for (const l of lines) {
+    if (l.kind === "PART") {
+      const list = partsByMove.get(l.stockMoveId) ?? [];
+      list.push({ partNo: l.partNo!, qty: l.qty });
+      partsByMove.set(l.stockMoveId, list);
+      continue;
+    }
     const list = byMove.get(l.stockMoveId) ?? [];
-    list.push(l.chassisNo);
+    list.push(l.chassisNo!);
     byMove.set(l.stockMoveId, list);
   }
 
@@ -572,6 +800,7 @@ export async function inTransit(input: {
       fromShowroomId: m.fromShowroomId,
       toShowroomId: m.toShowroomId,
       chassisNos: byMove.get(m.id) ?? [],
+      parts: partsByMove.get(m.id) ?? [],
       value: n(m.consignmentValue),
       days,
       stale: days > stale,
@@ -713,6 +942,40 @@ export async function stockPositionCheck(input: {
   const onlyInMirror = [...mirrorAt.keys()].filter((c) => !registerAt.has(c));
 
   return { matched, mismatched, onlyInRegister, onlyInMirror };
+}
+
+/**
+ * Shelves the books have driven below zero (OBJ-46).
+ *
+ * There is **no second source for a part's quantity**, and saying so is the
+ * honest part of this function. A chassis can be reconciled because two systems
+ * each hold an opinion about where one frame is; a brake shoe has a count, in
+ * one place, and the dealer's system will not tell us what it thinks that count
+ * became after a transfer nobody keyed into it.
+ *
+ * So this is not two sources compared. It is **what our own documents imply
+ * about a shelf**, and the one implication that cannot be right: a branch
+ * cannot hold less than nothing. A negative is a challan that despatched more
+ * than the branch had — a miscount, a part issued to a job card and never
+ * recorded, or a keying error — and it is worth a row rather than a clamp,
+ * because clamping at zero is how the evidence disappears.
+ */
+export async function negativeShelves(input: {
+  ownerId: number;
+}): Promise<Array<{ showroomId: number; branchCode: string; partNo: string; qtyOnHand: number }>> {
+  const rows = await db
+    .select({
+      showroomId: dmsPartStockTable.showroomId,
+      branchCode: showroomsTable.code,
+      partNo: dmsPartStockTable.partNo,
+      qtyOnHand: dmsPartStockTable.qtyOnHand,
+    })
+    .from(dmsPartStockTable)
+    .innerJoin(showroomsTable, eq(dmsPartStockTable.showroomId, showroomsTable.id))
+    .where(and(eq(showroomsTable.ownerId, input.ownerId), sql`${dmsPartStockTable.qtyOnHand} < 0`))
+    .orderBy(asc(showroomsTable.code), asc(dmsPartStockTable.partNo));
+
+  return rows;
 }
 
 export { taxWithin };

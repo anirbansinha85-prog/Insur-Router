@@ -56,6 +56,7 @@ import { ageing } from "../lib/dms/ledger/parties";
 import { gstr1For } from "../lib/dms/ledger/returns";
 import { gstr3bFor, monthRange } from "../lib/dms/ledger/returns3b";
 import { reconcileAll } from "../lib/dms/ledger/reconcile";
+import { centralEndOfDay, eveningsOverPeriod } from "../lib/dms/ledger/eod";
 
 const OWNER = 1;
 const OUT = join(process.cwd(), "..", "sample-reports", "from-ddms");
@@ -373,11 +374,15 @@ for (const entity of entities) {
     report({
       title: "Stock Transfer Register",
       scope: `${entityScope} — **not sales.** Same GSTIN is one legal person moving its own stock: a challan, no tax invoice, no GST, and no accounting entry`,
-      headings: ["Date", "Challan", "From", "To", "Chassis", "Model", "Value", "Is a supply?", "E-way", "Status"],
+      // "What" rather than "Chassis" since OBJ-46: a challan carries machines
+      // or parts, and a column headed Chassis with a part number under it is
+      // a heading that has stopped being true.
+      headings: ["Date", "Challan", "From", "To", "Kind", "What", "Qty", "Model", "Value", "Is a supply?", "E-way", "Status"],
       rows: moves.flatMap((m) =>
         (linesByMove.get(m.id) ?? []).map((l) => [
           dmy(m.challanDate), m.challanNo, text(branchName.get(m.from)), text(branchName.get(m.to)),
-          l.chassisNo, l.modelDescription, money(l.value), m.isSupply === "Y" ? "YES — taxable" : "No",
+          l.kind, text(l.chassisNo ?? l.partNo), String(l.qty), l.modelDescription,
+          money(l.value), m.isSupply === "Y" ? "YES — taxable" : "No",
           m.eway, m.status,
         ]),
       ),
@@ -528,6 +533,52 @@ for (const entity of entities) {
     }),
     rec.reconciliations.reduce((a, r) => a + Math.max(1, r.rows.length), 0),
   );
+
+  // ── 13. head office's evening, across every branch (OBJ-48) ────────────
+  //
+  // The report above is per branch, because a till belongs to a branch. This
+  // one is per **company**, because that is who the cash belongs to — and the
+  // column that earns its place is *Closed?*: a branch that never counted
+  // contributes nothing to a total and reads exactly like a branch that counted
+  // zero.
+  const evenings = await withWorkerScope(() =>
+    eveningsOverPeriod({ ownerId: OWNER, entityId: entity.id, from: FROM, to: TO }),
+  );
+  const eodRows: string[][] = [];
+  for (const d of evenings.days) {
+    const day = await withWorkerScope(() =>
+      centralEndOfDay({ ownerId: OWNER, entityId: entity.id, closeDate: d.closeDate }),
+    );
+    for (const b of day.branches) {
+      eodRows.push([
+        dmy(day.closeDate), b.branchCode, b.role,
+        b.closed ? "Yes" : "**No**",
+        b.closed ? money(b.countedCash) : "",
+        b.closed ? money(b.difference) : "",
+        b.closed ? b.reason ?? "" : "nobody counted this till",
+        money(b.financierReceipts), money(b.oemReceipts),
+      ]);
+    }
+    eodRows.push([
+      dmy(day.closeDate), `${entity.code} — the company`, "",
+      `${day.closedCount} of ${day.branchCount}`,
+      money(day.countedCash), money(day.difference),
+      day.reconciles ? "reconciles" : "**does not reconcile**",
+      money(day.financierReceipts), money(day.oemReceipts),
+    ]);
+  }
+  write(
+    dir,
+    "13-central-end-of-day.csv",
+    report({
+      title: "Central End of Day",
+      scope: `${entity.legalName} · **per company**, because that is whose cash it is · every evening from ${dmy(FROM)} to ${dmy(TO)}`,
+      headings: ["Date", "Branch", "Role", "Closed?", "Counted Cash", "Difference", "Reason", "From Financiers", "From the OEM"],
+      rows: eodRows,
+    }),
+    eodRows.length,
+  );
+
 
   console.log("");
 }

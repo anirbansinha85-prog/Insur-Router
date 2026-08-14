@@ -49,6 +49,7 @@ import {
   gstRegistrationsTable,
   dmsEmployeesTable,
   dmsVehicleStockTable,
+  dmsPartStockTable,
   showroomDmsAccountsTable,
   saleDocumentsTable,
   purchaseInvoicesTable,
@@ -208,6 +209,31 @@ const SALES: SaleSpec[] = [
 ];
 
 /** The workshop. Labour under a SAC, parts under an HSN, some under warranty. */
+/**
+ * The central parts warehouse, and the daily van that supplies the workshop
+ * (OBJ-46).
+ *
+ * A satellite workshop keeps fast-moving consumables on its own shelf and gets
+ * everything else out from the hub on the intra-city run. These are the lines
+ * the hub holds; Okhla starts with none of them, which is the point — the
+ * shelf it ends up with is one this product opened.
+ */
+const WAREHOUSE: Array<{ partNo: string; desc: string; qty: number; cost: number }> = [
+  { partNo: "NET-PT-BRK-SHOE-R", desc: "Brake shoe set, rear", qty: 48, cost: 240 },
+  { partNo: "NET-PT-OIL-FLT", desc: "Oil filter element", qty: 96, cost: 85 },
+  { partNo: "NET-PT-AIR-FLT", desc: "Air filter element", qty: 60, cost: 210 },
+  { partNo: "NET-PT-CHAIN-KIT", desc: "Chain and sprocket kit", qty: 22, cost: 1_180 },
+  { partNo: "NET-PT-CLUTCH-PL", desc: "Clutch plate set", qty: 18, cost: 640 },
+];
+
+/** The intra-city runs. Small consignments, and every one under the e-way threshold. */
+const PARTS_RUNS: Array<{ to: string; date: string; picks: Array<[string, number]> }> = [
+  { to: OKHLA, date: "2026-09-08", picks: [["NET-PT-BRK-SHOE-R", 6], ["NET-PT-OIL-FLT", 12]] },
+  { to: OKHLA, date: "2026-10-06", picks: [["NET-PT-OIL-FLT", 10], ["NET-PT-AIR-FLT", 8], ["NET-PT-CHAIN-KIT", 2]] },
+  { to: JANAK, date: "2026-10-20", picks: [["NET-PT-OIL-FLT", 6]] },
+  { to: OKHLA, date: "2026-11-10", picks: [["NET-PT-BRK-SHOE-R", 8], ["NET-PT-CLUTCH-PL", 3]] },
+];
+
 const SERVICE_JOBS = [
   { date: "2026-09-08", name: "Manish Grover", mobile: "9811230001", reg: "DL 8S AK 4412", km: 1_020, kind: "FREE" as const },
   { date: "2026-09-16", name: "Ramesh Duggal", mobile: "9811270001", reg: "DL 3S BB 9087", km: 14_600, kind: "PAID" as const },
@@ -248,6 +274,10 @@ async function branchByCode(): Promise<Map<string, { id: number; name: string; r
 /** Clear only what this script made, keyed on the tag and nothing else. */
 async function wipe(branchIds: number[]): Promise<void> {
   const chassisLike = `${TAG}-%`;
+
+  // Parts shelves this seeder opened, at every branch. Keyed on the tag, so a
+  // line the dealership actually holds is never touched.
+  await ownerDb.delete(dmsPartStockTable).where(like(dmsPartStockTable.partNo, `${TAG}-PT-%`));
 
   const docs = await ownerDb
     .select({ id: saleDocumentsTable.id })
@@ -521,6 +551,78 @@ async function main(): Promise<void> {
     const got = await receiveStockMove({ ownerId: OWNER, stockMoveId: move.move!.id, userId: 1 });
     console.log(
       `  challan      ${move.move!.challanNo}  ${HUB} → ${a.to.padEnd(14)} ${String(lines.length).padStart(2)} machines  ${got.voucherId ? "POSTED A VOUCHER (wrong!)" : "no voucher — not a supply"}`,
+    );
+  }
+
+  // ── 3b. the daily parts run (OBJ-46) ────────────────────────────────────
+  //
+  // The same document as a machine travels on, because it is the same movement:
+  // one legal person moving its own stock between its own branches. What
+  // differs is that a part has a quantity and no identity, so nothing goes on
+  // the chassis register and the shelf at each end is what changes.
+  for (const w of WAREHOUSE) {
+    await ownerDb
+      .insert(dmsPartStockTable)
+      .values({
+        showroomId: id(HUB),
+        dealerCode,
+        partNo: w.partNo,
+        partDesc: w.desc,
+        qtyOnHand: w.qty,
+        reorderLevel: Math.max(4, Math.round(w.qty / 8)),
+        costAmount: w.cost,
+        mrpAmount: Math.round(w.cost * 1.42),
+        lastReceivedDate: "2026-09-01",
+        raw: { partNo: w.partNo, source: RUN_BY },
+        rawHash: `${RUN_BY}-${w.partNo}`,
+      })
+      .onConflictDoNothing();
+  }
+  const partCost = new Map(WAREHOUSE.map((w) => [w.partNo, w] as const));
+
+  for (const r of PARTS_RUNS) {
+    const lines = r.picks.flatMap(([partNo, qty]) => {
+      const w = partCost.get(partNo);
+      if (!w) return [];
+      return [
+        {
+          kind: "PART" as const,
+          partNo,
+          qty,
+          modelDescription: w.desc,
+          hsn: "87141090",
+          value: w.cost * qty,
+          gstRatePct: 18,
+        },
+      ];
+    });
+    if (lines.length === 0) continue;
+
+    const run = await createStockMove({
+      ownerId: OWNER,
+      fromShowroomId: id(HUB),
+      toShowroomId: id(r.to),
+      challanDate: r.date,
+      lines,
+      narration: `${TAG}: parts run to ${r.to}`,
+      userId: 1,
+    });
+    if (!run.ok) {
+      console.log(`  parts run    ${r.to} ${r.date} refused — ${run.error}`);
+      continue;
+    }
+    await despatchStockMove({ ownerId: OWNER, stockMoveId: run.move!.id, userId: 1 });
+    const arrived = await receiveStockMove({
+      ownerId: OWNER,
+      stockMoveId: run.move!.id,
+      userId: 1,
+    });
+    console.log(
+      `  parts run    ${run.move!.challanNo}  ${HUB} → ${r.to.padEnd(14)} ` +
+        `${String(lines.reduce((a, l) => a + l.qty, 0)).padStart(2)} pieces  ` +
+        `${rupees(n(run.move!.consignmentValue)).padStart(10)}  ` +
+        `${run.move!.ewayStatus === "NOT_REQUIRED" ? "under the e-way threshold" : "e-way required"}` +
+        `${arrived.voucherId ? "  POSTED A VOUCHER (wrong!)" : ""}`,
     );
   }
 

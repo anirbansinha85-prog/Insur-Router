@@ -20,3 +20,8 @@ export * from "./audit";
 export * from "./returns3b";
 // The ten reconciliations and the graduation gate (OBJ-45, R-114, R-115).
 export * from "./reconcile";
+// The morning allocation: one decision, as many challans as the law needs
+// (OBJ-47).
+export * from "./allocation";
+// Head office's evening across every branch of one company (OBJ-48).
+export * from "./eod";

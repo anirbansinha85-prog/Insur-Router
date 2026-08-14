@@ -8,6 +8,7 @@ import {
   timestamp,
   index,
   uniqueIndex,
+  check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { ownersTable } from "./owners";
@@ -142,7 +143,38 @@ export const stockMovesTable = pgTable(
 
 export type StockMoveRow = typeof stockMovesTable.$inferSelect;
 
-/** One machine on one challan. */
+/**
+ * One thing on one challan — a machine, or a quantity of a part (OBJ-46).
+ *
+ * ## Why this table needed widening at all
+ *
+ * The first version of it assumed a challan carries a **chassis**, because the
+ * movement OBJ-39 was written for is the hub allocating a bike to a satellite.
+ * `chassisNo` was `notNull` and the whole design keyed off it: one identity,
+ * one register, one life.
+ *
+ * A spare part is not that shape. A brake shoe has no identity — it has a
+ * **part number and a quantity** — and the movement a hub-and-spoke dealership
+ * actually makes most often is the daily van run taking six of them out to a
+ * workshop that keeps only fast-moving lines on its own shelf. Until this
+ * column existed, `PART_REQUEST_TRANSFER` could ask a branch to send a part and
+ * there was **nowhere to record that it went**: the request was a decision
+ * field with no document behind it, so the part left one shelf and arrived on
+ * no record at all.
+ *
+ * ## The two shapes, and what each may not do
+ *
+ * ```
+ *   VEHICLE   chassis_no, one unit, qty is always 1, gets a chassis event
+ *   PART      part_no + qty, no chassis, no event — a part has no life to record
+ * ```
+ *
+ * `chassisNo` is therefore nullable and `partNo` is nullable, and **exactly one
+ * of them is set** per line. That could have been two tables; it is one, because
+ * a challan is one document with one number and one consignment value, and the
+ * e-way threshold reads the consignment rather than the kind of thing on it. A
+ * van carrying two bikes and a box of parts is one movement.
+ */
 export const stockMoveLinesTable = pgTable(
   "stock_move_lines",
   {
@@ -152,19 +184,46 @@ export const stockMoveLinesTable = pgTable(
       .references(() => stockMovesTable.id, { onDelete: "cascade" }),
     seq: integer("seq").notNull(),
 
-    chassisNo: text("chassis_no").notNull(),
+    /**
+     * Which shape this line is, **stored rather than inferred** from which of
+     * the two identifiers is filled.
+     *
+     * Inferring it would work today and would be the thing that breaks the
+     * first time a part arrives with no part number keyed, or a chassis is
+     * blank on a line somebody is still typing: the row would silently become
+     * the other kind and be despatched down the wrong path. A default of
+     * `VEHICLE` is what makes the existing rows correct without a backfill.
+     */
+    kind: text("kind", { enum: ["VEHICLE", "PART"] })
+      .notNull()
+      .default("VEHICLE"),
+
+    /** Set on a `VEHICLE` line and null on a `PART` line. */
+    chassisNo: text("chassis_no"),
     engineNo: text("engine_no"),
+    /** Set on a `PART` line and null on a `VEHICLE` line. */
+    partNo: text("part_no"),
+    /**
+     * How many. Always 1 on a machine — a chassis is one frame — and the whole
+     * point of a part line.
+     */
+    qty: integer("qty").notNull().default(1),
+
     modelDescription: text("model_description").notNull(),
     hsn: text("hsn"),
 
     /**
-     * What this machine is worth on this movement.
+     * What this line is worth on this movement, **for the whole quantity**.
      *
      * On an internal transfer that is its **cost**, not its selling price: no
      * profit arises from moving a bike between two of your own branches, and
      * valuing a challan at retail would inflate the consignment value, the
      * e-way threshold and — if the branches are on different registrations —
      * the tax charged on a supply to yourself.
+     *
+     * The line total rather than a unit rate, because the consignment value is
+     * what every rule downstream actually reads, and a unit rate would be
+     * multiplied out in three places that could each round differently.
      */
     value: numeric("value", { precision: 14, scale: 2 }).notNull().default("0"),
     gstRatePct: numeric("gst_rate_pct", { precision: 5, scale: 2 }),
@@ -187,8 +246,36 @@ export const stockMoveLinesTable = pgTable(
      * So this index is the one thing that *can* be stated absolutely - a chassis
      * appears once per challan - and the open-challan rule is a checked refusal
      * with a sentence attached.
+     *
+     * **Partial since OBJ-46.** A part line carries no chassis, and Postgres
+     * treats nulls as distinct in a unique index, so leaving it total would
+     * have worked - and would have been a constraint whose predicate did not
+     * say what it meant. Stating `where chassis_no is not null` is the same
+     * behaviour written down.
      */
-    uniqueIndex("stock_move_lines_move_chassis_unique").on(t.stockMoveId, t.chassisNo),
+    uniqueIndex("stock_move_lines_move_chassis_unique")
+      .on(t.stockMoveId, t.chassisNo)
+      .where(sql`chassis_no is not null`),
+    /*
+     * And the same rule for parts: one part number appears once on a challan,
+     * with a quantity, rather than on six lines of one each. Six lines would
+     * not be wrong - they would add up - but they make the shelf arithmetic on
+     * despatch six updates instead of one, and a part somebody meant to correct
+     * gets corrected on one of them.
+     */
+    uniqueIndex("stock_move_lines_move_part_unique")
+      .on(t.stockMoveId, t.partNo)
+      .where(sql`part_no is not null`),
+    /*
+     * Exactly one of the two identifiers, matching the kind. A line with both
+     * or with neither is not a thing that can travel, and this is cheap enough
+     * to state at the database rather than trusting six call sites.
+     */
+    check(
+      "stock_move_lines_kind_shape",
+      sql`(kind = 'VEHICLE' and chassis_no is not null and part_no is null and qty = 1)
+          or (kind = 'PART' and part_no is not null and chassis_no is null and qty > 0)`,
+    ),
   ],
 ).enableRLS();
 
