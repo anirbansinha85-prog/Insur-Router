@@ -45,7 +45,33 @@ const OWNER = 1;
  * from it seeds with a null capacity and takes the default, which is the same
  * thing that happens to a real dealer with a model he has not filled in.
  */
+/**
+ * The premium range, and it is here because nothing in the mirror reaches it.
+ *
+ * Every model the deal mirror carries is 200cc or under, or electric - so the
+ * seeded price lists have only ever exercised the 18% and 5% bands. **The 40%
+ * band above 350cc has never had a single row behind it**, which means the
+ * boundary that `rateFor` exists to get right has been proved by unit checks and
+ * never by a document.
+ *
+ * A Mavrick 440 fixes that: 440cc, so 40%, on a real machine a Hero dealership
+ * actually sells. It belongs at the premium outlet, which is what that branch
+ * role is for.
+ *
+ * (TCS under 206C(1F) still will not fire anywhere in this fixture, and that is
+ * correct rather than a gap: it needs an invoice over ten lakh, and Hero's range
+ * tops out near two. A BigWing or a Harley dealership meets it; this one does
+ * not, and pretending otherwise would put a collection on an invoice that owes
+ * none.)
+ */
+const PREMIUM_MODELS: Array<{ model: string; price: number }> = [
+  { model: "Mavrick 440", price: 199_000 },
+  { model: "Karizma XMR 210", price: 186_500 },
+];
+
 const CAPACITY: Record<string, { engineCc: number | null; propulsion: Propulsion }> = {
+  "Mavrick 440": { engineCc: 440, propulsion: "PETROL" },
+  "Karizma XMR 210": { engineCc: 210, propulsion: "PETROL" },
   "Splendor Plus": { engineCc: 97, propulsion: "PETROL" },
   "HF Deluxe": { engineCc: 97, propulsion: "PETROL" },
   "Xtreme 125R": { engineCc: 125, propulsion: "PETROL" },
@@ -151,7 +177,11 @@ async function main(): Promise<void> {
       .returning();
 
     let n = 0;
-    for (const [model, amount] of byModel) {
+    // The mirror's models, plus the premium range the mirror has never seen.
+    const everything = new Map(byModel);
+    for (const p of PREMIUM_MODELS) everything.set(p.model, p.price);
+
+    for (const [model, amount] of everything) {
       const tax = taxFor(model);
       await ownerDb.insert(priceListItemsTable).values({
         priceListId: list!.id,

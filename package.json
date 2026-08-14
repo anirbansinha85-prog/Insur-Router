@@ -13,6 +13,8 @@
     "db:export-reports": "pnpm --filter @workspace/scripts run export-reports",
     "db:seed-users": "pnpm --filter @workspace/scripts run seed-users",
     "db:migrate-org": "pnpm --filter @workspace/scripts run migrate-org",
+    "db:seed-network": "pnpm --filter @workspace/scripts run seed-network",
+    "db:seed-branch-data": "pnpm --filter @workspace/scripts run seed-branch-data",
     "db:rls": "pnpm --filter @workspace/scripts run rls",
     "verify:records": "pnpm --filter @workspace/scripts run records",
     "verify:permissions": "pnpm --filter @workspace/scripts run permissions",
