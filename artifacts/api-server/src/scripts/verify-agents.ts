@@ -112,12 +112,22 @@ const shared = Object.keys(CLOSED_TO_THE_STOCK_AGENT).filter(
 const differing = shared.filter(
   (id) =>
     CLOSED_TO_THE_STOCK_AGENT[id] !== CLOSED_TO_THE_AGENT[id] &&
-    // The two that legitimately differ: refused because they belong to the
-    // other agent, not because the act is illegitimate. `VEHICLE_MARK_OFFERED`
-    // was exempted here too until the reasons were genuinely shared rather than
-    // rewritten — a stale exemption is how a check quietly stops checking.
+    /*
+     * The three that legitimately differ: refused because they belong to the
+     * other agent, not because the act is illegitimate. `VEHICLE_MARK_OFFERED`
+     * was exempted here too until the reasons were genuinely shared rather than
+     * rewritten - a stale exemption is how a check quietly stops checking.
+     *
+     * `JOB_CARD_REASSIGN` joined them at OBJ-49, and it is the sharpest of the
+     * three: the stock agent is refused because routing people is not its band,
+     * and the first agent is refused for a reason that belongs to neither of
+     * them - a card in progress carries context in somebody's head. Two
+     * different refusals of one act, and forcing them to share a sentence would
+     * make both of them vaguer.
+     */
     id !== "ENQUIRY_REASSIGN" &&
-    id !== "REGISTRATION_ASSIGN_AGENT",
+    id !== "REGISTRATION_ASSIGN_AGENT" &&
+    id !== "JOB_CARD_REASSIGN",
 );
 check(
   "the shared refusals say the same thing to both agents",
@@ -125,9 +135,12 @@ check(
   differing.join(", ") || `${shared.length} refusals compared, ${shared.length - differing.length} identical`,
 );
 check(
-  "and the two that differ differ for a stated reason",
-  CLOSED_TO_THE_STOCK_AGENT.ENQUIRY_REASSIGN?.includes("the other agent's job") === true,
-  CLOSED_TO_THE_STOCK_AGENT.ENQUIRY_REASSIGN ?? "(no reason)",
+  "and the three that differ differ for a stated reason",
+  CLOSED_TO_THE_STOCK_AGENT.ENQUIRY_REASSIGN?.includes("the other agent's job") === true &&
+    CLOSED_TO_THE_STOCK_AGENT.JOB_CARD_REASSIGN?.includes("does not route people") === true &&
+    /* And the first agent's refusal is its own, not a copy of the stock agent's. */
+    CLOSED_TO_THE_AGENT.JOB_CARD_REASSIGN?.includes("context in a person's head") === true,
+  CLOSED_TO_THE_AGENT.JOB_CARD_REASSIGN ?? "(no reason)",
 );
 check(
   "no refusal is a bare sentence with nothing in it",

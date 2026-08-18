@@ -132,6 +132,7 @@ import type {
   ProviderUpdate,
   QueueResult,
   RecentApplication,
+  RecordHistory,
   RenameLedgerAccount200,
   ReportDropInput,
   ReportDropResult,
@@ -3418,6 +3419,92 @@ export function useGetCaseRecord<TData = Awaited<ReturnType<typeof getCaseRecord
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetCaseRecordQueryOptions(module,recordKey,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetRecordHistoryUrl = (module: 'DEAL' | 'JOB_CARD' | 'ENQUIRY' | 'REGISTRATION' | 'PART' | 'RECEIVABLE' | 'VEHICLE',
+    recordKey: string,) => {
+
+
+
+
+  return `/api/dms/records/${module}/${recordKey}/history`
+}
+
+/**
+ * Distinct from the activity list, which returns what somebody wrote down. This returns what was done as well — the decision log, the derived state moving, what was said to the customer and what they said back — and the difference is between a note-taking feature and a handover.
+ * It exists because of staff shortage. When the advisor who has been working a record is not in, somebody else picks it up cold and the question they have is "has anyone already rung her". Until this endpoint that answer was in the database, correctly and with a name against it, and on no screen.
+ * Every entry carries the clock it is on. A record can move in the dealer's system on the 2nd, be pulled on the 5th and be noticed on the 5th; one merged timestamp reads as "nothing happened for three days", which is false in the direction that makes somebody stop chasing.
+ * It infers nothing. If nobody logged a call it says nobody logged a call, rather than reading a sent message as a conversation. And it says how far back it can see — a record that predates the dealership's onboarding has history in their own system that was never pulled and cannot be invented.
+ * @summary Everything that has happened to this record
+ */
+export const getRecordHistory = async (module: 'DEAL' | 'JOB_CARD' | 'ENQUIRY' | 'REGISTRATION' | 'PART' | 'RECEIVABLE' | 'VEHICLE',
+    recordKey: string, options?: Parameters<typeof customFetch>[1]): Promise<RecordHistory> => {
+
+  return customFetch<RecordHistory>(getGetRecordHistoryUrl(module,recordKey),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRecordHistoryQueryKey = (module: 'DEAL' | 'JOB_CARD' | 'ENQUIRY' | 'REGISTRATION' | 'PART' | 'RECEIVABLE' | 'VEHICLE',
+    recordKey: string,) => {
+    return [
+    `/api/dms/records/${module}/${recordKey}/history`
+    ] as const;
+    }
+
+
+export const getGetRecordHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getRecordHistory>>, TError = ErrorType<ErrorResponse>>(module: 'DEAL' | 'JOB_CARD' | 'ENQUIRY' | 'REGISTRATION' | 'PART' | 'RECEIVABLE' | 'VEHICLE',
+    recordKey: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRecordHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRecordHistoryQueryKey(module,recordKey);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRecordHistory>>> = ({ signal }) => getRecordHistory(module,recordKey, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: module !== null && module !== undefined && recordKey !== null && recordKey !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRecordHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRecordHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getRecordHistory>>>
+export type GetRecordHistoryQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Everything that has happened to this record
+ */
+
+export function useGetRecordHistory<TData = Awaited<ReturnType<typeof getRecordHistory>>, TError = ErrorType<ErrorResponse>>(
+ module: 'DEAL' | 'JOB_CARD' | 'ENQUIRY' | 'REGISTRATION' | 'PART' | 'RECEIVABLE' | 'VEHICLE',
+    recordKey: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRecordHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRecordHistoryQueryOptions(module,recordKey,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

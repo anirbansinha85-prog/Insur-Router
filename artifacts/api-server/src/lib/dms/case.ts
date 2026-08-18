@@ -223,7 +223,20 @@ const TABLES = {
   JOB_CARD: { table: dmsJobCardsTable, key: dmsJobCardsTable.jcNo },
   ENQUIRY: { table: dmsEnquiriesTable, key: dmsEnquiriesTable.enqId },
   PART: { table: dmsPartStockTable, key: dmsPartStockTable.partNo },
-  RECEIVABLE: { table: dmsReceivablesTable, key: dmsReceivablesTable.invoiceNo },
+  /*
+   * `receivableId`, not `invoiceNo`.
+   *
+   * Every other part of the product keys a receivable on `receivableId` - the
+   * queue, `applyAction`, the explain panel, and the unique index on the mirror
+   * itself. This file keyed it on the invoice number, so the one module whose
+   * record key is not the obvious human-readable field was the one module whose
+   * case could not be opened. It surfaced the moment anything linked to a case
+   * from a receivable row and asked for the key the rest of the product uses.
+   *
+   * The lesson is the one already written about `dms_part_stock`: **any key on a
+   * record has to be the key that record actually has.**
+   */
+  RECEIVABLE: { table: dmsReceivablesTable, key: dmsReceivablesTable.receivableId },
   VEHICLE: { table: dmsVehicleStockTable, key: dmsVehicleStockTable.chassisNo },
 } as const;
 

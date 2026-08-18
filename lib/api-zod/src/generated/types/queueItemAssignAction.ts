@@ -15,5 +15,6 @@ export type QueueItemAssignAction = typeof QueueItemAssignAction[keyof typeof Qu
 
 export const QueueItemAssignAction = {
   ENQUIRY_REASSIGN: 'ENQUIRY_REASSIGN',
+  JOB_CARD_REASSIGN: 'JOB_CARD_REASSIGN',
   REGISTRATION_ASSIGN_AGENT: 'REGISTRATION_ASSIGN_AGENT',
 } as const;

@@ -176,7 +176,7 @@ export interface QueueItem {
    * handed to somebody, or "reassign to someone still here" is advice with a
    * trip to another screen attached.
    */
-  assignAction: "ENQUIRY_REASSIGN" | "REGISTRATION_ASSIGN_AGENT" | null;
+  assignAction: "ENQUIRY_REASSIGN" | "JOB_CARD_REASSIGN" | "REGISTRATION_ASSIGN_AGENT" | null;
   /** Which role the picker should offer. Null means everybody at the outlet. */
   assignRole: string | null;
   /**
@@ -446,8 +446,16 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
             tone: "amber",
           },
         ],
-        assignAction: null,
-        assignRole: null,
+        /*
+         * The handover, and it is the workshop that needed it most (OBJ-49).
+         *
+         * A lead is reassigned because the salesman left. A card is reassigned
+         * because the advisor is off **today** and the customer's bike is in
+         * the workshop now — which is the ordinary morning in a dealership
+         * short of staff, and until this it left no record anywhere.
+         */
+        assignAction: "JOB_CARD_REASSIGN",
+        assignRole: "SERVICE_ADVISOR",
         source: "DERIVED",
         tone: "PROBLEM",
         agentSuggestion: null,

@@ -132,6 +132,7 @@ export type Permission =
   | "enquiry.log_contact"
   | "enquiry.reassign"
   | "job_card.mark_informed"
+  | "job_card.reassign"
   | "registration.assign_agent"
   | "registration.mark_notified"
   | "registration.log_chase"
@@ -207,6 +208,7 @@ export const PERMISSION_FOR_ACTION = {
   ENQUIRY_LOG_CONTACT: "enquiry.log_contact",
   ENQUIRY_REASSIGN: "enquiry.reassign",
   JOB_CARD_MARK_INFORMED: "job_card.mark_informed",
+  JOB_CARD_REASSIGN: "job_card.reassign",
   REGISTRATION_ASSIGN_AGENT: "registration.assign_agent",
   REGISTRATION_MARK_NOTIFIED: "registration.mark_notified",
   REGISTRATION_LOG_CHASE: "registration.log_chase",
@@ -254,7 +256,7 @@ const VIEW_OF: Record<AccessModule, Permission> = {
  */
 const VERBS_WITH_MODULE: Record<AccessModule, Permission[]> = {
   DEAL: [],
-  JOB_CARD: ["job_card.mark_informed"],
+  JOB_CARD: ["job_card.mark_informed", "job_card.reassign", "staff.view"],
   ENQUIRY: ["enquiry.log_contact", "enquiry.reassign", "staff.view"],
   REGISTRATION: [
     "registration.assign_agent",
@@ -506,9 +508,28 @@ const WITHHELD: Partial<Record<Principal, Partial<Record<Permission, string>>>> 
     "enquiry.reassign":
       "Handing work to a person is the other agent's job. Two agents that can do each other's work are one agent with a confusing name, and the ladder would then judge both on one dealership's willingness to accept either.",
     "registration.assign_agent": "Same. This agent moves stock; it does not route people.",
+    "job_card.reassign": "Same. This agent moves stock; it does not route people.",
   },
   AGENT: {
     ...ANY_AGENT_REFUSAL,
+    /*
+     * Withheld from both agents, and deliberately **not** for the reason the
+     * other eight are (OBJ-49).
+     *
+     * Handing a job card over asserts nothing false - it is a routing decision
+     * DDMS is entitled to make, exactly like reassigning a lead, and the
+     * grant would have been the smaller diff. It is held back because a lead
+     * and a card in the workshop are not the same object: a card in progress
+     * carries context in a person's head, and a customer who rings about a bike
+     * that has been quietly moved to somebody who has never seen it gets a
+     * worse answer than one who waits. A person doing it knows that; an
+     * unattended pass does not.
+     *
+     * Revisable, and the ladder is how: watch a dealership do it by hand, and
+     * grant it when the habit is a count rather than a guess.
+     */
+    "job_card.reassign":
+      "Hands a job card in progress to somebody else. Honest as a routing decision, and held back because a card in the workshop carries context in a person's head that a reassignment cannot move with it.",
     "part.request_transfer":
       "Commits stock to move between outlets. A proposal rather than a claim, but the consequence is physical and it is not the band this agent is pointed at.",
     "vehicle.propose_transfer":

@@ -27,6 +27,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { formatDate } from "@/lib/utils"
 import { ActionButton } from "@/lib/actions"
 import { ExplainButton } from "@/lib/explain"
+import { OpenCase } from "@/lib/open-case"
 import { ArrowLeftRight, Boxes, PackageX, Wallet } from "lucide-react"
 import { FindBox, rowText, useFind } from "@/lib/find"
 
@@ -371,6 +372,7 @@ export default function Spares() {
                                 showroomId={row.showroomId}
                                 recordKey={row.partNo}
                               />
+                              <OpenCase module="PART" recordKey={row.partNo} />
                             </div>
 
                             {/* Who is actually waiting. A part shortage with no

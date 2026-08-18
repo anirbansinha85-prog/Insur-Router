@@ -4568,3 +4568,152 @@ comparable to the chassis register (there is no second source to reconcile a
 quantity against), a per-branch display floor (`dealer_policy` is owner-keyed),
 and an allocation that reads the manufacturer's own pipeline rather than only the
 yard.
+
+---
+
+## 3l. Built 18 August — OBJ-49, the case somebody else can pick up
+
+Asked for as *"the entire case history, which file, where the data came from, all
+details, before the advisor confirms"* — and then sharpened into the reason,
+which changed the design:
+
+> *In absence of one service advisor, the service manager can understand what has
+> happened and can take action accordingly.*
+
+That is **handover**, and it is a different goal from the one the case panel was
+built for. `case.ts` was written to be *inspectable* — complete rather than
+curated, every column in column order, so nothing is invisible. Right for
+somebody checking a conclusion, wrong for a manager at nine in the morning with
+a customer's bike in the workshop and no idea what has already happened. Forty
+fields in column order do not tell you what to do next.
+
+### The defect underneath, and it was already shipped
+
+The timeline on the queue reads `record_activities` — what somebody **wrote
+down**. It does not read `decision_log` — what somebody **did**.
+
+So an advisor who pressed *Mark customer told* left **no trace on the record's
+own history**. The decision was recorded, correctly, with his name against it,
+in a table no screen was reading. Survivable while the person who pressed the
+button is the person reading the screen; not survivable the moment somebody else
+picks the record up, which in a dealership short of staff is the ordinary case.
+
+**The question a manager actually has is *has anyone already rung her*, and the
+answer was in the database and on no page.**
+
+### Five sources, and they do not share a clock
+
+```
+  dms_*.lastChangedAt      their system changed it
+  record_events            we noticed the derived state move
+  decision_log             somebody here did something, or the agent did
+  record_activities        somebody wrote something down
+  outbound / inbound       we said something, or they answered
+```
+
+Merging those into one `when` column is the easy version and it lies. A record
+can move in the dealer's system on the 2nd, be pulled on the 5th and be *noticed*
+on the 5th; one timestamp reads as *nothing happened for three days*, which is
+false in the direction that makes somebody stop chasing. **Every entry carries
+the clock it is on** and says so on its face (R-133).
+
+### What it will not do
+
+**It does not infer.** No call logged means no call logged — it does not read a
+sent message as a conversation or an elapsed day as an attempt. Where nothing has
+been recorded it says so *and says the ambiguity out loud*: nobody tried, or
+somebody tried and did not record it, and this cannot tell them apart.
+
+**It cannot go back further than `firstSeenAt`.** A job card opened before the
+dealership onboarded has history in their own system that was never pulled. The
+page states where it starts rather than opening in the middle and looking whole.
+
+**`stillHere` has three answers, not two.** False on a leaving date. True on a
+current employee. **Null on an employee code the staff master has never heard
+of** — which is a keying error or an unsynced roster, and reporting it as a
+departure sends a manager to reassign work that is fine (R-134). And it can never
+say whether somebody came in *this morning*: no DMS carries attendance, and a
+page that guessed would be wrong twice a week and stop being read.
+
+### The handover: OBJ-49's second half
+
+`dms_job_cards` gains `reassignedToEmpCode`, and `JOB_CARD_REASSIGN` joins the
+registry as the thirteenth action. The same shape as `ENQUIRY_REASSIGN` and a
+different case: a lead is reassigned because the salesman **left**, a card is
+reassigned because the advisor is **off today** and a customer's bike is in the
+workshop now. It is the commonest thing a short-staffed workshop does and there
+was no record of it anywhere.
+
+**The control lives on the case, not on the queue row**, and that is the design
+rather than a shortcut. The queue offers its picker only in the *Nobody's* band,
+which is right — work assigned to nobody has to be routable from the list that
+shows it. A handover is the opposite situation: somebody **is** named, they are
+simply not in. So it belongs where a manager has just read what happened.
+
+**Withheld from both agents, and not for the reason the other ten are.** Those
+assert a person did something. This asserts nothing false — it is a routing
+decision DDMS is entitled to make, and granting it would have been the smaller
+diff. It is held back because a card in progress **carries context in a person's
+head** that a reassignment cannot move with it, and a customer who rings about a
+bike quietly moved to somebody who has never seen it gets a worse answer than one
+who waits. Revisable, and the ladder is how.
+
+### The line held under handover pressure
+
+> An agent may record what the agent did. It may never record what a person did.
+
+The tempting feature here is letting the manager write *"Sunil rang her on
+Tuesday"*. That turns the case into hearsay, which is worthless for the one job
+it exists to do. The manager records *"I rang her"*. What Sunil did is whatever
+Sunil logged — and if he logged nothing, the page says nothing was logged, which
+is itself the finding.
+
+### Three things this work found in code already shipped
+
+**A join that row-level security correctly refused.** The first version read
+`users.name` for the decision log's author and was refused: `ddms_app` has **no
+grants on `users` at all**, which is what stops it reading a token hash and
+inventing a session. The fix is denormalisation, not a grant — `decision_log`
+gains `userName`, exactly as `record_activities.authorName` already had it and
+for exactly the same reason. **Fifth time a verifier has reported a real boundary
+by reaching for a wider credential**, after `ingest_mappings`, `autonomy_consents`
+and `channel_credentials`.
+
+**`case.ts` keyed receivables on the wrong column.** `invoiceNo`, where the
+queue, `applyAction`, the explain panel and the mirror's own unique index all use
+`receivableId`. The one module whose record key is not the obvious human-readable
+field was the one module whose case could not be opened. Same lesson as
+`dms_part_stock`: **any key on a record has to be the key that record actually
+has.**
+
+**A verifier that ignored a return value passed while doing nothing.** The
+activity write in `verify-history` failed — wrong parameter name — and the check
+that depended on it reported the *decision* as the only attempt. Second time
+exactly this shape has appeared, after `verify:trace` and `setPolicy`.
+
+### New requirements
+
+| # | Requirement | Status |
+|---|---|---|
+| R-133 | **A history entry says which clock it is on.** Their system changing a record, a sync noticing it, a person acting and a customer replying are four different clocks. One merged timestamp column reads a sync gap as time nobody spent | ✅ |
+| R-134 | **Cannot say is a third answer, distinct from no.** An employee code the staff master has never heard of is a keying error, not a departure. Collapsing the two sends somebody to reassign work that is fine, and teaches them to distrust the column | ✅ |
+| R-135 | **A handover is recorded here because the dealer's system has no column for it.** `advisorEmpCode` is whoever opened the card and stays that way until it closes. The handover sits beside it rather than overwriting a read of it, and the two disagreeing is a fact worth showing | ✅ |
+| R-136 | **A case opens in its own tab at its own URL.** A manager working a handover keeps six open, compares them, and pastes one to somebody. It also leaves the queue's deliberately-frozen order untouched | ✅ |
+| R-137 | **A name is copied onto the row, never joined for.** `ddms_app` holds no grants on `users` and that is what makes a leaked credential worthless. Any screen wanting to name who did something reads a denormalised copy, which is also the honest one: a decision records who decided *at the time* | ✅ |
+
+### Where the product now stands
+
+| | |
+|---|---|
+| Objectives | **49 of 49** |
+| Requirements | **137 of 137** |
+| Verifiers | **24**, all green |
+| Registry actions | **13**, two of them the agent's |
+| Screens | `/case/:module/:recordKey`, reached from every worklist and the queue |
+
+**Not built, and named:** the *"Sunil's fourteen open cards, hand them out"*
+screen — a person's whole list rather than one record — which was offered and
+deliberately not chosen. A name column on `outbound_messages` so an approved
+message can name its approver rather than saying *somebody here*. And resolving
+`ingest_batch_id` to the file it came from, which is one join away and answers
+*which file did this value come off*.

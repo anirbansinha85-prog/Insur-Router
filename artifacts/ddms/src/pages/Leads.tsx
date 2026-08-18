@@ -32,6 +32,7 @@ import { formatDate } from "@/lib/utils"
 import { AssignPicker, ContactButtons } from "@/lib/actions"
 import { DraftButton } from "@/lib/messages"
 import { ExplainButton } from "@/lib/explain"
+import { OpenCase } from "@/lib/open-case"
 import { AlertTriangle, PhoneCall, Timer, UserX, Users } from "lucide-react"
 import { FindBox, rowText, useFind } from "@/lib/find"
 
@@ -397,6 +398,7 @@ export default function Leads() {
                                 showroomId={row.showroomId}
                                 recordKey={row.enqId}
                               />
+                              <OpenCase module="ENQUIRY" recordKey={row.enqId} />
                             </div>
                           </div>
                         </div>

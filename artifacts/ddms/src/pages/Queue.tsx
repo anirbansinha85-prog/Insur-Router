@@ -22,6 +22,7 @@ import { ExplainButton } from "@/lib/explain"
 import { Timeline } from "@/lib/timeline"
 import { JourneyPanel } from "../lib/journey"
 import { CasePanel } from "../lib/case"
+import { OpenCase } from "@/lib/open-case"
 import { InvoiceButton } from "../lib/invoice"
 
 /**
@@ -443,6 +444,17 @@ export default function Queue() {
                   showroomId={current.showroomId}
                   recordKey={current.recordKey}
                 />
+              )}
+
+              {/* Two different doors, and they go to different places.
+
+                  *The full screen* is the module's own worklist — every record
+                  like this one. *The case* is this record alone, in a new tab,
+                  with everything that has ever happened to it. Somebody working
+                  their own queue wants the first; somebody picking up work that
+                  is not theirs wants the second. */}
+              {current.source !== "TASK" && (
+                <OpenCase module={current.module} recordKey={current.recordKey} />
               )}
 
               <Link

@@ -88,6 +88,7 @@ export function readPatternKey(key: string): { module: string; state: string; ac
  */
 const CHOICE_FIELD: Partial<Record<ActionId, string>> = {
   ENQUIRY_REASSIGN: "reassignedToEmpCode",
+  JOB_CARD_REASSIGN: "reassignedToEmpCode",
   REGISTRATION_ASSIGN_AGENT: "assignedAgentEmpCode",
   PART_REQUEST_TRANSFER: "transferRequestedFromShowroomId",
   VEHICLE_MARK_OFFERED: "offeredToEnqId",

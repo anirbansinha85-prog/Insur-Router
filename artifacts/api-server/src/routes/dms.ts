@@ -136,6 +136,7 @@ import {
 import { recentProposals } from "../lib/dms/proposals";
 import { describePolicy, loadPolicy, resetAllPolicy, setPolicy } from "../lib/dms/policy";
 import { caseFor } from "../lib/dms/case";
+import { recordHistory } from "../lib/dms/history";
 import { traceFor } from "../lib/dms/journeys";
 import {
   cancelDocument,
@@ -561,6 +562,7 @@ const ACTION_IDS = new Set<string>([
   "ENQUIRY_LOG_CONTACT",
   "ENQUIRY_REASSIGN",
   "JOB_CARD_MARK_INFORMED",
+  "JOB_CARD_REASSIGN",
   "REGISTRATION_ASSIGN_AGENT",
   "REGISTRATION_MARK_NOTIFIED",
   "REGISTRATION_LOG_CHASE",
@@ -630,6 +632,7 @@ router.post("/dms/actions", async (req, res): Promise<void> => {
   const result = await applyAction({
     ownerId: req.sessionUser!.ownerId,
     userId: req.sessionUser!.userId,
+    userName: req.sessionUser!.name,
     action: action as ActionId,
     recordKey,
     showroomId,
@@ -1389,6 +1392,41 @@ router.get("/dms/records/:module/:recordKey/journey", async (req, res): Promise<
     return;
   }
   res.json(trace);
+});
+
+/**
+ * Everything that has happened to this record, from every table that holds a
+ * piece of it (OBJ-49).
+ *
+ * Distinct from `/activities`, which returns what somebody **wrote down**. This
+ * returns what was **done** as well — the decision log, the derived state
+ * moving, what was said to the customer and what they said back — and it is the
+ * difference between a note-taking feature and a handover.
+ *
+ * Read-only, and it records nothing about being read. A history that logged
+ * its own page views would drown the thing it exists to show.
+ */
+router.get("/dms/records/:module/:recordKey/history", async (req, res): Promise<void> => {
+  const module = String(req.params.module).toUpperCase() as ActivityModule;
+  if (!ACTIVITY_MODULES.has(module)) {
+    res.status(400).json({ error: `Unknown module ${req.params.module}` });
+    return;
+  }
+  if (!(await assertModuleAccess(req, res, module as never))) return;
+
+  /*
+   * No showroom parameter, exactly like the case endpoint above. The mirror row
+   * carries its own outlet and row-level security decides whether this
+   * connection may read it at all, so asking the caller adds a value that can
+   * be wrong without adding one that can be right.
+   */
+  res.json(
+    await recordHistory({
+      ownerId: req.sessionUser!.ownerId,
+      module: module as never,
+      recordKey: String(req.params.recordKey),
+    }),
+  );
 });
 
 router.get("/dms/records/:module/:recordKey/activities", async (req, res): Promise<void> => {

@@ -31,6 +31,7 @@
     "verify:agents": "pnpm --filter @workspace/scripts run agents",
     "verify:allocation": "pnpm --filter @workspace/scripts run allocation",
     "verify:eod": "pnpm --filter @workspace/scripts run eod",
+    "verify:history": "pnpm --filter @workspace/scripts run history",
     "db:probe": "pnpm --filter @workspace/scripts run probe",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"

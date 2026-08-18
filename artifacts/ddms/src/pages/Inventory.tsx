@@ -32,6 +32,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { formatDate } from "@/lib/utils"
 import { ActionButton } from "@/lib/actions"
 import { ExplainButton } from "@/lib/explain"
+import { OpenCase } from "@/lib/open-case"
 import { Banknote, Bike, PhoneCall, TrendingDown, Warehouse } from "lucide-react"
 import { FindBox, rowText, useFind } from "@/lib/find"
 
@@ -339,6 +340,7 @@ export default function Inventory() {
                         showroomId={row.showroomId}
                         recordKey={row.chassisNo}
                       />
+                      <OpenCase module="VEHICLE" recordKey={row.chassisNo} />
                     </div>
                   </TableCell>
                 </TableRow>

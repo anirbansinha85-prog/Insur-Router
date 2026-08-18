@@ -26,6 +26,7 @@ import { formatDate } from "@/lib/utils"
 import { ActionButton } from "@/lib/actions"
 import { DraftButton } from "@/lib/messages"
 import { ExplainButton } from "@/lib/explain"
+import { OpenCase } from "@/lib/open-case"
 import { AlertTriangle, Clock, PhoneCall, Wrench } from "lucide-react"
 import { FindBox, rowText, useFind } from "@/lib/find"
 
@@ -249,6 +250,10 @@ export default function ServiceWorklist() {
                         {row.modelDescription ?? "—"}
                         {row.regNo && <span className="font-mono ml-1.5">{row.regNo}</span>}
                       </div>
+                      {/* The way in for somebody who did not open this card.
+                          On the identity cell rather than beside the buttons:
+                          it is not an action, it is the record. */}
+                      <OpenCase module="JOB_CARD" recordKey={row.jcNo} className="mt-1" />
                     </TableCell>
 
                     <TableCell className="align-top bg-slate-50/60">

@@ -61,6 +61,7 @@ export type ActionId =
   | "ENQUIRY_REASSIGN"
   // Workshop
   | "JOB_CARD_MARK_INFORMED"
+  | "JOB_CARD_REASSIGN"
   // Registration
   | "REGISTRATION_ASSIGN_AGENT"
   | "REGISTRATION_MARK_NOTIFIED"
@@ -89,6 +90,14 @@ export interface ApplyActionInput {
    * it is asking the same function, not a relaxed copy of it.
    */
   userId: number | null;
+  /**
+   * Their name, for the decision log to keep a copy of.
+   *
+   * Null where the agent acted, and null is what that means — `ddms_app` cannot
+   * read `users`, so a name that is not passed in is a name no screen will ever
+   * be able to show.
+   */
+  userName?: string | null;
   action: ActionId;
   /** The mirror row's own key — enqId, jcNo, regnFileNo, partNo. */
   recordKey: string;
@@ -96,7 +105,7 @@ export interface ApplyActionInput {
   showroomId: number;
   /** Undo rather than do. Every action supports it. */
   clear?: boolean;
-  /** `ENQUIRY_REASSIGN` and `REGISTRATION_ASSIGN_AGENT`: the employee code. */
+  /** `ENQUIRY_REASSIGN`, `JOB_CARD_REASSIGN`, `REGISTRATION_ASSIGN_AGENT`: the employee code. */
   empCode?: string;
   /** `ENQUIRY_LOG_CONTACT`: how they were reached. */
   channel?: "CALL" | "WHATSAPP" | "SMS" | "EMAIL" | "VISIT";
@@ -131,6 +140,7 @@ const MODULE_OF: Record<ActionId, ActionModule> = {
   ENQUIRY_LOG_CONTACT: "ENQUIRY",
   ENQUIRY_REASSIGN: "ENQUIRY",
   JOB_CARD_MARK_INFORMED: "JOB_CARD",
+  JOB_CARD_REASSIGN: "JOB_CARD",
   REGISTRATION_ASSIGN_AGENT: "REGISTRATION",
   REGISTRATION_MARK_NOTIFIED: "REGISTRATION",
   REGISTRATION_LOG_CHASE: "REGISTRATION",
@@ -280,6 +290,57 @@ export async function applyAction(input: ApplyActionInput): Promise<ApplyResult>
     }
 
     // ── Workshop ──────────────────────────────────────────────────────────
+    /*
+     * Handing a card to somebody else (OBJ-49).
+     *
+     * The same shape as `ENQUIRY_REASSIGN` and for the same reason - work goes
+     * to somebody who is here - but the case it exists for is different and
+     * sharper. A lead is reassigned because the salesman left; a job card is
+     * reassigned because the advisor is off today and a customer's bike is in
+     * the workshop **now**. It is the commonest thing a short-staffed workshop
+     * does and there was no record of it anywhere.
+     *
+     * `assertActiveEmployee` refuses a departed one, which is the refusal this
+     * whole family of actions exists for: assigning work to somebody who has
+     * left is how it stops happening.
+     */
+    case "JOB_CARD_REASSIGN": {
+      if (!clear && !input.empCode) {
+        return { ok: false, status: 400, error: "empCode is required to hand a card over" };
+      }
+      if (!clear) {
+        const check = await assertActiveEmployee(input.showroomId, input.empCode!);
+        if (!check.ok) return { ok: false, status: 409, error: check.error };
+      }
+
+      const [row] = await db
+        .select({ reassignedToEmpCode: dmsJobCardsTable.reassignedToEmpCode })
+        .from(dmsJobCardsTable)
+        .where(
+          and(
+            eq(dmsJobCardsTable.showroomId, input.showroomId),
+            eq(dmsJobCardsTable.jcNo, input.recordKey),
+          ),
+        );
+      if (!row) return { ok: false, status: 404, error: `No job card ${input.recordKey}` };
+
+      previous = { reassignedToEmpCode: row.reassignedToEmpCode };
+      changed = clear
+        ? { reassignedToEmpCode: null, reassignedAt: null }
+        : { reassignedToEmpCode: input.empCode!, reassignedAt: now };
+
+      await db
+        .update(dmsJobCardsTable)
+        .set(changed)
+        .where(
+          and(
+            eq(dmsJobCardsTable.showroomId, input.showroomId),
+            eq(dmsJobCardsTable.jcNo, input.recordKey),
+          ),
+        );
+      break;
+    }
+
     case "JOB_CARD_MARK_INFORMED": {
       const [row] = await db
         .select({ customerInformedAt: dmsJobCardsTable.customerInformedAt })
@@ -547,6 +608,7 @@ export async function applyAction(input: ApplyActionInput): Promise<ApplyResult>
     ownerId: input.ownerId,
     showroomId: input.showroomId,
     userId: input.userId,
+    userName: input.userName ?? null,
     module,
     recordKey: input.recordKey,
     action: clear ? `${input.action}_CLEARED` : input.action,

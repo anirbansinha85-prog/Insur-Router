@@ -757,7 +757,7 @@ export const GetRegistrationWorklistResponse = zod.object({
  * @summary Record a decision against a mirrored record
  */
 export const ApplyDmsActionBody = zod.object({
-  "action": zod.enum(['ENQUIRY_LOG_CONTACT', 'ENQUIRY_REASSIGN', 'JOB_CARD_MARK_INFORMED', 'REGISTRATION_ASSIGN_AGENT', 'REGISTRATION_MARK_NOTIFIED', 'REGISTRATION_LOG_CHASE', 'PART_REQUEST_TRANSFER', 'PART_RAISE_REORDER', 'RECEIVABLE_LOG_CHASE', 'RECEIVABLE_MARK_DISPUTED', 'VEHICLE_MARK_OFFERED', 'VEHICLE_PROPOSE_TRANSFER']),
+  "action": zod.enum(['ENQUIRY_LOG_CONTACT', 'ENQUIRY_REASSIGN', 'JOB_CARD_MARK_INFORMED', 'JOB_CARD_REASSIGN', 'REGISTRATION_ASSIGN_AGENT', 'REGISTRATION_MARK_NOTIFIED', 'REGISTRATION_LOG_CHASE', 'PART_REQUEST_TRANSFER', 'PART_RAISE_REORDER', 'RECEIVABLE_LOG_CHASE', 'RECEIVABLE_MARK_DISPUTED', 'VEHICLE_MARK_OFFERED', 'VEHICLE_PROPOSE_TRANSFER']),
   "showroomId": zod.number().int(),
   "recordKey": zod.string().describe('The mirror row\'s own key — enqId, jcNo, regnFileNo, partNo.'),
   "clear": zod.boolean().optional().describe('Undo rather than do. Supported by every action.'),
@@ -1497,6 +1497,66 @@ export const GetCaseRecordResponse = zod.object({
 }).optional(),
   "lastSyncedAt": zod.string().nullish(),
   "disappearedFromDms": zod.boolean()
+})
+
+
+/**
+ * Distinct from the activity list, which returns what somebody wrote down. This returns what was done as well — the decision log, the derived state moving, what was said to the customer and what they said back — and the difference is between a note-taking feature and a handover.
+ * It exists because of staff shortage. When the advisor who has been working a record is not in, somebody else picks it up cold and the question they have is "has anyone already rung her". Until this endpoint that answer was in the database, correctly and with a name against it, and on no screen.
+ * Every entry carries the clock it is on. A record can move in the dealer's system on the 2nd, be pulled on the 5th and be noticed on the 5th; one merged timestamp reads as "nothing happened for three days", which is false in the direction that makes somebody stop chasing.
+ * It infers nothing. If nobody logged a call it says nobody logged a call, rather than reading a sent message as a conversation. And it says how far back it can see — a record that predates the dealership's onboarding has history in their own system that was never pulled and cannot be invented.
+ * @summary Everything that has happened to this record
+ */
+export const GetRecordHistoryParams = zod.object({
+  "module": zod.enum(['DEAL', 'JOB_CARD', 'ENQUIRY', 'REGISTRATION', 'PART', 'RECEIVABLE', 'VEHICLE']),
+  "recordKey": zod.coerce.string()
+})
+
+export const GetRecordHistoryResponse = zod.object({
+  "module": zod.string(),
+  "recordKey": zod.string(),
+  "showroomId": zod.number().int().describe('Which outlet the record is at, read off the mirror row. Returned rather than asked for, so every control on the page has it without digging it out of the field list.\n'),
+  "entries": zod.array(zod.object({
+  "at": zod.string(),
+  "clock": zod.enum(['THEIRS', 'WE_NOTICED', 'SOMEBODY_HERE', 'THE_AGENT', 'THE_CUSTOMER']).describe('Which clock this entry is on. THEIRS is the dealer\'s own system, WE_NOTICED is when a sync read it, and the last three are people. Merging them into one timeline column would be the easy version and it would lie.\n'),
+  "clockNote": zod.string().describe('The clock in words, so no screen has to know the enum.'),
+  "kind": zod.enum(['FIRST_SEEN', 'THEIR_CHANGE', 'STATE_MOVED', 'DECISION', 'ACTIVITY', 'MESSAGE_SENT', 'MESSAGE_HELD', 'REPLY']),
+  "who": zod.string().nullish(),
+  "headline": zod.string(),
+  "detail": zod.string().nullish(),
+  "source": zod.object({
+  "table": zod.string(),
+  "id": zod.number().int()
+}),
+  "tried": zod.boolean().describe('Whether this counts as somebody actually trying to move the record along. A held draft is not one, and neither is a retracted call — a withdrawn claim must not leave a manager believing the customer has been spoken to.\n'),
+  "retracted": zod.boolean()
+})),
+  "tried": zod.array(zod.object({
+  "at": zod.string(),
+  "clock": zod.enum(['THEIRS', 'WE_NOTICED', 'SOMEBODY_HERE', 'THE_AGENT', 'THE_CUSTOMER']).describe('Which clock this entry is on. THEIRS is the dealer\'s own system, WE_NOTICED is when a sync read it, and the last three are people. Merging them into one timeline column would be the easy version and it would lie.\n'),
+  "clockNote": zod.string().describe('The clock in words, so no screen has to know the enum.'),
+  "kind": zod.enum(['FIRST_SEEN', 'THEIR_CHANGE', 'STATE_MOVED', 'DECISION', 'ACTIVITY', 'MESSAGE_SENT', 'MESSAGE_HELD', 'REPLY']),
+  "who": zod.string().nullish(),
+  "headline": zod.string(),
+  "detail": zod.string().nullish(),
+  "source": zod.object({
+  "table": zod.string(),
+  "id": zod.number().int()
+}),
+  "tried": zod.boolean().describe('Whether this counts as somebody actually trying to move the record along. A held draft is not one, and neither is a retracted call — a withdrawn claim must not leave a manager believing the customer has been spoken to.\n'),
+  "retracted": zod.boolean()
+})).describe('The subset that is somebody trying to move it along.'),
+  "owner": zod.object({
+  "empCode": zod.string().nullish(),
+  "name": zod.string().nullish(),
+  "origin": zod.union([zod.literal('MIRROR'),zod.literal('DDMS'),zod.literal(null)]).nullish().describe('MIRROR is whoever the dealer\'s system names. DDMS is a handover recorded here, which their system does not know about.\n'),
+  "stillHere": zod.boolean().nullish().describe('False when the staff master gives a leaving date. \*\*Null when we cannot say\*\* — an employee code the roster has never heard of is a keying error, not a departure, and reporting it as one would send a manager to reassign work that is fine. It can never say whether somebody came in this morning; no DMS carries attendance.\n'),
+  "note": zod.string()
+}),
+  "knownSince": zod.string().nullish().describe('How far back this history can see, which is not the record\'s beginning.\n'),
+  "inCurrentStateSince": zod.string().nullish(),
+  "currentState": zod.string().nullish(),
+  "limits": zod.array(zod.string())
 })
 
 
@@ -2586,7 +2646,7 @@ export const GetDmsQueueResponse = zod.object({
   "tone": zod.enum(['amber', 'red', 'slate']),
   "extra": zod.record(zod.string(), zod.unknown()).optional().describe('Fields the action needs beyond the record key — which branch a part comes from, which enquiry a unit was offered against.\n')
 }).describe('A control the row may offer. Decided by the rules that own the module rather than by the screen, so the queue can render any module\'s controls without knowing what any of them mean.\n')),
-  "assignAction": zod.union([zod.literal('ENQUIRY_REASSIGN'),zod.literal('REGISTRATION_ASSIGN_AGENT'),zod.literal(null)]).nullish().describe('The reassignment this row supports, when it has one. Not a button — a picker over staff who still work here, each carrying what they already hold. R-54 asks that work never becomes unroutable, and the screen that shows orphaned work has to be where it can be handed on, or \"reassign to someone still here\" is advice with a trip to another screen attached.\n'),
+  "assignAction": zod.union([zod.literal('ENQUIRY_REASSIGN'),zod.literal('JOB_CARD_REASSIGN'),zod.literal('REGISTRATION_ASSIGN_AGENT'),zod.literal(null)]).nullish().describe('The reassignment this row supports, when it has one. Not a button — a picker over staff who still work here, each carrying what they already hold. R-54 asks that work never becomes unroutable, and the screen that shows orphaned work has to be where it can be handed on, or \"reassign to someone still here\" is advice with a trip to another screen attached.\n'),
   "assignRole": zod.string().nullish().describe('Which role the picker offers. Null means everybody at the outlet.'),
   "source": zod.enum(['DERIVED', 'TASK', 'JOURNEY']).optional().describe('DERIVED is everything the queue has ever held — computed from the mirror on every request, never stored, gone the moment the record moves. TASK is a row somebody wrote down. JOURNEY is a process that stopped: the runtime knows which step, how far along, and how many times the outside world sent it back, none of which a classifier can say because a classifier only ever sees one record.\nThey sit in one list and are sorted together, because a separate screen for any of them recreates exactly the problem the queue was built to solve. Where a record has a live journey the classifier stands aside, so no record appears twice saying two different things.\n'),
   "tone": zod.enum(['PROBLEM', 'OPPORTUNITY']).optional().describe('PROBLEM on everything the queue has ever held. OPPORTUNITY arrived with OBJ-25 and means \"everything is in place, this can be done now\". It does not change the sort — an opportunity competes on the same three keys, because a dealership that always did the pleasant rows first would have a growing pile of the others.\n'),

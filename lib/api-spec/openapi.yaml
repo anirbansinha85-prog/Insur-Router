@@ -1497,6 +1497,55 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
+  /dms/records/{module}/{recordKey}/history:
+    get:
+      operationId: getRecordHistory
+      tags: [dms]
+      summary: Everything that has happened to this record
+      description: >
+        Distinct from the activity list, which returns what somebody wrote down.
+        This returns what was done as well — the decision log, the derived state
+        moving, what was said to the customer and what they said back — and the
+        difference is between a note-taking feature and a handover.
+
+        It exists because of staff shortage. When the advisor who has been
+        working a record is not in, somebody else picks it up cold and the
+        question they have is "has anyone already rung her". Until this endpoint
+        that answer was in the database, correctly and with a name against it,
+        and on no screen.
+
+        Every entry carries the clock it is on. A record can move in the dealer's
+        system on the 2nd, be pulled on the 5th and be noticed on the 5th; one
+        merged timestamp reads as "nothing happened for three days", which is
+        false in the direction that makes somebody stop chasing.
+
+        It infers nothing. If nobody logged a call it says nobody logged a call,
+        rather than reading a sent message as a conversation. And it says how far
+        back it can see — a record that predates the dealership's onboarding has
+        history in their own system that was never pulled and cannot be invented.
+      parameters:
+        - name: module
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [DEAL, JOB_CARD, ENQUIRY, REGISTRATION, PART, RECEIVABLE, VEHICLE]
+        - name: recordKey
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The record's history, newest first
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecordHistory" }
+        "403":
+          description: Not a module this role reads
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
   /dms/records/{module}/{recordKey}/journey:
     get:
       operationId: getRecordJourney
@@ -4315,7 +4364,7 @@ components:
           items: { $ref: "#/components/schemas/QueueAction" }
         assignAction:
           type: ["string", "null"]
-          enum: [ENQUIRY_REASSIGN, REGISTRATION_ASSIGN_AGENT, null]
+          enum: [ENQUIRY_REASSIGN, JOB_CARD_REASSIGN, REGISTRATION_ASSIGN_AGENT, null]
           description: >
             The reassignment this row supports, when it has one. Not a button —
             a picker over staff who still work here, each carrying what they
@@ -5395,7 +5444,7 @@ components:
         action:
           type: string
           enum:
-            [ENQUIRY_LOG_CONTACT, ENQUIRY_REASSIGN, JOB_CARD_MARK_INFORMED,
+            [ENQUIRY_LOG_CONTACT, ENQUIRY_REASSIGN, JOB_CARD_MARK_INFORMED, JOB_CARD_REASSIGN,
              REGISTRATION_ASSIGN_AGENT, REGISTRATION_MARK_NOTIFIED,
              REGISTRATION_LOG_CHASE, PART_REQUEST_TRANSFER, PART_RAISE_REORDER,
              RECEIVABLE_LOG_CHASE, RECEIVABLE_MARK_DISPUTED,
@@ -6015,6 +6064,106 @@ components:
         lastSyncedAt: { type: ["string", "null"] }
         disappearedFromDms: { type: boolean }
       required: [module, recordKey, title, fields, disappearedFromDms]
+
+    HistoryEntry:
+      type: object
+      properties:
+        at: { type: string }
+        clock:
+          type: string
+          enum: [THEIRS, WE_NOTICED, SOMEBODY_HERE, THE_AGENT, THE_CUSTOMER]
+          description: >
+            Which clock this entry is on. THEIRS is the dealer's own system,
+            WE_NOTICED is when a sync read it, and the last three are people.
+            Merging them into one timeline column would be the easy version and
+            it would lie.
+        clockNote:
+          type: string
+          description: The clock in words, so no screen has to know the enum.
+        kind:
+          type: string
+          enum:
+            [
+              FIRST_SEEN,
+              THEIR_CHANGE,
+              STATE_MOVED,
+              DECISION,
+              ACTIVITY,
+              MESSAGE_SENT,
+              MESSAGE_HELD,
+              REPLY,
+            ]
+        who: { type: ["string", "null"] }
+        headline: { type: string }
+        detail: { type: ["string", "null"] }
+        source:
+          type: object
+          properties:
+            table: { type: string }
+            id: { type: integer }
+          required: [table, id]
+        tried:
+          type: boolean
+          description: >
+            Whether this counts as somebody actually trying to move the record
+            along. A held draft is not one, and neither is a retracted call — a
+            withdrawn claim must not leave a manager believing the customer has
+            been spoken to.
+        retracted: { type: boolean }
+      required: [at, clock, clockNote, kind, headline, source, tried, retracted]
+
+    RecordOwner:
+      type: object
+      properties:
+        empCode: { type: ["string", "null"] }
+        name: { type: ["string", "null"] }
+        origin:
+          type: ["string", "null"]
+          enum: [MIRROR, DDMS, null]
+          description: >
+            MIRROR is whoever the dealer's system names. DDMS is a handover
+            recorded here, which their system does not know about.
+        stillHere:
+          type: ["boolean", "null"]
+          description: >
+            False when the staff master gives a leaving date. **Null when we
+            cannot say** — an employee code the roster has never heard of is a
+            keying error, not a departure, and reporting it as one would send a
+            manager to reassign work that is fine. It can never say whether
+            somebody came in this morning; no DMS carries attendance.
+        note: { type: string }
+      required: [note]
+
+    RecordHistory:
+      type: object
+      properties:
+        module: { type: string }
+        recordKey: { type: string }
+        showroomId:
+          type: integer
+          description: >
+            Which outlet the record is at, read off the mirror row. Returned
+            rather than asked for, so every control on the page has it without
+            digging it out of the field list.
+        entries:
+          type: array
+          items: { $ref: "#/components/schemas/HistoryEntry" }
+        tried:
+          type: array
+          items: { $ref: "#/components/schemas/HistoryEntry" }
+          description: The subset that is somebody trying to move it along.
+        owner: { $ref: "#/components/schemas/RecordOwner" }
+        knownSince:
+          type: ["string", "null"]
+          description: >
+            How far back this history can see, which is not the record's
+            beginning.
+        inCurrentStateSince: { type: ["string", "null"] }
+        currentState: { type: ["string", "null"] }
+        limits:
+          type: array
+          items: { type: string }
+      required: [module, recordKey, showroomId, entries, tried, owner, limits]
 
     JourneyTrace:
       type: object

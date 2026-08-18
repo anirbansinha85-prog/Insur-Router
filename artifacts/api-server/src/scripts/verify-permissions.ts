@@ -90,27 +90,33 @@ for (const role of ["SALES_EXEC", "SERVICE_ADVISOR", "RTO_AGENT", "ACCOUNTS", "T
   check(`${role} holds neither`, [may(role, "policy.set"), may(role, "outlet.view_all")], [false, false]);
 }
 
-// ── 4. The agent, still two of twelve ───────────────────────────────────────
+// ── 4. The agent, still two of thirteen ─────────────────────────────────────
 
-section("4. the agent still holds exactly two of the twelve");
+section("4. the agent still holds exactly two of the thirteen");
 
 check(
   "its actions",
   [...AGENT_ACTIONS].sort(),
   ["ENQUIRY_REASSIGN", "REGISTRATION_ASSIGN_AGENT"],
 );
-check("closed to it", Object.keys(CLOSED_TO_THE_AGENT).length, 10);
+/*
+ * Eleven since OBJ-49, and the new one is refused for a different reason from
+ * the other ten. Those assert a person did something; `JOB_CARD_REASSIGN`
+ * asserts nothing false and is held back because a card in progress carries
+ * context in somebody's head that a reassignment cannot move with it.
+ */
+check("closed to it", Object.keys(CLOSED_TO_THE_AGENT).length, 11);
 check("isAgentAction says yes", isAgentAction("ENQUIRY_REASSIGN"), true);
 check("isAgentAction says no", isAgentAction("RECEIVABLE_MARK_DISPUTED"), false);
 check("and no to nonsense", isAgentAction("DELETE_EVERYTHING"), false);
 
-// Every one of the twelve is accounted for, in one direction or the other.
+// Every one of the thirteen is accounted for, in one direction or the other.
 const allActions = Object.keys(PERMISSION_FOR_ACTION) as RegistryActionId[];
-check("twelve actions, no more", allActions.length, 12);
+check("thirteen actions, no more", allActions.length, 13);
 check(
   "each is either granted or refused, never neither",
   allActions.filter((a) => isAgentAction(a) || CLOSED_TO_THE_AGENT[a]).length,
-  12,
+  13,
 );
 
 // ── 5. The ten reasons survived the move ────────────────────────────────────
@@ -191,6 +197,9 @@ const NAMED: Permission[] = [
   "deal.view", "job_card.view", "enquiry.view", "registration.view",
   "part.view", "receivable.view", "vehicle.view", "outbox.view",
   "enquiry.log_contact", "enquiry.reassign", "job_card.mark_informed",
+  // OBJ-49. Handing a job card over — the thing a short-staffed workshop does
+  // every morning and had no record of anywhere.
+  "job_card.reassign",
   "registration.assign_agent", "registration.mark_notified", "registration.log_chase",
   "part.request_transfer", "part.raise_reorder", "receivable.log_chase",
   "receivable.mark_disputed", "vehicle.mark_offered", "vehicle.propose_transfer",

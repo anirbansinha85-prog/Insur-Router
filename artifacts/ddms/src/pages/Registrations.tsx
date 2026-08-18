@@ -35,6 +35,7 @@ import { formatDate } from "@/lib/utils"
 import { ActionButton, AssignPicker } from "@/lib/actions"
 import { DraftButton } from "@/lib/messages"
 import { ExplainButton } from "@/lib/explain"
+import { OpenCase } from "@/lib/open-case"
 import { AlertTriangle, FileText, IdCard, ShieldAlert, Wallet } from "lucide-react"
 import { FindBox, rowText, useFind } from "@/lib/find"
 
@@ -441,6 +442,7 @@ export default function Registrations() {
                                 showroomId={row.showroomId}
                                 recordKey={row.regnFileNo}
                               />
+                              <OpenCase module="REGISTRATION" recordKey={row.regnFileNo} />
                               {/* Recency, not presence — the derived state asks
                                   when it was last chased, so this is worth
                                   pressing again on a file chased a fortnight

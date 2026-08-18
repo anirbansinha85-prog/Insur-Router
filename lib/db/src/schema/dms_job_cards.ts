@@ -81,6 +81,23 @@ export const dmsJobCardsTable = pgTable(
      */
     customerInformedAt: timestamp("customer_informed_at", { withTimezone: true }),
 
+    /**
+     * Who is carrying this card **now**, when that is no longer the advisor the
+     * dealer's system named (OBJ-49, R-135).
+     *
+     * A workshop short of a service advisor hands his cards to somebody else
+     * for the morning, and the DMS has no column for it: `advisorEmpCode` is
+     * whoever opened the card and stays that way until the card closes. So the
+     * queue kept routing work to a person who was not there, and the manager
+     * who actually did it left no trace anywhere.
+     *
+     * Deliberately **beside** the mirror's advisor rather than overwriting a
+     * read of it: the dealer's system still believes what it believes (R-5),
+     * and the two disagreeing is a fact worth showing rather than hiding.
+     */
+    reassignedToEmpCode: text("reassigned_to_emp_code"),
+    reassignedAt: timestamp("reassigned_at", { withTimezone: true }),
+
     // ── Sync metadata ───────────────────────────────────────────────────────
     firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
     statusSince: timestamp("status_since", { withTimezone: true }).notNull().defaultNow(),

@@ -51,6 +51,22 @@ export const decisionLogTable = pgTable(
      * this", never as "we lost track of who did".
      */
     userId: integer("user_id").references(() => usersTable.id, { onDelete: "set null" }),
+    /**
+     * Their name, **copied here** rather than joined for (OBJ-49).
+     *
+     * `ddms_app` has no grants on `users` at all, and that is load-bearing
+     * rather than incidental: it cannot read a session token hash, so holding
+     * its credentials gets you exactly as far as holding no session. A screen
+     * that wanted to show *who marked this customer told* therefore could not
+     * join — and the first thing that tried was refused by Postgres, correctly.
+     *
+     * So the name is denormalised, exactly as `record_activities.authorName`
+     * already is and for the same reason. It is a copy and it can go stale
+     * against a rename, which is the right trade: a decision log records who
+     * decided at the time, and somebody who married in March did not retroactively
+     * decide under a different name in February.
+     */
+    userName: text("user_name"),
 
     module: text("module", {
       enum: ["DEAL", "JOB_CARD", "ENQUIRY", "REGISTRATION", "PART", "RECEIVABLE", "VEHICLE"],

@@ -775,6 +775,7 @@ export type QueueItemAssignAction = typeof QueueItemAssignAction[keyof typeof Qu
 
 export const QueueItemAssignAction = {
   ENQUIRY_REASSIGN: 'ENQUIRY_REASSIGN',
+  JOB_CARD_REASSIGN: 'JOB_CARD_REASSIGN',
   REGISTRATION_ASSIGN_AGENT: 'REGISTRATION_ASSIGN_AGENT',
 } as const;
 
@@ -1954,6 +1955,7 @@ export const DmsActionInputAction = {
   ENQUIRY_LOG_CONTACT: 'ENQUIRY_LOG_CONTACT',
   ENQUIRY_REASSIGN: 'ENQUIRY_REASSIGN',
   JOB_CARD_MARK_INFORMED: 'JOB_CARD_MARK_INFORMED',
+  JOB_CARD_REASSIGN: 'JOB_CARD_REASSIGN',
   REGISTRATION_ASSIGN_AGENT: 'REGISTRATION_ASSIGN_AGENT',
   REGISTRATION_MARK_NOTIFIED: 'REGISTRATION_MARK_NOTIFIED',
   REGISTRATION_LOG_CHASE: 'REGISTRATION_LOG_CHASE',
@@ -2647,6 +2649,108 @@ export interface CaseRecord {
   /** @nullable */
   lastSyncedAt?: string | null;
   disappearedFromDms: boolean;
+}
+
+/**
+ * Which clock this entry is on. THEIRS is the dealer's own system, WE_NOTICED is when a sync read it, and the last three are people. Merging them into one timeline column would be the easy version and it would lie.
+ */
+export type HistoryEntryClock = typeof HistoryEntryClock[keyof typeof HistoryEntryClock];
+
+
+export const HistoryEntryClock = {
+  THEIRS: 'THEIRS',
+  WE_NOTICED: 'WE_NOTICED',
+  SOMEBODY_HERE: 'SOMEBODY_HERE',
+  THE_AGENT: 'THE_AGENT',
+  THE_CUSTOMER: 'THE_CUSTOMER',
+} as const;
+
+export type HistoryEntryKind = typeof HistoryEntryKind[keyof typeof HistoryEntryKind];
+
+
+export const HistoryEntryKind = {
+  FIRST_SEEN: 'FIRST_SEEN',
+  THEIR_CHANGE: 'THEIR_CHANGE',
+  STATE_MOVED: 'STATE_MOVED',
+  DECISION: 'DECISION',
+  ACTIVITY: 'ACTIVITY',
+  MESSAGE_SENT: 'MESSAGE_SENT',
+  MESSAGE_HELD: 'MESSAGE_HELD',
+  REPLY: 'REPLY',
+} as const;
+
+export type HistoryEntrySource = {
+  table: string;
+  id: number;
+};
+
+export interface HistoryEntry {
+  at: string;
+  /** Which clock this entry is on. THEIRS is the dealer's own system, WE_NOTICED is when a sync read it, and the last three are people. Merging them into one timeline column would be the easy version and it would lie. */
+  clock: HistoryEntryClock;
+  /** The clock in words, so no screen has to know the enum. */
+  clockNote: string;
+  kind: HistoryEntryKind;
+  /** @nullable */
+  who?: string | null;
+  headline: string;
+  /** @nullable */
+  detail?: string | null;
+  source: HistoryEntrySource;
+  /** Whether this counts as somebody actually trying to move the record along. A held draft is not one, and neither is a retracted call — a withdrawn claim must not leave a manager believing the customer has been spoken to. */
+  tried: boolean;
+  retracted: boolean;
+}
+
+/**
+ * MIRROR is whoever the dealer's system names. DDMS is a handover recorded here, which their system does not know about.
+ * @nullable
+ */
+export type RecordOwnerOrigin = typeof RecordOwnerOrigin[keyof typeof RecordOwnerOrigin] | null;
+
+
+export const RecordOwnerOrigin = {
+  MIRROR: 'MIRROR',
+  DDMS: 'DDMS',
+} as const;
+
+export interface RecordOwner {
+  /** @nullable */
+  empCode?: string | null;
+  /** @nullable */
+  name?: string | null;
+  /**
+     * MIRROR is whoever the dealer's system names. DDMS is a handover recorded here, which their system does not know about.
+     * @nullable
+     */
+  origin?: RecordOwnerOrigin;
+  /**
+     * False when the staff master gives a leaving date. **Null when we cannot say** — an employee code the roster has never heard of is a keying error, not a departure, and reporting it as one would send a manager to reassign work that is fine. It can never say whether somebody came in this morning; no DMS carries attendance.
+     * @nullable
+     */
+  stillHere?: boolean | null;
+  note: string;
+}
+
+export interface RecordHistory {
+  module: string;
+  recordKey: string;
+  /** Which outlet the record is at, read off the mirror row. Returned rather than asked for, so every control on the page has it without digging it out of the field list. */
+  showroomId: number;
+  entries: HistoryEntry[];
+  /** The subset that is somebody trying to move it along. */
+  tried: HistoryEntry[];
+  owner: RecordOwner;
+  /**
+     * How far back this history can see, which is not the record's beginning.
+     * @nullable
+     */
+  knownSince?: string | null;
+  /** @nullable */
+  inCurrentStateSince?: string | null;
+  /** @nullable */
+  currentState?: string | null;
+  limits: string[];
 }
 
 /**

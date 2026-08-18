@@ -33,6 +33,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { formatDate } from "@/lib/utils"
 import { ActionButton } from "@/lib/actions"
 import { ExplainButton } from "@/lib/explain"
+import { OpenCase } from "@/lib/open-case"
 import { DraftButton } from "@/lib/messages"
 import { AlertTriangle, Building2, Clock, HandCoins, Wallet } from "lucide-react"
 import { FindBox, rowText, useFind } from "@/lib/find"
@@ -371,6 +372,7 @@ export default function Receivables() {
                         showroomId={row.showroomId}
                         recordKey={row.receivableId}
                       />
+                      <OpenCase module="RECEIVABLE" recordKey={row.receivableId} />
                     </div>
                   </TableCell>
                 </TableRow>

@@ -692,6 +692,64 @@ the product's job; *insisting* on the order is not.
 > instruction is worse than a wrong one — nobody can overrule it on the
 > evidence.
 
+## The case somebody else can pick up
+
+`lib/dms/history.ts`, `GET /dms/records/{module}/{recordKey}/history` and
+`/case/:module/:recordKey` (OBJ-49, R-133 to R-137). Built for **handover**,
+which is a different goal from the inspection the case panel already served:
+when the advisor is off, a manager picks the record up cold and has to
+understand it without asking anybody.
+
+> **The timeline read what somebody wrote down. It did not read what somebody
+> did.**
+
+That was the defect. `record_activities` carries notes; `decision_log` carries
+*Mark customer told* — so the commonest thing an advisor does left no trace on
+the record's own history. The history assembles five sources, and **every entry
+says which clock it is on** (R-133): their system changing it, a sync noticing
+it, a person acting, the agent acting, the customer replying. One merged `when`
+column would read a three-day sync gap as three days nobody spent.
+
+**It infers nothing.** No call logged means no call logged, and where nothing has
+been recorded it says the ambiguity out loud — nobody tried, or somebody tried
+and did not record it, and it cannot tell them apart. It also states where its
+history starts: nothing before `firstSeenAt` was ever pulled.
+
+> **`stillHere` has three answers.** True, false on a leaving date, and **null
+> for an employee code the staff master has never heard of** (R-134) — a keying
+> error is not a departure. It can never say whether somebody came in this
+> morning; no DMS carries attendance.
+
+**`JOB_CARD_REASSIGN` is the thirteenth registry action.** `advisorEmpCode` is
+whoever opened the card and stays that way until it closes, so the handover sits
+*beside* it rather than overwriting a read of it (R-135) — the two disagreeing is
+a fact worth showing. The control lives on the case rather than the queue row:
+the queue's picker is for the *Nobody's* band, and a handover is the opposite
+situation, where somebody is named and simply is not in.
+
+Withheld from both agents, and **not for the reason the other ten are**. It
+asserts nothing false; it is held back because a card in progress carries context
+in a person's head that a reassignment cannot move with it.
+
+> **A name is copied onto the row, never joined for** (R-137). `ddms_app` holds
+> no grants on `users` — that is what makes a leaked credential worthless — so
+> the first version of the history was refused by Postgres for reading
+> `users.name`. `decision_log` gained `userName`, exactly as
+> `record_activities.authorName` already had it. Fifth time a verifier has
+> reported a real boundary by reaching for a wider credential.
+
+> **`case.ts` keyed receivables on `invoiceNo`** where the queue, `applyAction`,
+> the explain panel and the mirror's own unique index all use `receivableId`. The
+> one module whose record key is not the obvious human-readable field was the one
+> whose case could not be opened. Any key on a record has to be the key that
+> record actually has.
+
+`/case/:module/:recordKey` opens in a **new tab** from every worklist and the
+queue (R-136) — a manager keeps six open, compares them, and pastes one to
+somebody, and the queue's deliberately-frozen order is left untouched.
+
+`pnpm run verify:history`.
+
 ## The document DDMS issues
 
 `lib/dms/invoice/` and three tables (OBJ-25). **DDMS's document is the DMS's
@@ -1968,6 +2026,7 @@ pnpm run db:probe       # print what each login can actually read, as ddms_app
 pnpm run db:seed-network       # the two extra branches, hub-and-spoke
 pnpm run db:seed-branch-data   # three months of trading across all five
 pnpm run db:export-books       # the 13 reports a CA opens, per company
+pnpm run verify:history        # the record history and the job-card handover
 ```
 
 Order matters twice. `db:seed-owners` must run **after** `db:seed` — panel
