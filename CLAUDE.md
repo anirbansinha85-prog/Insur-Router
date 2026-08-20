@@ -999,6 +999,67 @@ still has no edit control.
 
 `pnpm run verify:journal`.
 
+### The floor has a creditor and a cost
+
+`lib/dms/ledger/floorplan.ts` and `interest_accruals` (OBJ-51, R-143 to R-146).
+Two defects, different in kind. **A misfiled liability**: `postPurchaseInvoice`
+always credits Sundry Creditors against the supplier, so a floor-plan purchase
+showed ₹57.9 lakh owed to Hero — a company the financier had already paid —
+while the party who can call the money in was invisible. **A missing cost**: the
+interest was computed per unit per day, put on the Inventory screen, and posted
+nowhere.
+
+The purchase posting is **unchanged**. Buying from Hero and being funded are two
+events, and collapsing them loses the input credit's link to Hero's invoice.
+`recordDrawdown` does the second: `Dr Sundry Creditors → Hero / Cr Floor Plan →
+the financier`, and **no money moves** — which is why it is easy to forget.
+
+> **`floorPlanInterest` is exported from `inventory-worklist.ts` and imported by
+> the ledger** (R-144). One arithmetic, two readers. A dealership told ₹68,980 on
+> a screen and something else in its own books stops believing both.
+
+> **This one has a table when almost nothing else does** (R-145). The
+> reconciliations, the central end of day and the trial balance are derived on
+> read because a stored sum drifts from its parts. An accrual is the opposite:
+> **posting it changes the books**, so the question is not *what is the number*
+> but *has this period been charged* — a fact about what was done. The unique
+> index on `(showroom, period)` makes charging November twice impossible, and a
+> doubled interest charge is exactly the size of error nobody spots.
+
+> **A periodic charge charges the period** (R-146). The month's figure is the
+> difference between two positions, not the running total — a run that booked
+> everything accrued to date would re-charge every earlier month and treble the
+> cost by March.
+
+**A drawdown against a party who is not a `FINANCIER` is refused**, not warned:
+that is a large liability filed under somebody who does not hold it, and
+`parties.kind` already knows. More than the bill is refused; less is permitted
+and warned about, because a margin the dealership funds itself is ordinary.
+
+**The honest limit is on the voucher.** `dms_vehicle_stock` records *that* a
+machine is financed and never *by whom*, so the monthly charge carries no
+financier's name and says so.
+
+`pnpm run verify:floorplan`.
+
+### The one screen that writes to the ledger
+
+`/journal` (R-147). Beside `/books` rather than inside it — `/books` is read-only
+and stays that way, and a journal is a new voucher rather than an edit.
+
+> **The screen never decides what the server decides.** The running total shows
+> the two columns and their difference and **leaves the post button live either
+> way**. A client-side balance check would be a second implementation of a rule
+> that already exists on the server, and the one people trust is not the one that
+> refuses.
+
+Typing in the debit column clears the credit column, which makes the *both a
+debit and a credit* refusal unreachable by accident rather than merely explained
+afterwards. A line against `1100` or `2100` offers the party picker and says what
+happens without one. The chart sits underneath, collapsed, with *add the standard
+expense heads*, *an account of your own*, and a retire control that is absent on
+anything a posting rule names.
+
 ### GSTR-1 and Tally share one file
 
 They are one claim about the same numbers; if they disagreed nobody could tell
@@ -2082,6 +2143,7 @@ pnpm run db:seed-branch-data   # three months of trading across all five
 pnpm run db:export-books       # the 13 reports a CA opens, per company
 pnpm run verify:history        # the record history and the job-card handover
 pnpm run verify:journal        # the chart's cost side and the journal door
+pnpm run verify:floorplan      # the financier as creditor, and what the floor costs
 ```
 
 Order matters twice. `db:seed-owners` must run **after** `db:seed` — panel
@@ -2112,6 +2174,7 @@ assignment (`VAR=x cmd`) and depends on `$REPLIT_EXPO_DEV_DOMAIN`,
 DDMS (`artifacts/ddms/src/pages/`): `Queue` (`/`), `Overview` (`/overview`),
 `Leads` (`/enquiries`), `Worklist` (`/worklist`), `Numbers` (`/numbers`),
 `Channels` (`/channels`), `Runs` (`/runs`), `Books` (`/books`),
+`Journal` (`/journal`, the only screen that writes to the ledger),
 `Registrations` (`/registrations`), `ServiceWorklist` (`/service`),
 `Spares` (`/spares`), `Receivables` (`/receivables`), `Inventory`
 (`/inventory`), `Outbox` (`/outbox`), `Dossier` (`/who/:entityId`,

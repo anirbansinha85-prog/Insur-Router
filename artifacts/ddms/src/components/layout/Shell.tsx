@@ -2,7 +2,7 @@ import { Link, useLocation } from "wouter"
 import {
   Users, ListChecks, Wrench, LayoutDashboard, ShieldCheck, Bell,
   ExternalLink, LogOut, IdCard, Boxes, Send, Wallet, Bike, ListTodo, SlidersHorizontal,
-  ReceiptText, Sparkles, Gauge, Radio, Activity, BookOpen,
+  ReceiptText, Sparkles, Gauge, Radio, Activity, BookOpen, PenLine,
 } from "lucide-react"
 import type { SessionUser } from "@workspace/api-client-react"
 import { cn } from "@/lib/utils"
@@ -76,6 +76,9 @@ const GROUPS: NavGroup[] = [
       // job cards has no business seeing what a customer paid.
       { href: "/invoices", label: "Invoicing", icon: ReceiptText, module: "DEAL" },
       { href: "/books", label: "The books", icon: BookOpen, module: "RECEIVABLE" },
+      // Beside the books rather than inside them: /books is read-only and
+      // stays that way, and a journal is a new voucher rather than an edit.
+      { href: "/journal", label: "Raise a journal", icon: PenLine, module: "RECEIVABLE" },
     ],
   },
   {

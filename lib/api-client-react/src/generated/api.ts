@@ -20,6 +20,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AccountActiveInput,
   ActivityInput,
   ActivityRetractInput,
   Application,
@@ -38,6 +39,7 @@ import type {
   ConnectChannel200,
   ConnectChannelInput,
   CreateDmsTask201,
+  CreateLedgerAccount200,
   DashboardStats,
   DisconnectChannel200,
   DmsActionInput,
@@ -82,6 +84,7 @@ import type {
   IngestPushResult,
   IngestResult,
   IngestSourceInput,
+  JournalInput,
   JourneyTrace,
   LedgerAccountPatch,
   ListApplicationsParams,
@@ -101,6 +104,8 @@ import type {
   ListInvoiceReadiness200,
   ListInvoiceReadinessParams,
   ListLedgerAccounts200,
+  ListLedgerParties200,
+  ListLedgerPartiesParams,
   ListPriceLists200,
   ListPriceListsParams,
   ListRecordActivities200,
@@ -118,13 +123,16 @@ import type {
   MessageEditInput,
   MessageNoteInput,
   MessageWithGate,
+  NewLedgerAccount,
   OcrEngineStatus,
   OcrInput,
   OemClaims,
+  OfferStarterChart200,
   OverviewResult,
   Policy,
   PolicyResetInput,
   PolicySetInput,
+  PostJournalVoucher200,
   PostToLedgerInput,
   PostedVoucher,
   Provider,
@@ -150,6 +158,7 @@ import type {
   SetChannelActive200,
   SetDmsPolicy200,
   SetIngestSource200,
+  SetLedgerAccountActive200,
   ShowroomSummary,
   SubmissionLog,
   SyncShowroomDms200,
@@ -4538,6 +4547,79 @@ export function useListDmsEvents<TData = Awaited<ReturnType<typeof listDmsEvents
 
 
 
+export const getCreateLedgerAccountUrl = () => {
+
+
+
+
+  return `/api/dms/ledger/accounts`
+}
+
+/**
+ * Until this existed no route in the product touched the chart at all, so a dealership could not add a single head — which made the missing expense side unfixable by the people it belonged to.
+ * Never a system account. Whatever a dealership creates is theirs to rename, retire and account for; ours are the ones a posting rule would break without.
+ * @summary Add an account to the dealership's own chart
+ */
+export const createLedgerAccount = async (newLedgerAccount: NewLedgerAccount, options?: Parameters<typeof customFetch>[1]): Promise<CreateLedgerAccount200> => {
+
+  return customFetch<CreateLedgerAccount200>(getCreateLedgerAccountUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(newLedgerAccount)
+  }
+);}
+
+
+
+
+
+export const getCreateLedgerAccountMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createLedgerAccount>>, TError,{data: BodyType<NewLedgerAccount>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createLedgerAccount>>, TError,{data: BodyType<NewLedgerAccount>}, TContext> => {
+
+const mutationKey = ['createLedgerAccount'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createLedgerAccount>>, {data: BodyType<NewLedgerAccount>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createLedgerAccount(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateLedgerAccountMutationResult = NonNullable<Awaited<ReturnType<typeof createLedgerAccount>>>
+    export type CreateLedgerAccountMutationBody = BodyType<NewLedgerAccount>
+    export type CreateLedgerAccountMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Add an account to the dealership's own chart
+ */
+export const useCreateLedgerAccount = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createLedgerAccount>>, TError,{data: BodyType<NewLedgerAccount>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createLedgerAccount>>,
+        TError,
+        {data: BodyType<NewLedgerAccount>},
+        TContext
+      > => {
+      return useMutation(getCreateLedgerAccountMutationOptions(options));
+    }
+
 export const getListLedgerAccountsUrl = () => {
 
 
@@ -4616,6 +4698,313 @@ export function useListLedgerAccounts<TData = Awaited<ReturnType<typeof listLedg
 
 
 
+
+export const getOfferStarterChartUrl = () => {
+
+
+
+
+  return `/api/dms/ledger/accounts/starter`
+}
+
+/**
+ * Rent, salaries, electricity, advertising, interest, depreciation and the rest — plus TDS Payable and Prepaid Expenses, because a dealership deducts tax on rent and professional fees the moment a bill is booked.
+ * None of them is a system account. Every account a posting rule names is undeletable because the rule breaks without it; nothing names these, so an accountant who keeps staff welfare separate from salaries may delete ours.
+ * A deliberate act rather than a seeding step. Safe to run twice — it adds only what is absent — and never called by anything unattended. A chart is the shape of a dealership's books and filling it in behind them is not a favour.
+ * @summary Add the standard operating expense heads
+ */
+export const offerStarterChart = async ( options?: Parameters<typeof customFetch>[1]): Promise<OfferStarterChart200> => {
+
+  return customFetch<OfferStarterChart200>(getOfferStarterChartUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getOfferStarterChartMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof offerStarterChart>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof offerStarterChart>>, TError,void, TContext> => {
+
+const mutationKey = ['offerStarterChart'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof offerStarterChart>>, void> = () => {
+
+
+          return  offerStarterChart(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type OfferStarterChartMutationResult = NonNullable<Awaited<ReturnType<typeof offerStarterChart>>>
+
+    export type OfferStarterChartMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Add the standard operating expense heads
+ */
+export const useOfferStarterChart = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof offerStarterChart>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof offerStarterChart>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getOfferStarterChartMutationOptions(options));
+    }
+
+export const getSetLedgerAccountActiveUrl = (code: string,) => {
+
+
+
+
+  return `/api/dms/ledger/accounts/${code}/active`
+}
+
+/**
+ * There is no delete, deliberately. An account that has carried a line is named on a trial balance somebody has already filed a return from, and removing it makes that statement unreproducible.
+ * A system account cannot be retired at all — a posting rule that cannot find its account has no honest behaviour left.
+ * @summary Retire an account, or bring it back
+ */
+export const setLedgerAccountActive = async (code: string,
+    accountActiveInput: AccountActiveInput, options?: Parameters<typeof customFetch>[1]): Promise<SetLedgerAccountActive200> => {
+
+  return customFetch<SetLedgerAccountActive200>(getSetLedgerAccountActiveUrl(code),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(accountActiveInput)
+  }
+);}
+
+
+
+
+
+export const getSetLedgerAccountActiveMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setLedgerAccountActive>>, TError,{code: string;data: BodyType<AccountActiveInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setLedgerAccountActive>>, TError,{code: string;data: BodyType<AccountActiveInput>}, TContext> => {
+
+const mutationKey = ['setLedgerAccountActive'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setLedgerAccountActive>>, {code: string;data: BodyType<AccountActiveInput>}> = (props) => {
+          const {code,data} = props ?? {};
+
+          return  setLedgerAccountActive(code,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetLedgerAccountActiveMutationResult = NonNullable<Awaited<ReturnType<typeof setLedgerAccountActive>>>
+    export type SetLedgerAccountActiveMutationBody = BodyType<AccountActiveInput>
+    export type SetLedgerAccountActiveMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Retire an account, or bring it back
+ */
+export const useSetLedgerAccountActive = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setLedgerAccountActive>>, TError,{code: string;data: BodyType<AccountActiveInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setLedgerAccountActive>>,
+        TError,
+        {code: string;data: BodyType<AccountActiveInput>},
+        TContext
+      > => {
+      return useMutation(getSetLedgerAccountActiveMutationOptions(options));
+    }
+
+export const getListLedgerPartiesUrl = (params?: ListLedgerPartiesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/dms/ledger/parties?${stringifiedParams}` : `/api/dms/ledger/parties`
+}
+
+/**
+ * A journal line against Sundry Debtors or Sundry Creditors needs to say whose it is, or it leaves money on a control account that reconciles to no party ledger. This is the list that picker reads.
+ * @summary The party ledgers under the control accounts
+ */
+export const listLedgerParties = async (params?: ListLedgerPartiesParams, options?: Parameters<typeof customFetch>[1]): Promise<ListLedgerParties200> => {
+
+  return customFetch<ListLedgerParties200>(getListLedgerPartiesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListLedgerPartiesQueryKey = (params?: ListLedgerPartiesParams,) => {
+    return [
+    `/api/dms/ledger/parties`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListLedgerPartiesQueryOptions = <TData = Awaited<ReturnType<typeof listLedgerParties>>, TError = ErrorType<unknown>>(params?: ListLedgerPartiesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listLedgerParties>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListLedgerPartiesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listLedgerParties>>> = ({ signal }) => listLedgerParties(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listLedgerParties>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListLedgerPartiesQueryResult = NonNullable<Awaited<ReturnType<typeof listLedgerParties>>>
+export type ListLedgerPartiesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary The party ledgers under the control accounts
+ */
+
+export function useListLedgerParties<TData = Awaited<ReturnType<typeof listLedgerParties>>, TError = ErrorType<unknown>>(
+ params?: ListLedgerPartiesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listLedgerParties>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListLedgerPartiesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getPostJournalVoucherUrl = () => {
+
+
+
+
+  return `/api/dms/ledger/journal`
+}
+
+/**
+ * The only door into these books that does not start from a document DDMS issued — the month's rent, a salary run, an accrual, a depreciation charge, a reclassification an accountant asks for in March.
+ * A new voucher, never an edit. `/books` has no edit control and will not get one; a mistake in a journal is corrected the way every other mistake is, by reversing it and posting another.
+ * The branch is required because a branch is a profit centre. Rent booked with no branch against it appears in the consolidated profit and loss and in none of the branch columns, which is exactly the comparison an owner is trying to make.
+ * @summary Raise a journal voucher
+ */
+export const postJournalVoucher = async (journalInput: JournalInput, options?: Parameters<typeof customFetch>[1]): Promise<PostJournalVoucher200> => {
+
+  return customFetch<PostJournalVoucher200>(getPostJournalVoucherUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(journalInput)
+  }
+);}
+
+
+
+
+
+export const getPostJournalVoucherMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postJournalVoucher>>, TError,{data: BodyType<JournalInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof postJournalVoucher>>, TError,{data: BodyType<JournalInput>}, TContext> => {
+
+const mutationKey = ['postJournalVoucher'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof postJournalVoucher>>, {data: BodyType<JournalInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  postJournalVoucher(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PostJournalVoucherMutationResult = NonNullable<Awaited<ReturnType<typeof postJournalVoucher>>>
+    export type PostJournalVoucherMutationBody = BodyType<JournalInput>
+    export type PostJournalVoucherMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Raise a journal voucher
+ */
+export const usePostJournalVoucher = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postJournalVoucher>>, TError,{data: BodyType<JournalInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof postJournalVoucher>>,
+        TError,
+        {data: BodyType<JournalInput>},
+        TContext
+      > => {
+      return useMutation(getPostJournalVoucherMutationOptions(options));
+    }
 
 export const getRenameLedgerAccountUrl = (code: string,) => {
 

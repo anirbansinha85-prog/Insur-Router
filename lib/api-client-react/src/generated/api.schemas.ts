@@ -955,6 +955,17 @@ export const LedgerAccountIsSystem = {
   N: 'N',
 } as const;
 
+/**
+ * Whether it is still in use. An account that has carried a line is named on a statement somebody has already filed from, so it is retired rather than removed — the figures still add up and the row keeps its name. A system account is never inactive.
+ */
+export type LedgerAccountIsActive = typeof LedgerAccountIsActive[keyof typeof LedgerAccountIsActive];
+
+
+export const LedgerAccountIsActive = {
+  Y: 'Y',
+  N: 'N',
+} as const;
+
 export interface LedgerAccount {
   id: number;
   code: string;
@@ -963,6 +974,69 @@ export interface LedgerAccount {
   tallyName: string | null;
   group: LedgerAccountGroup;
   isSystem: LedgerAccountIsSystem;
+  /** Whether it is still in use. An account that has carried a line is named on a statement somebody has already filed from, so it is retired rather than removed — the figures still add up and the row keeps its name. A system account is never inactive. */
+  isActive?: LedgerAccountIsActive;
+}
+
+export type NewLedgerAccountGroup = typeof NewLedgerAccountGroup[keyof typeof NewLedgerAccountGroup];
+
+
+export const NewLedgerAccountGroup = {
+  ASSET: 'ASSET',
+  LIABILITY: 'LIABILITY',
+  EQUITY: 'EQUITY',
+  INCOME: 'INCOME',
+  EXPENSE: 'EXPENSE',
+} as const;
+
+export interface NewLedgerAccount {
+  /** Four digits, and not one a posting rule names. */
+  code: string;
+  name: string;
+  group: NewLedgerAccountGroup;
+  tallyName?: string;
+}
+
+export interface AccountActiveInput {
+  active: boolean;
+}
+
+export type LedgerPartyKind = typeof LedgerPartyKind[keyof typeof LedgerPartyKind];
+
+
+export const LedgerPartyKind = {
+  CUSTOMER: 'CUSTOMER',
+  SUPPLIER: 'SUPPLIER',
+  OEM: 'OEM',
+  FINANCIER: 'FINANCIER',
+  INSURER: 'INSURER',
+  GOVERNMENT: 'GOVERNMENT',
+} as const;
+
+export interface LedgerParty {
+  id: number;
+  name: string;
+  kind: LedgerPartyKind;
+  /** @nullable */
+  gstin?: string | null;
+}
+
+export interface JournalLineInput {
+  accountCode: string;
+  debit?: number;
+  credit?: number;
+  narration?: string;
+  /** Whose line it is. Needed on a control account, where the balance is meant to equal the sum of the party ledgers under it. */
+  partyId?: number;
+}
+
+export interface JournalInput {
+  /** Which branch this happened at. Required because a branch is a profit centre, not because the ledger needs it. */
+  showroomId: number;
+  voucherDate: string;
+  /** Required. Every other voucher in these books says what it is because a document says so; this one has only what the person raising it writes down. */
+  narration: string;
+  lines: JournalLineInput[];
 }
 
 export interface LedgerAccountPatch {
@@ -4258,8 +4332,48 @@ export type ListDmsEvents200 = {
   rows: RecordEvent[];
 };
 
+export type CreateLedgerAccount200 = {
+  account?: LedgerAccount;
+  warnings: string[];
+};
+
 export type ListLedgerAccounts200 = {
   accounts: LedgerAccount[];
+};
+
+export type OfferStarterChart200 = {
+  added: LedgerAccount[];
+  alreadyThere: string[];
+};
+
+export type SetLedgerAccountActive200 = {
+  account?: LedgerAccount;
+  warnings: string[];
+};
+
+export type ListLedgerPartiesParams = {
+kind?: ListLedgerPartiesKind;
+};
+
+export type ListLedgerPartiesKind = typeof ListLedgerPartiesKind[keyof typeof ListLedgerPartiesKind];
+
+
+export const ListLedgerPartiesKind = {
+  CUSTOMER: 'CUSTOMER',
+  SUPPLIER: 'SUPPLIER',
+  OEM: 'OEM',
+  FINANCIER: 'FINANCIER',
+  INSURER: 'INSURER',
+  GOVERNMENT: 'GOVERNMENT',
+} as const;
+
+export type ListLedgerParties200 = {
+  parties: LedgerParty[];
+};
+
+export type PostJournalVoucher200 = {
+  voucher?: Voucher;
+  warnings: string[];
 };
 
 export type RenameLedgerAccount200 = {

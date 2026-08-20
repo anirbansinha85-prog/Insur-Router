@@ -33,6 +33,7 @@
     "verify:eod": "pnpm --filter @workspace/scripts run eod",
     "verify:history": "pnpm --filter @workspace/scripts run history",
     "verify:journal": "pnpm --filter @workspace/scripts run journal",
+    "verify:floorplan": "pnpm --filter @workspace/scripts run floorplan",
     "db:probe": "pnpm --filter @workspace/scripts run probe",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"

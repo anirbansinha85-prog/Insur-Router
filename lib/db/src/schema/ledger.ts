@@ -257,3 +257,49 @@ export const voucherLinesTable = pgTable(
 ).enableRLS();
 
 export type VoucherLineRow = typeof voucherLinesTable.$inferSelect;
+
+/**
+ * Which months have been charged with floor-plan interest (OBJ-51).
+ *
+ * Almost nothing else in this module stores a derived figure — the
+ * reconciliations, the central end of day and the trial balance are computed on
+ * read, because a stored sum comes to disagree with the things it was a sum of.
+ *
+ * An accrual is the opposite case, and the distinction is the reason this table
+ * exists: **posting one changes the books.** The question is therefore not
+ * *what is the number* but *has this period already been charged* — a fact about
+ * what was done rather than a figure that can be recomputed. The unique index is
+ * what makes charging November twice impossible rather than merely unlikely, and
+ * a doubled monthly interest charge is exactly the size of error nobody spots.
+ */
+export const interestAccrualsTable = pgTable(
+  "interest_accruals",
+  {
+    id: serial("id").primaryKey(),
+    ownerId: integer("owner_id")
+      .notNull()
+      .references(() => ownersTable.id, { onDelete: "cascade" }),
+    showroomId: integer("showroom_id")
+      .notNull()
+      .references(() => showroomsTable.id, { onDelete: "cascade" }),
+    /** `YYYY-MM`. Interest is a monthly charge in every dealership's books. */
+    period: text("period").notNull(),
+
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    /** How many machines it covered, so the figure can be sanity-checked. */
+    unitCount: integer("unit_count").notNull().default(0),
+
+    /** The voucher this produced. Reversing that is how a wrong month is fixed. */
+    voucherId: integer("voucher_id").references(() => vouchersTable.id, {
+      onDelete: "set null",
+    }),
+    accruedByUserId: integer("accrued_by_user_id"),
+    accruedAt: timestamp("accrued_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("interest_accruals_branch_period_unique").on(t.showroomId, t.period),
+    index("interest_accruals_owner_idx").on(t.ownerId, t.period),
+  ],
+).enableRLS();
+
+export type InterestAccrualRow = typeof interestAccrualsTable.$inferSelect;

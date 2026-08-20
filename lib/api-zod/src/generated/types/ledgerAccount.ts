@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { LedgerAccountGroup } from './ledgerAccountGroup';
+import type { LedgerAccountIsActive } from './ledgerAccountIsActive';
 import type { LedgerAccountIsSystem } from './ledgerAccountIsSystem';
 
 export interface LedgerAccount {
@@ -16,4 +17,6 @@ export interface LedgerAccount {
   tallyName: string | null;
   group: LedgerAccountGroup;
   isSystem: LedgerAccountIsSystem;
+  /** Whether it is still in use. An account that has carried a line is named on a statement somebody has already filed from, so it is retired rather than removed — the figures still add up and the row keeps its name. A system account is never inactive. */
+  isActive?: LedgerAccountIsActive;
 }

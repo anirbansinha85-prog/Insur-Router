@@ -12,6 +12,8 @@ export * from "./moves";
 export * from "./money";
 // A journal voucher, and the dealership's own chart (OBJ-50).
 export * from "./journal";
+// Floor plan: the financier is the creditor, and standing still costs (OBJ-51).
+export * from "./floorplan";
 // The books a chartered accountant opens (OBJ-41, R-120).
 export * from "./books";
 // Billing a job card (OBJ-42, R-123).

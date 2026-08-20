@@ -2184,6 +2184,39 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 
   /dms/ledger/accounts:
+    post:
+      operationId: createLedgerAccount
+      tags: [dms]
+      summary: Add an account to the dealership's own chart
+      description: >
+        Until this existed no route in the product touched the chart at all, so
+        a dealership could not add a single head — which made the missing
+        expense side unfixable by the people it belonged to.
+
+        Never a system account. Whatever a dealership creates is theirs to
+        rename, retire and account for; ours are the ones a posting rule would
+        break without.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NewLedgerAccount" }
+      responses:
+        "200":
+          description: The account, with any warnings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  account: { $ref: "#/components/schemas/LedgerAccount" }
+                  warnings: { type: array, items: { type: string } }
+                required: [warnings]
+        "409":
+          description: Refused, with the reason
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
     get:
       operationId: listLedgerAccounts
       tags: [dms]
@@ -2218,6 +2251,159 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+  /dms/ledger/accounts/starter:
+    post:
+      operationId: offerStarterChart
+      tags: [dms]
+      summary: Add the standard operating expense heads
+      description: >
+        Rent, salaries, electricity, advertising, interest, depreciation and the
+        rest — plus TDS Payable and Prepaid Expenses, because a dealership
+        deducts tax on rent and professional fees the moment a bill is booked.
+
+        None of them is a system account. Every account a posting rule names is
+        undeletable because the rule breaks without it; nothing names these, so
+        an accountant who keeps staff welfare separate from salaries may delete
+        ours.
+
+        A deliberate act rather than a seeding step. Safe to run twice — it adds
+        only what is absent — and never called by anything unattended. A chart is
+        the shape of a dealership's books and filling it in behind them is not a
+        favour.
+      responses:
+        "200":
+          description: What was added, and what was already there
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  added:
+                    type: array
+                    items: { $ref: "#/components/schemas/LedgerAccount" }
+                  alreadyThere:
+                    type: array
+                    items: { type: string }
+                required: [added, alreadyThere]
+        "403":
+          description: Not a role that may reshape the chart
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /dms/ledger/accounts/{code}/active:
+    post:
+      operationId: setLedgerAccountActive
+      tags: [dms]
+      summary: Retire an account, or bring it back
+      description: >
+        There is no delete, deliberately. An account that has carried a line is
+        named on a trial balance somebody has already filed a return from, and
+        removing it makes that statement unreproducible.
+
+        A system account cannot be retired at all — a posting rule that cannot
+        find its account has no honest behaviour left.
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AccountActiveInput" }
+      responses:
+        "200":
+          description: The account as it now stands
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  account: { $ref: "#/components/schemas/LedgerAccount" }
+                  warnings: { type: array, items: { type: string } }
+                required: [warnings]
+        "409":
+          description: Refused, with the reason
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /dms/ledger/parties:
+    get:
+      operationId: listLedgerParties
+      tags: [dms]
+      summary: The party ledgers under the control accounts
+      description: >
+        A journal line against Sundry Debtors or Sundry Creditors needs to say
+        whose it is, or it leaves money on a control account that reconciles to
+        no party ledger. This is the list that picker reads.
+      parameters:
+        - name: kind
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [CUSTOMER, SUPPLIER, OEM, FINANCIER, INSURER, GOVERNMENT]
+      responses:
+        "200":
+          description: Parties, by name
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  parties:
+                    type: array
+                    items: { $ref: "#/components/schemas/LedgerParty" }
+                required: [parties]
+
+  /dms/ledger/journal:
+    post:
+      operationId: postJournalVoucher
+      tags: [dms]
+      summary: Raise a journal voucher
+      description: >
+        The only door into these books that does not start from a document DDMS
+        issued — the month's rent, a salary run, an accrual, a depreciation
+        charge, a reclassification an accountant asks for in March.
+
+        A new voucher, never an edit. `/books` has no edit control and will not
+        get one; a mistake in a journal is corrected the way every other mistake
+        is, by reversing it and posting another.
+
+        The branch is required because a branch is a profit centre. Rent booked
+        with no branch against it appears in the consolidated profit and loss
+        and in none of the branch columns, which is exactly the comparison an
+        owner is trying to make.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/JournalInput" }
+      responses:
+        "200":
+          description: The voucher, with any warnings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  voucher: { $ref: "#/components/schemas/Voucher" }
+                  warnings: { type: array, items: { type: string } }
+                required: [warnings]
+        "403":
+          description: Not a role that may raise a journal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: Refused — unbalanced, one-sided, a retired account, a closed period
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
 
   /dms/ledger/accounts/{code}:
     put:
@@ -4479,7 +4665,77 @@ components:
         tallyName: { type: ["string", "null"] }
         group: { type: string, enum: [ASSET, LIABILITY, INCOME, EXPENSE, EQUITY] }
         isSystem: { type: string, enum: [Y, N] }
+        isActive:
+          type: string
+          enum: [Y, N]
+          description: >
+            Whether it is still in use. An account that has carried a line is
+            named on a statement somebody has already filed from, so it is
+            retired rather than removed — the figures still add up and the row
+            keeps its name. A system account is never inactive.
       required: [id, code, name, tallyName, group, isSystem]
+
+    NewLedgerAccount:
+      type: object
+      properties:
+        code:
+          type: string
+          description: Four digits, and not one a posting rule names.
+        name: { type: string }
+        group: { type: string, enum: [ASSET, LIABILITY, EQUITY, INCOME, EXPENSE] }
+        tallyName: { type: string }
+      required: [code, name, group]
+
+    AccountActiveInput:
+      type: object
+      properties:
+        active: { type: boolean }
+      required: [active]
+
+    LedgerParty:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        kind:
+          type: string
+          enum: [CUSTOMER, SUPPLIER, OEM, FINANCIER, INSURER, GOVERNMENT]
+        gstin: { type: ["string", "null"] }
+      required: [id, name, kind]
+
+    JournalLineInput:
+      type: object
+      properties:
+        accountCode: { type: string }
+        debit: { type: number }
+        credit: { type: number }
+        narration: { type: string }
+        partyId:
+          type: integer
+          description: >
+            Whose line it is. Needed on a control account, where the balance is
+            meant to equal the sum of the party ledgers under it.
+      required: [accountCode]
+
+    JournalInput:
+      type: object
+      properties:
+        showroomId:
+          type: integer
+          description: >
+            Which branch this happened at. Required because a branch is a profit
+            centre, not because the ledger needs it.
+        voucherDate: { type: string }
+        narration:
+          type: string
+          description: >
+            Required. Every other voucher in these books says what it is because
+            a document says so; this one has only what the person raising it
+            writes down.
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/JournalLineInput" }
+      required: [showroomId, voucherDate, narration, lines]
 
     LedgerAccountPatch:
       type: object

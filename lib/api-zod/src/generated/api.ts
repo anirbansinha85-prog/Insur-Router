@@ -2148,6 +2148,32 @@ export const ListDmsEventsResponse = zod.object({
 
 
 /**
+ * Until this existed no route in the product touched the chart at all, so a dealership could not add a single head — which made the missing expense side unfixable by the people it belonged to.
+ * Never a system account. Whatever a dealership creates is theirs to rename, retire and account for; ours are the ones a posting rule would break without.
+ * @summary Add an account to the dealership's own chart
+ */
+export const CreateLedgerAccountBody = zod.object({
+  "code": zod.string().describe('Four digits, and not one a posting rule names.'),
+  "name": zod.string(),
+  "group": zod.enum(['ASSET', 'LIABILITY', 'EQUITY', 'INCOME', 'EXPENSE']),
+  "tallyName": zod.string().optional()
+})
+
+export const CreateLedgerAccountResponse = zod.object({
+  "account": zod.object({
+  "id": zod.number().int(),
+  "code": zod.string(),
+  "name": zod.string(),
+  "tallyName": zod.string().nullable(),
+  "group": zod.enum(['ASSET', 'LIABILITY', 'INCOME', 'EXPENSE', 'EQUITY']),
+  "isSystem": zod.enum(['Y', 'N']),
+  "isActive": zod.enum(['Y', 'N']).optional().describe('Whether it is still in use. An account that has carried a line is named on a statement somebody has already filed from, so it is retired rather than removed — the figures still add up and the row keeps its name. A system account is never inactive.\n')
+}).optional(),
+  "warnings": zod.array(zod.string())
+})
+
+
+/**
  * Shaped like Tally's, because that is where the numbers are going. R-98 says the ledger is a feeder before it is a book of record — it produces vouchers for whatever the dealership already keeps — and a chart invented from first principles would be elegant and would not map onto the one their accountant has used for eleven years.
  * `isSystem` marks the accounts a posting rule names by code. Those may be renamed and remapped and may not be deleted: a rule that cannot find its account has no honest behaviour left, because posting to a substitute misstates the books silently and skipping the line produces a voucher that does not balance.
  * @summary The dealership's chart of accounts
@@ -2159,8 +2185,121 @@ export const ListLedgerAccountsResponse = zod.object({
   "name": zod.string(),
   "tallyName": zod.string().nullable(),
   "group": zod.enum(['ASSET', 'LIABILITY', 'INCOME', 'EXPENSE', 'EQUITY']),
-  "isSystem": zod.enum(['Y', 'N'])
+  "isSystem": zod.enum(['Y', 'N']),
+  "isActive": zod.enum(['Y', 'N']).optional().describe('Whether it is still in use. An account that has carried a line is named on a statement somebody has already filed from, so it is retired rather than removed — the figures still add up and the row keeps its name. A system account is never inactive.\n')
 }))
+})
+
+
+/**
+ * Rent, salaries, electricity, advertising, interest, depreciation and the rest — plus TDS Payable and Prepaid Expenses, because a dealership deducts tax on rent and professional fees the moment a bill is booked.
+ * None of them is a system account. Every account a posting rule names is undeletable because the rule breaks without it; nothing names these, so an accountant who keeps staff welfare separate from salaries may delete ours.
+ * A deliberate act rather than a seeding step. Safe to run twice — it adds only what is absent — and never called by anything unattended. A chart is the shape of a dealership's books and filling it in behind them is not a favour.
+ * @summary Add the standard operating expense heads
+ */
+export const OfferStarterChartResponse = zod.object({
+  "added": zod.array(zod.object({
+  "id": zod.number().int(),
+  "code": zod.string(),
+  "name": zod.string(),
+  "tallyName": zod.string().nullable(),
+  "group": zod.enum(['ASSET', 'LIABILITY', 'INCOME', 'EXPENSE', 'EQUITY']),
+  "isSystem": zod.enum(['Y', 'N']),
+  "isActive": zod.enum(['Y', 'N']).optional().describe('Whether it is still in use. An account that has carried a line is named on a statement somebody has already filed from, so it is retired rather than removed — the figures still add up and the row keeps its name. A system account is never inactive.\n')
+})),
+  "alreadyThere": zod.array(zod.string())
+})
+
+
+/**
+ * There is no delete, deliberately. An account that has carried a line is named on a trial balance somebody has already filed a return from, and removing it makes that statement unreproducible.
+ * A system account cannot be retired at all — a posting rule that cannot find its account has no honest behaviour left.
+ * @summary Retire an account, or bring it back
+ */
+export const SetLedgerAccountActiveParams = zod.object({
+  "code": zod.coerce.string()
+})
+
+export const SetLedgerAccountActiveBody = zod.object({
+  "active": zod.boolean()
+})
+
+export const SetLedgerAccountActiveResponse = zod.object({
+  "account": zod.object({
+  "id": zod.number().int(),
+  "code": zod.string(),
+  "name": zod.string(),
+  "tallyName": zod.string().nullable(),
+  "group": zod.enum(['ASSET', 'LIABILITY', 'INCOME', 'EXPENSE', 'EQUITY']),
+  "isSystem": zod.enum(['Y', 'N']),
+  "isActive": zod.enum(['Y', 'N']).optional().describe('Whether it is still in use. An account that has carried a line is named on a statement somebody has already filed from, so it is retired rather than removed — the figures still add up and the row keeps its name. A system account is never inactive.\n')
+}).optional(),
+  "warnings": zod.array(zod.string())
+})
+
+
+/**
+ * A journal line against Sundry Debtors or Sundry Creditors needs to say whose it is, or it leaves money on a control account that reconciles to no party ledger. This is the list that picker reads.
+ * @summary The party ledgers under the control accounts
+ */
+export const ListLedgerPartiesQueryParams = zod.object({
+  "kind": zod.enum(['CUSTOMER', 'SUPPLIER', 'OEM', 'FINANCIER', 'INSURER', 'GOVERNMENT']).optional()
+})
+
+export const ListLedgerPartiesResponse = zod.object({
+  "parties": zod.array(zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "kind": zod.enum(['CUSTOMER', 'SUPPLIER', 'OEM', 'FINANCIER', 'INSURER', 'GOVERNMENT']),
+  "gstin": zod.string().nullish()
+}))
+})
+
+
+/**
+ * The only door into these books that does not start from a document DDMS issued — the month's rent, a salary run, an accrual, a depreciation charge, a reclassification an accountant asks for in March.
+ * A new voucher, never an edit. `/books` has no edit control and will not get one; a mistake in a journal is corrected the way every other mistake is, by reversing it and posting another.
+ * The branch is required because a branch is a profit centre. Rent booked with no branch against it appears in the consolidated profit and loss and in none of the branch columns, which is exactly the comparison an owner is trying to make.
+ * @summary Raise a journal voucher
+ */
+export const PostJournalVoucherBody = zod.object({
+  "showroomId": zod.number().int().describe('Which branch this happened at. Required because a branch is a profit centre, not because the ledger needs it.\n'),
+  "voucherDate": zod.string(),
+  "narration": zod.string().describe('Required. Every other voucher in these books says what it is because a document says so; this one has only what the person raising it writes down.\n'),
+  "lines": zod.array(zod.object({
+  "accountCode": zod.string(),
+  "debit": zod.number().optional(),
+  "credit": zod.number().optional(),
+  "narration": zod.string().optional(),
+  "partyId": zod.number().int().optional().describe('Whose line it is. Needed on a control account, where the balance is meant to equal the sum of the party ledgers under it.\n')
+}))
+})
+
+export const PostJournalVoucherResponse = zod.object({
+  "voucher": zod.object({
+  "id": zod.number().int(),
+  "kind": zod.string(),
+  "voucherNo": zod.string(),
+  "voucherDate": zod.string(),
+  "financialYear": zod.string(),
+  "narration": zod.string().nullable(),
+  "status": zod.enum(['POSTED', 'REVERSED']),
+  "totalDebit": zod.string(),
+  "totalCredit": zod.string(),
+  "warnings": zod.array(zod.string()).describe('What the posting could not do, and why. Never silent.'),
+  "exportedAt": zod.string().nullable(),
+  "reversalOfId": zod.number().int().nullable(),
+  "lines": zod.array(zod.object({
+  "seq": zod.number().int(),
+  "accountCode": zod.string(),
+  "accountName": zod.string(),
+  "debit": zod.string(),
+  "credit": zod.string(),
+  "narration": zod.string().nullable(),
+  "partyName": zod.string().nullable()
+}))
+}).optional(),
+  "warnings": zod.array(zod.string())
 })
 
 
@@ -2183,7 +2322,8 @@ export const RenameLedgerAccountResponse = zod.object({
   "name": zod.string(),
   "tallyName": zod.string().nullable(),
   "group": zod.enum(['ASSET', 'LIABILITY', 'INCOME', 'EXPENSE', 'EQUITY']),
-  "isSystem": zod.enum(['Y', 'N'])
+  "isSystem": zod.enum(['Y', 'N']),
+  "isActive": zod.enum(['Y', 'N']).optional().describe('Whether it is still in use. An account that has carried a line is named on a statement somebody has already filed from, so it is retired rather than removed — the figures still add up and the row keeps its name. A system account is never inactive.\n')
 })
 })
 

@@ -1054,6 +1054,29 @@ create policy day_closes_own on public.day_closes
   using (showroom_id in (select app.owned_showroom_ids()) and app.can_read('DEAL'))
   with check (showroom_id in (select app.visible_showroom_ids()) and app.can_read('DEAL'));
 
+/*
+ * Which months have been charged with floor-plan interest (OBJ-51).
+ *
+ * Read across the owner's branches like every other ledger table, and written
+ * only at a branch the person can actually write to. `ddms_worker` gets select
+ * and nothing more, for the reason the whole ledger does: nothing unattended
+ * posts an entry into a dealership's accounts, and an interest accrual is an
+ * entry.
+ */
+drop policy if exists interest_accruals_own on public.interest_accruals;
+create policy interest_accruals_own on public.interest_accruals
+  for all to ddms_app
+  using (showroom_id in (select app.owned_showroom_ids()) and app.can_read('RECEIVABLE'))
+  with check (showroom_id in (select app.visible_showroom_ids()) and app.can_read('RECEIVABLE'));
+
+drop policy if exists interest_accruals_worker on public.interest_accruals;
+create policy interest_accruals_worker on public.interest_accruals
+  for select to ddms_worker using (true);
+
+grant select, insert on public.interest_accruals to ddms_app;
+grant usage, select on sequence public.interest_accruals_id_seq to ddms_app;
+grant select on public.interest_accruals to ddms_worker;
+
 drop policy if exists day_closes_worker on public.day_closes;
 create policy day_closes_worker on public.day_closes
   for select to ddms_worker using (true);

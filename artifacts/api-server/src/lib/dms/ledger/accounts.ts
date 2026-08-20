@@ -78,6 +78,16 @@ export const CHART: SeedAccount[] = [
     tallyName: "Current Liabilities",
     group: "LIABILITY",
   },
+  /*
+   * Owed to whoever funded the floor, and not to the manufacturer (OBJ-51).
+   *
+   * A floor-plan purchase looks like an ordinary creditor and is not: the
+   * financier paid the OEM, so the OEM is settled and the dealership owes
+   * somebody else entirely. Booking it to `2100` shows fifty-seven lakh owed to
+   * a company that has already been paid, and hides the party who can call the
+   * money in.
+   */
+  { code: "2110", name: "Floor Plan Payable", tallyName: "Secured Loans", group: "LIABILITY" },
   { code: "2400", name: "Customer Advances", tallyName: "Current Liabilities", group: "LIABILITY" },
   {
     code: "2900",
@@ -133,6 +143,14 @@ export const CHART: SeedAccount[] = [
     group: "EXPENSE",
   },
   { code: "5200", name: "Discount Allowed", tallyName: "Indirect Expenses", group: "EXPENSE" },
+  /*
+   * Separate from the dealership's own `Interest Paid`, and the separation is
+   * the point (OBJ-51). This is the cost of stock standing still, and it is the
+   * one figure that would make somebody discount an ageing machine. Netted into
+   * a general interest line it becomes a number nobody can act on, next to the
+   * term loan on the workshop roof.
+   */
+  { code: "5430", name: "Floor Plan Interest", tallyName: "Indirect Expenses", group: "EXPENSE" },
 ];
 
 /**

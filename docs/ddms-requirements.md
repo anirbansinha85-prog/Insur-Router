@@ -4837,3 +4837,129 @@ as the creditor on a floor-plan purchase and the interest accrual behind it
 the two OEM receivables that are reports rather than balances; insurance
 commission, which needs a premium on `policies` before anything else is
 possible; bank accounts before a statement import; and credit notes.
+
+---
+
+## 3n. Built 19 August — OBJ-51, the floor has a creditor and a cost
+
+Two defects from the second-pass analysis, and they differ in kind.
+
+**A misfiled liability.** `postPurchaseInvoice` credits `2100 Sundry Creditors`
+against the supplier, always. On a floor-plan purchase that is not what
+happened: the financier paid the manufacturer, so the manufacturer is settled
+and the dealership owes somebody else. The books showed **₹57.9 lakh owed to
+Hero MotoCorp**, a company that had already been paid, and the party who can
+actually call the money in was invisible.
+
+**A missing cost.** `inventory-worklist.ts` computes interest per unit per day,
+to the rupee, and puts it on a screen. On this fixture: **78 unsold financed
+machines, ₹57.9 lakh at cost, ₹68,980 accrued** — the second largest cost in the
+building after salaries, on no profit and loss anywhere.
+
+### Two events, not one
+
+The purchase posting is **unchanged**. Buying from Hero and being funded by a
+financier are two things that happen to one consignment, and collapsing them
+would lose the input credit's link to Hero's invoice — the document the GST
+return is filed against.
+
+```
+  the purchase     Dr Vehicle Stock, Dr Input IGST
+                       Cr Sundry Creditors        → Hero MotoCorp Ltd
+  the drawdown     Dr Sundry Creditors            → Hero MotoCorp Ltd
+                       Cr Floor Plan Payable      → the financier
+  every month      Dr Floor Plan Interest
+                       Cr Floor Plan Payable
+```
+
+The drawdown moves no money — the bank is untouched — which is exactly why it is
+easy to forget and why the creditor stays wrong for months when it is.
+
+### The arithmetic lives in one place and is imported
+
+`floorPlanInterest` moved out of the inventory builder and is **exported**; the
+ledger imports it. A dealership told ₹68,980 on the Inventory screen and a
+different figure in its own books would stop believing both, and a second
+implementation is how that happens inside a month. §4 of the verifier asserts
+the two agree rather than trusting that they do.
+
+### Why this one has a table when almost nothing else does
+
+The reconciliations, the central end of day and the trial balance are all
+computed on read, because a stored sum comes to disagree with the things it was
+a sum of. An accrual is the opposite case, and the distinction is worth being
+precise about: **posting one changes the books.** So the question is no longer
+*what is the number* but *has this period already been charged* — a fact about
+what was done rather than a figure that can be recomputed.
+
+`interest_accruals` answers it, one row per branch per period, and the unique
+index makes charging November twice impossible rather than merely unlikely. **A
+doubled monthly interest charge is exactly the size of error nobody spots.**
+
+### The check a tidy implementation gets wrong
+
+A monthly accrual must charge **the month**, not everything accrued to date.
+Charging the running total would re-charge every earlier month on every run and
+triple the cost by March. So the period's figure is the difference between two
+positions — end of the month less end of the month before — and the verifier
+asserts October and November are each one month's interest rather than a growing
+number.
+
+### Two refusals worth keeping
+
+**A drawdown against a party who is not a financier is refused**, not warned.
+Booking a lakh of floor-plan funding against a customer is not a slightly-wrong
+entry; it is a large liability filed under somebody who does not hold it, and
+`parties.kind` already knows the answer.
+
+**More than the bill is refused.** A financier does not advance more than the
+invoice. Less than the bill is *permitted* and warned about — a margin the
+dealership funds itself is ordinary, and worth being sure it was deliberate.
+
+### The honest limit, stated on the voucher
+
+`dms_vehicle_stock` records **that** a machine is financed and never **by whom**.
+So the monthly charge lands on the floor-plan account with no financier's name
+against it, and the accrual says so in its own warnings. With one floor-plan line
+that is the whole answer; with two it is a reallocation somebody has to make.
+
+### The screen
+
+`/journal` — the first screen in this product that **writes to the ledger**. It
+sits beside `/books` rather than inside it, because `/books` is read-only and
+stays that way: a journal is a new voucher, not an edit.
+
+The running total is a courtesy and never a decision. The server refuses an
+unbalanced journal and says by how much; the screen shows both totals and their
+difference and **leaves the post button live either way**, because a screen that
+disabled itself would be a second implementation of a rule that already exists
+on the server, and the two would drift.
+
+Typing in the debit column clears the credit column, which makes the *both a
+debit and a credit* refusal unreachable by accident rather than merely explained
+afterwards. A line against a control account offers the party picker and says
+what happens without one.
+
+### New requirements
+
+| # | Requirement | Status |
+|---|---|---|
+| R-143 | **A liability belongs to whoever holds it.** Funding a purchase does not make the supplier the creditor; the financier who paid them is. Booking it to the supplier shows money owed to a company that has been paid and hides the party who can call it in | ✅ |
+| R-144 | **A figure the product already computes is imported, never recomputed.** Floor-plan interest is one exported function that the inventory screen and the ledger both call. Two implementations of one number is how a dealership comes to distrust both screens | ✅ |
+| R-145 | **An accrual is stored because posting it changes the books.** Everything else in this module is derived on read; the question here is not what the number is but whether the period has already been charged, and that is a fact about what was done | ✅ |
+| R-146 | **A periodic charge charges the period.** Not the running total — a run that booked everything accrued to date would re-charge every earlier month and treble the cost by March | ✅ |
+| R-147 | **A screen never decides what the server decides.** The journal's running total shows the difference and does not disable the button. A client-side copy of a server rule is a second implementation that drifts, and the one people trust is not the one that refuses | ✅ |
+
+### Where the product now stands
+
+| | |
+|---|---|
+| Objectives | **51 of 51** |
+| Requirements | **147 of 147** |
+| Verifiers | **26**, all green |
+| Screens | `/journal` — the first screen in this product that writes to the ledger |
+
+**Still named and not built:** the two OEM receivables that are reports rather
+than balances; insurance commission, which needs a premium on `policies` before
+anything is possible; bank accounts before a statement import; credit notes; and
+the year-end close.

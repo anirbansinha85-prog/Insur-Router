@@ -330,6 +330,31 @@ export interface InventoryWorklistRow {
   disappearedFromDms: boolean;
 }
 
+/**
+ * What a financed machine costs to stand still (OBJ-51).
+ *
+ * **Exported, and that is the point.** The ledger accrues this into the books
+ * and the inventory screen reports it on a row, and those two must be the same
+ * number — a dealership told ₹68,980 on one screen and a different figure in
+ * its own profit and loss would stop believing both. The arithmetic lives here,
+ * beside the stock it describes, and the ledger imports it.
+ *
+ * Simple interest on cost, per day, at the rate the dealer's system carries.
+ * Nobody disputes the sum; what people dispute is the rate, and that is theirs.
+ */
+export function floorPlanInterest(input: {
+  costAmount: string | number | null;
+  interestRatePct: string | number | null;
+  isFinanced: string | null;
+  days: number;
+}): { perDay: number | null; accrued: number | null } {
+  const cost = input.costAmount === null ? 0 : Number(input.costAmount);
+  const rate = input.interestRatePct === null ? 0 : Number(input.interestRatePct);
+  if (input.isFinanced !== "Y" || !cost || !rate) return { perDay: null, accrued: null };
+  const perDay = (cost * (rate / 100)) / 365;
+  return { perDay, accrued: perDay * input.days };
+}
+
 function wholeDaysBetween(from: Date, to: Date): number {
   const a = Date.UTC(from.getFullYear(), from.getMonth(), from.getDate());
   const b = Date.UTC(to.getFullYear(), to.getMonth(), to.getDate());
@@ -463,8 +488,12 @@ export async function buildInventoryWorklist(
     const cost = num(v.costAmount);
     const rate = num(v.interestRatePct);
     const financed = v.isFinanced === "Y";
-    const interestPerDay = financed && cost && rate ? (cost * (rate / 100)) / 365 : null;
-    const interestAccrued = interestPerDay === null ? null : interestPerDay * ageDays;
+    const { perDay: interestPerDay, accrued: interestAccrued } = floorPlanInterest({
+      costAmount: v.costAmount,
+      interestRatePct: v.interestRatePct,
+      isFinanced: v.isFinanced,
+      days: ageDays,
+    });
 
     // Only offer the match on units that are actually available. A vehicle
     // already invoiced to somebody is not an answer to anybody's enquiry, and

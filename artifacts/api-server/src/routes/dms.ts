@@ -126,7 +126,7 @@ import {
   tallyFeed,
 } from "../lib/dms/ledger";
 import { and as sqlAnd, desc as sqlDesc, eq as sqlEq, inArray as sqlIn } from "drizzle-orm";
-import { vouchersTable, voucherLinesTable } from "@workspace/db";
+import { vouchersTable, voucherLinesTable, partiesTable } from "@workspace/db";
 import { describeRules, MAX_RULES } from "../lib/dms/rules";
 import {
   standingFor,
@@ -1756,6 +1756,33 @@ router.post("/dms/ledger/accounts", async (req, res): Promise<void> => {
     return;
   }
   res.json({ account: result.account, warnings: result.warnings });
+});
+
+/**
+ * The party ledgers under the control accounts (OBJ-50).
+ *
+ * A journal line against Sundry Debtors or Sundry Creditors has to say whose it
+ * is, or it leaves money on a control account that reconciles to no party
+ * ledger. This is the list that picker reads.
+ */
+router.get("/dms/ledger/parties", async (req, res): Promise<void> => {
+  if (!assertModuleAccess(req, res, "RECEIVABLE")) return;
+  const kind = typeof req.query.kind === "string" ? req.query.kind : null;
+  const rows = await db
+    .select({
+      id: partiesTable.id,
+      name: partiesTable.name,
+      kind: partiesTable.kind,
+      gstin: partiesTable.gstin,
+    })
+    .from(partiesTable)
+    .where(
+      kind
+        ? sqlAnd(sqlEq(partiesTable.isActive, "Y"), sqlEq(partiesTable.kind, kind as never))
+        : sqlEq(partiesTable.isActive, "Y"),
+    )
+    .orderBy(partiesTable.name);
+  res.json({ parties: rows });
 });
 
 /**

@@ -24,6 +24,7 @@ import ServiceWorklist from '@/pages/ServiceWorklist';
 import Registrations from '@/pages/Registrations';
 import Spares from '@/pages/Spares';
 import Case from "@/pages/Case"
+import Journal from "@/pages/Journal"
 import Dossier from '@/pages/Dossier';
 import Outbox from '@/pages/Outbox';
 import Invoices from './pages/Invoices';
@@ -146,6 +147,9 @@ function Gate() {
               up. A second LEDGER module would be a second answer to one
               question. */}
           <Route path="/books">{guard(u, "/books", <Books />)}</Route>
+          {/* A journal is a new voucher rather than an edit, so it is its own
+              screen. /books still has no edit control and will not get one. */}
+          <Route path="/journal">{guard(u, "/books", <Journal />)}</Route>
           <Route path="/enquiries">{guard(u, "/enquiries", <Leads />)}</Route>
           <Route path="/worklist">{guard(u, "/worklist", <Worklist />)}</Route>
           <Route path="/registrations">{guard(u, "/registrations", <Registrations />)}</Route>
