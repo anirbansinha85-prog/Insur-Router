@@ -135,6 +135,75 @@ export const CHART: SeedAccount[] = [
   { code: "5200", name: "Discount Allowed", tallyName: "Indirect Expenses", group: "EXPENSE" },
 ];
 
+/**
+ * The heads a dealership needs to run its own books, offered once and **owned
+ * by them** (OBJ-50).
+ *
+ * ## Why these are not `isSystem`, and the distinction matters
+ *
+ * Every account in `CHART` above exists because a posting rule names it by
+ * code. Nothing names any of these. They exist because until OBJ-50 the chart
+ * had **three expense heads, two of which were cost of goods sold** — so a
+ * five-branch dealership's profit and loss was a gross-margin statement with a
+ * P&L's title, and there was no rent, no salaries, no electricity and no way to
+ * add any.
+ *
+ * Marking them `isSystem` would have been the smaller change and the wrong one.
+ * A system account is undeletable because a rule would break without it; these
+ * would be undeletable because we decided a dealership ought to want them,
+ * which is not the same thing and not ours to decide. A CA who keeps *Staff
+ * Welfare* separate from *Salaries* should be able to say so.
+ *
+ * ## Nothing seeds these on its own
+ *
+ * The first version of this seeded them inside `ensureChart` when the owner had
+ * no accounts at all, which was wrong in both directions and the verifier said
+ * so on the first run. Every dealership already using the product has a chart,
+ * so **none of them would ever have received the expense heads** — the whole
+ * point of the objective, silently skipped. And an automatic rule that fills
+ * gaps would put *Printing & Stationery* back next Tuesday for a dealership
+ * that had deliberately deleted it.
+ *
+ * So `offerStarterChart` is a **deliberate act**, called from a route by a
+ * person, safe to run twice because it adds only what is absent, and never
+ * called by anything unattended. A chart is the shape of a dealership's books
+ * and filling it in behind them is not a favour.
+ */
+export const STARTER: SeedAccount[] = [
+  // Two balance-sheet heads the moment anybody books an expense properly.
+  { code: "1700", name: "Prepaid Expenses", tallyName: "Current Assets", group: "ASSET" },
+  /*
+   * A dealership deducts tax on rent (194-I), commission (194-H), contractor
+   * payments (194-C) and professional fees (194-J). The deduction is a
+   * liability from the moment the bill is booked, and without a head for it the
+   * only options are to overstate the payment or to keep it off the books.
+   */
+  { code: "2500", name: "TDS Payable", tallyName: "Duties & Taxes", group: "LIABILITY" },
+
+  // ── What it costs to open the doors ──────────────────────────────────────
+  { code: "5300", name: "Rent", tallyName: "Indirect Expenses", group: "EXPENSE" },
+  { code: "5310", name: "Salaries & Wages", tallyName: "Indirect Expenses", group: "EXPENSE" },
+  { code: "5320", name: "Electricity & Water", tallyName: "Indirect Expenses", group: "EXPENSE" },
+  { code: "5330", name: "Advertising & Sales Promotion", tallyName: "Indirect Expenses", group: "EXPENSE" },
+  { code: "5340", name: "Repairs & Maintenance", tallyName: "Indirect Expenses", group: "EXPENSE" },
+  { code: "5350", name: "Travel & Conveyance", tallyName: "Indirect Expenses", group: "EXPENSE" },
+  { code: "5360", name: "Printing & Stationery", tallyName: "Indirect Expenses", group: "EXPENSE" },
+  { code: "5370", name: "Telephone & Internet", tallyName: "Indirect Expenses", group: "EXPENSE" },
+  { code: "5380", name: "Professional & Legal Fees", tallyName: "Indirect Expenses", group: "EXPENSE" },
+  { code: "5390", name: "Bank Charges", tallyName: "Indirect Expenses", group: "EXPENSE" },
+  /*
+   * Separate from bank charges because it is the number a dealership argues
+   * about. Floor-plan funding on 78 unsold machines at 9.8% is the second
+   * largest cost in the building after salaries, and netting it into a general
+   * banking line hides the one figure that would make somebody shift ageing
+   * stock.
+   */
+  { code: "5400", name: "Interest Paid", tallyName: "Indirect Expenses", group: "EXPENSE" },
+  { code: "5410", name: "Insurance — Own", tallyName: "Indirect Expenses", group: "EXPENSE" },
+  { code: "5420", name: "Depreciation", tallyName: "Indirect Expenses", group: "EXPENSE" },
+  { code: "5900", name: "Miscellaneous Expenses", tallyName: "Indirect Expenses", group: "EXPENSE" },
+];
+
 /** The codes a posting rule names, so the route can refuse to delete one. */
 export const SYSTEM_CODES = new Set(CHART.map((a) => a.code));
 
@@ -151,6 +220,32 @@ export async function ensureChart(ownerId: number): Promise<number> {
     .from(ledgerAccountsTable)
     .where(eq(ledgerAccountsTable.ownerId, ownerId));
   const have = new Set(existing.map((r) => r.code));
+
+  /*
+   * A system code held by an account that is **not** ours is refused rather
+   * than adopted.
+   *
+   * `onConflictDoNothing` below means an existing row wins, which is right for
+   * a rename and wrong for a collision: if a dealership created `5300 Rent
+   * Received` of their own and a later release named `5300` in a posting rule,
+   * that rule would quietly start posting into their account and neither figure
+   * would be what anybody expected. Loud is the only honest answer, and it can
+   * only ever happen after somebody has created an account by hand.
+   */
+  const collisions = await db
+    .select({ code: ledgerAccountsTable.code, name: ledgerAccountsTable.name })
+    .from(ledgerAccountsTable)
+    .where(
+      and(eq(ledgerAccountsTable.ownerId, ownerId), eq(ledgerAccountsTable.isSystem, "N")),
+    );
+  const clash = collisions.find((c) => SYSTEM_CODES.has(c.code));
+  if (clash) {
+    throw new Error(
+      `Account ${clash.code} (${clash.name}) was created here and is now a code the product's own ` +
+        "posting rules name. Renumber it before anything else posts, or a rule will start writing " +
+        "into it and no figure on either side will be what anybody expects.",
+    );
+  }
 
   const missing = CHART.filter((a) => !have.has(a.code));
   if (missing.length === 0) return 0;
@@ -205,4 +300,191 @@ export async function renameAccount(
     .where(and(eq(ledgerAccountsTable.ownerId, ownerId), eq(ledgerAccountsTable.code, code)))
     .returning();
   return row ?? null;
+}
+
+/**
+ * A code a dealership may use for an account of its own.
+ *
+ * Four digits, starting with the group's digit, and not one the product's rules
+ * name. The group digit is a convention rather than a constraint anywhere else
+ * in the code — nothing derives a group from a code — but a chart where `5xxx`
+ * is sometimes income is a chart nobody can read at a glance, and their CA will
+ * be reading it.
+ */
+const GROUP_DIGIT: Record<SeedAccount["group"], string> = {
+  ASSET: "1",
+  LIABILITY: "2",
+  EQUITY: "3",
+  INCOME: "4",
+  EXPENSE: "5",
+};
+
+export interface AccountResult {
+  ok: boolean;
+  account?: LedgerAccountRow;
+  error?: string;
+  warnings: string[];
+}
+
+/**
+ * Add an account to a dealership's own chart (OBJ-50).
+ *
+ * The structural gap this closes: before it, **no route in the product touched
+ * `ledger_accounts` at all**, so a dealership could not add a single head. The
+ * chart was ours and only ours, which made the missing expense side unfixable
+ * by the people it belonged to.
+ *
+ * Never `isSystem`. Whatever a dealership creates is theirs to rename, retire
+ * and account for; ours are the ones a rule would break without.
+ */
+export async function createAccount(input: {
+  ownerId: number;
+  code: string;
+  name: string;
+  group: SeedAccount["group"];
+  tallyName?: string | null;
+}): Promise<AccountResult> {
+  const warnings: string[] = [];
+  const code = input.code.trim();
+  const name = input.name.trim();
+
+  if (!name) return { ok: false, error: "An account needs a name.", warnings };
+  if (!/^\d{4}$/.test(code)) {
+    return { ok: false, error: `${code} is not a four-digit account code.`, warnings };
+  }
+  if (SYSTEM_CODES.has(code)) {
+    return {
+      ok: false,
+      error:
+        `${code} is one of the product's own codes and a posting rule names it. Rename that account ` +
+        "if the wording is wrong — the code has to keep meaning what the rules think it means.",
+      warnings,
+    };
+  }
+  const wanted = GROUP_DIGIT[input.group];
+  if (!code.startsWith(wanted)) {
+    /*
+     * A warning rather than a refusal. Nothing in the code derives a group from
+     * a code, so a misfiled number is unreadable rather than wrong - and a
+     * dealership whose CA has used a numbering scheme for eleven years is not
+     * going to renumber it because we prefer ours.
+     */
+    warnings.push(
+      `${code} is being used for a ${input.group.toLowerCase()} account, and the convention in this ` +
+        `chart is that those start with ${wanted}. Nothing will misbehave; it will read oddly beside the rest.`,
+    );
+  }
+
+  const [existing] = await db
+    .select({ id: ledgerAccountsTable.id, name: ledgerAccountsTable.name })
+    .from(ledgerAccountsTable)
+    .where(and(eq(ledgerAccountsTable.ownerId, input.ownerId), eq(ledgerAccountsTable.code, code)));
+  if (existing) {
+    return { ok: false, error: `${code} is already ${existing.name}.`, warnings };
+  }
+
+  const [account] = await db
+    .insert(ledgerAccountsTable)
+    .values({
+      ownerId: input.ownerId,
+      code,
+      name,
+      tallyName: input.tallyName?.trim() || name,
+      group: input.group,
+      isSystem: "N",
+    })
+    .returning();
+
+  return { ok: true, account: account!, warnings };
+}
+
+/**
+ * Retire an account, or bring it back. **Never delete one.**
+ *
+ * An account that has carried a line is named on a trial balance somebody has
+ * already filed a return from. Removing it makes that statement
+ * unreproducible — the figures still add up and one of the rows has no name.
+ * So this is a flag, and the account keeps everything it ever carried.
+ */
+export async function setAccountActive(input: {
+  ownerId: number;
+  code: string;
+  active: boolean;
+}): Promise<AccountResult> {
+  const warnings: string[] = [];
+  const [row] = await db
+    .select()
+    .from(ledgerAccountsTable)
+    .where(
+      and(eq(ledgerAccountsTable.ownerId, input.ownerId), eq(ledgerAccountsTable.code, input.code)),
+    );
+  if (!row) return { ok: false, error: `No account ${input.code}.`, warnings };
+
+  if (row.isSystem === "Y" && !input.active) {
+    return {
+      ok: false,
+      error:
+        `${row.code} ${row.name} is named by a posting rule, so it cannot be retired. A rule that ` +
+        "cannot find its account has no honest behaviour: a substitute misstates the books silently " +
+        "and a skipped line will not balance. Rename it if the wording is wrong.",
+      warnings,
+    };
+  }
+
+  const [updated] = await db
+    .update(ledgerAccountsTable)
+    .set({ isActive: input.active ? "Y" : "N" })
+    .where(
+      and(eq(ledgerAccountsTable.ownerId, input.ownerId), eq(ledgerAccountsTable.code, input.code)),
+    )
+    .returning();
+
+  return { ok: true, account: updated!, warnings };
+}
+
+/**
+ * Put the operating expense heads in front of a dealership that has none.
+ *
+ * Adds only what is absent, so running it twice adds nothing the second time,
+ * and running it after somebody has deleted *Travel & Conveyance* puts it back
+ * — which is fine, because **a person asked**. That is the whole difference
+ * between this and doing it inside `ensureChart`.
+ *
+ * Everything it creates is `isSystem: "N"`. No posting rule names any of them;
+ * they exist because a P&L with three expense heads, two of which are cost of
+ * goods sold, is a gross-margin statement with a P&L's title.
+ */
+export async function offerStarterChart(ownerId: number): Promise<{
+  added: LedgerAccountRow[];
+  alreadyThere: string[];
+}> {
+  const existing = await db
+    .select({ code: ledgerAccountsTable.code })
+    .from(ledgerAccountsTable)
+    .where(eq(ledgerAccountsTable.ownerId, ownerId));
+  const have = new Set(existing.map((r) => r.code));
+
+  const missing = STARTER.filter((a) => !have.has(a.code));
+  if (missing.length === 0) {
+    return { added: [], alreadyThere: STARTER.map((a) => a.code) };
+  }
+
+  const added = await db
+    .insert(ledgerAccountsTable)
+    .values(
+      missing.map((a) => ({
+        ownerId,
+        code: a.code,
+        name: a.name,
+        tallyName: a.tallyName,
+        group: a.group,
+        isSystem: "N" as const,
+      })),
+    )
+    .returning();
+
+  return {
+    added,
+    alreadyThere: STARTER.filter((a) => have.has(a.code)).map((a) => a.code),
+  };
 }

@@ -10,6 +10,8 @@ export * from "./opening";
 export * from "./moves";
 // Money in, money out, and where it was meant to go (OBJ-40).
 export * from "./money";
+// A journal voucher, and the dealership's own chart (OBJ-50).
+export * from "./journal";
 // The books a chartered accountant opens (OBJ-41, R-120).
 export * from "./books";
 // Billing a job card (OBJ-42, R-123).

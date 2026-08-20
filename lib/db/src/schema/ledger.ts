@@ -64,6 +64,20 @@ export const ledgerAccountsTable = pgTable(
      * that leaves the numbers true.
      */
     isSystem: text("is_system", { enum: ["Y", "N"] }).notNull().default("N"),
+    /**
+     * Whether it is still in use (OBJ-50).
+     *
+     * A dealership's own account that stops being used cannot simply be
+     * deleted once anything has posted to it: last year's trial balance names
+     * it, and a chart that loses an account retrospectively makes a filed
+     * return unreproducible. So an account is **retired, not removed** — it
+     * disappears from every picker and keeps every line it ever carried.
+     *
+     * A system account is never inactive. A posting rule that cannot find its
+     * account has no honest behaviour, which is the same argument that makes
+     * them undeletable.
+     */
+    isActive: text("is_active", { enum: ["Y", "N"] }).notNull().default("Y"),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

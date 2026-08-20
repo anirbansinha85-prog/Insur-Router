@@ -26,6 +26,7 @@
     "allocation": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-allocation.ts",
     "eod": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-eod.ts",
     "history": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-history.ts",
+    "journal": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/verify-journal.ts",
     "export-reports": "tsx --env-file-if-exists=../.env ./src/export-reports.ts",
     "export-books": "tsx --env-file=../.env.api --env-file=../.env ../artifacts/api-server/src/scripts/export-books.ts",
     "rls": "tsx --env-file-if-exists=../.env ./src/apply-rls.ts",

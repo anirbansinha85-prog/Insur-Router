@@ -4717,3 +4717,123 @@ deliberately not chosen. A name column on `outbound_messages` so an approved
 message can name its approver rather than saying *somebody here*. And resolving
 `ingest_batch_id` to the file it came from, which is one join away and answers
 *which file did this value come off*.
+
+---
+
+## 3m. Built 19 August — OBJ-50, the cost side gets a door
+
+The Finance module was complete on the sales side and had almost nothing on the
+cost side. Reading the chart out of the database made the size of it plain:
+
+> **28 accounts. Three of them expenses, and two of those cost of goods sold.**
+
+The entire operating expense side of a five-branch dealership — rent, salaries,
+electricity, advertising, bank interest, floor-plan interest, depreciation,
+professional fees — was represented by one account called *Discount Allowed*.
+`03-profit-and-loss.csv` was a **gross margin statement with a P&L's title**.
+
+And it was unfixable from inside the product: **no route touched
+`ledger_accounts` at all**, so a dealership could not add a single head.
+
+### Two things, and neither works without the other
+
+**The heads.** Sixteen starter accounts — fourteen operating expenses, plus
+`1700 Prepaid Expenses` and `2500 TDS Payable`, because a dealership deducts tax
+on rent, commission, contractor payments and professional fees from the moment
+a bill is booked.
+
+**The door.** `postJournal`. Seven things could reach the ledger before it, and
+every one starts from a document DDMS itself issued. So there was no way to book
+anything that is not a document: a month's rent, a salary run, an accrual, a
+depreciation charge, a reclassification a CA asks for in March. `JOURNAL` was
+already in the voucher-kind enum and only the opening-balance run and a reversal
+wrote it — neither of which a person can raise.
+
+Adding the heads without the door would have produced a longer chart nobody
+could post to.
+
+### The distinction the starter set turns on
+
+**None of them is `isSystem`.** Every account in `CHART` exists because a posting
+rule names it by code, and that is what makes it undeletable — a rule that
+cannot find its account has no honest behaviour. Nothing names any of the
+sixteen. Marking them system would have made them undeletable because *we*
+decided a dealership ought to want them, which is not the same thing and not
+ours to decide. A CA who keeps *Staff Welfare* separate from *Salaries* can say
+so.
+
+### The design mistake the verifier caught on its first run
+
+The first version seeded the starter set inside `ensureChart`, when the owner
+had no accounts at all. That was wrong in **both** directions:
+
+- **Every dealership already using the product has a chart**, so none of them
+  would ever have received the expense heads. The whole objective, silently
+  skipped.
+- And a gap-filling rule would put *Printing & Stationery* back next Tuesday for
+  a dealership that had deliberately deleted it.
+
+`offerStarterChart` is a deliberate act instead — called from a route by a
+person, safe to run twice because it adds only what is absent, never called by
+anything unattended. A chart is the shape of a dealership's books and filling it
+in behind them is not a favour.
+
+### What a journal refuses, and the one it warns about
+
+Refused: no narration · fewer than two lines · a line that is both a debit and a
+credit · a negative amount · a line with nothing on it · an account not in the
+chart · a retired account · a total that does not balance · a locked period
+(the database trigger, caught and passed on in its own words).
+
+**Warned and posted:** a line against `1100` or `2100` with nobody's name on it.
+The balance on a control account is meant to equal the sum of the party ledgers
+under it, and a line with no party leaves money that reconciles to nothing. But
+the honest exception is real — a provision for doubtful debts belongs to no
+single customer — so the product names the consequence, points at the
+reconciliation that will surface it, and lets the person decide.
+
+### Three findings from this build
+
+**A check that passed for the wrong reason.** A line for minus a hundred was
+refused with *has no amount on it*, because `debit <= 0` caught the negative
+before the negative check ran. True enough to pass a test and useless to somebody
+who typed an amount and was told they had not. **The order of two guards was the
+whole bug**, and the verifier only caught it because the check asserted the
+*sentence* rather than the refusal.
+
+**`ddms_worker` may not write `ledger_accounts`, and that is right.** Creating an
+account is a person's act. Sixth time a verifier has reported a real boundary by
+reaching for a wider credential.
+
+**Voucher numbers are bare integers.** `nextVoucherNo` returns `"1"`, `"2"` for
+every kind — not `JV/2026-27/0001`. Gapless and sequential per kind per financial
+year, so nothing is *wrong*; but an auditor expects a series on the face of a
+voucher, and `numberingGaps` parses digits out of it. Named here rather than
+changed, because changing the format mid-year is its own decision.
+
+### New requirements
+
+| # | Requirement | Status |
+|---|---|---|
+| R-138 | **A dealership's chart is theirs to extend.** The accounts a posting rule names are ours and undeletable; everything else a dealership creates is theirs to rename, retire and account for. A product that ships a chart nobody can add to has decided what a business costs to run | ✅ |
+| R-139 | **An account is retired, never deleted.** One that has carried a line is named on a statement somebody has already filed from. Removing it makes that statement unreproducible: the figures still add up and one of the rows has no name | ✅ |
+| R-140 | **Nothing fills a chart in behind a dealership.** Offering the standard heads is an act a person takes, not a gap a seeding function closes — otherwise an existing dealership never receives them and a deleted one gets it back next Tuesday | ✅ |
+| R-141 | **A journal is a new voucher, never an edit.** `/books` has no edit control and will not get one. A mistake in a journal is corrected the way every other mistake is: reverse it and post another | ✅ |
+| R-142 | **A guard that fires first decides what the refusal says.** A negative amount refused as *no amount on it* is true, passes a test, and tells the person the opposite of what happened. Assert the sentence, not the boolean | ✅ |
+
+### Where the product now stands
+
+| | |
+|---|---|
+| Objectives | **50 of 50** |
+| Requirements | **142 of 142** |
+| Verifiers | **25**, all green |
+| Chart | 28 system accounts + 16 the dealership owns |
+| Doors into the ledger | **eight** — and the eighth is the only one that starts from a person rather than a document |
+
+**Still named and not built**, in the order the analysis put them: the financier
+as the creditor on a floor-plan purchase and the interest accrual behind it
+(78 unsold financed units, ₹57.9 lakh at cost, ₹68,980 accrued and on no P&L);
+the two OEM receivables that are reports rather than balances; insurance
+commission, which needs a premium on `policies` before anything else is
+possible; bank accounts before a statement import; and credit notes.

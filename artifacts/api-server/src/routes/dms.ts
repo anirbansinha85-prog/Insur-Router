@@ -115,10 +115,14 @@ import {
   ensureChart,
   gstr1Csv,
   gstr1For,
+  createAccount,
   markExported,
+  offerStarterChart,
+  postJournal,
   postSaleDocument,
   renameAccount,
   reverseVoucher,
+  setAccountActive,
   tallyFeed,
 } from "../lib/dms/ledger";
 import { and as sqlAnd, desc as sqlDesc, eq as sqlEq, inArray as sqlIn } from "drizzle-orm";
@@ -1712,6 +1716,149 @@ router.put("/dms/ledger/accounts/:code", async (req, res): Promise<void> => {
     return;
   }
   res.json({ account: row });
+});
+
+/**
+ * Add an account to the dealership's own chart (OBJ-50).
+ *
+ * Before this, no route in the product touched `ledger_accounts` — the chart
+ * was ours and only ours, which made the missing expense side unfixable by the
+ * people it belonged to.
+ *
+ * `policy.set`, so OWNER and MANAGER. The same gate the thresholds sit behind
+ * and for the same reason: a chart is the shape of a dealership's books, and it
+ * is not a service advisor's to reshape.
+ */
+router.post("/dms/ledger/accounts", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  if (!assertModuleAccess(req, res, "RECEIVABLE")) return;
+  if (!may(user.role, "policy.set")) {
+    res.status(403).json({ error: whyNot(user.role, "policy.set") });
+    return;
+  }
+
+  const body = req.body as Record<string, unknown>;
+  const group = String(body.group ?? "");
+  if (!["ASSET", "LIABILITY", "EQUITY", "INCOME", "EXPENSE"].includes(group)) {
+    res.status(400).json({ error: `${group || "(none)"} is not a chart group.` });
+    return;
+  }
+
+  const result = await createAccount({
+    ownerId: user.ownerId,
+    code: String(body.code ?? ""),
+    name: String(body.name ?? ""),
+    group: group as never,
+    tallyName: typeof body.tallyName === "string" ? body.tallyName : null,
+  });
+  if (!result.ok) {
+    res.status(409).json({ error: result.error, warnings: result.warnings });
+    return;
+  }
+  res.json({ account: result.account, warnings: result.warnings });
+});
+
+/**
+ * Add the standard operating expense heads (OBJ-50).
+ *
+ * A deliberate act rather than something a seeding function does behind the
+ * dealership. Safe to run twice — it adds only what is absent — and never
+ * called by anything unattended.
+ */
+router.post("/dms/ledger/accounts/starter", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  if (!assertModuleAccess(req, res, "RECEIVABLE")) return;
+  if (!may(user.role, "policy.set")) {
+    res.status(403).json({ error: whyNot(user.role, "policy.set") });
+    return;
+  }
+  res.json(await offerStarterChart(user.ownerId));
+});
+
+/**
+ * Retire an account or bring it back. There is no delete, deliberately.
+ *
+ * An account that has carried a line is named on a statement somebody has
+ * already filed from. Removing it makes that statement unreproducible: the
+ * figures still add up and one of the rows has no name.
+ */
+router.post("/dms/ledger/accounts/:code/active", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  if (!assertModuleAccess(req, res, "RECEIVABLE")) return;
+  if (!may(user.role, "policy.set")) {
+    res.status(403).json({ error: whyNot(user.role, "policy.set") });
+    return;
+  }
+
+  const result = await setAccountActive({
+    ownerId: user.ownerId,
+    code: String(req.params.code),
+    active: (req.body as Record<string, unknown>).active === true,
+  });
+  if (!result.ok) {
+    res.status(409).json({ error: result.error, warnings: result.warnings });
+    return;
+  }
+  res.json({ account: result.account, warnings: result.warnings });
+});
+
+/**
+ * Raise a journal voucher (OBJ-50).
+ *
+ * The only door into these books that does not start from a document DDMS
+ * issued — the month's rent, a salary run, an accrual, a depreciation charge, a
+ * reclassification a CA asks for in March.
+ *
+ * **`ACCOUNTS` and above.** Narrower than the rest of the ledger routes, which
+ * ask only that the caller can read the module: everything else here posts what
+ * a document already said, and this posts whatever the person typed. There is
+ * no scheduled path to it and the worker credential holds select only — an
+ * entry appearing in a dealership's accounts with nobody signed in is not
+ * something this product does.
+ */
+router.post("/dms/ledger/journal", async (req, res): Promise<void> => {
+  const user = req.sessionUser!;
+  if (!assertModuleAccess(req, res, "RECEIVABLE")) return;
+  if (!may(user.role, "policy.set") && user.role !== "ACCOUNTS") {
+    res.status(403).json({
+      error:
+        "Raising a journal is an accounts job. Every other entry in these books repeats what a " +
+        "document already said; this one is whatever the person raising it types.",
+    });
+    return;
+  }
+
+  const body = req.body as Record<string, unknown>;
+  const showroomId = Number(body.showroomId);
+  if (!Number.isInteger(showroomId) || !(await assertShowroomAccess(req, res, showroomId))) {
+    if (!res.headersSent) res.status(400).json({ error: "showroomId must be a positive integer" });
+    return;
+  }
+  if (!Array.isArray(body.lines)) {
+    res.status(400).json({ error: "lines must be an array" });
+    return;
+  }
+
+  const result = await postJournal({
+    ownerId: user.ownerId,
+    showroomId,
+    voucherDate: String(body.voucherDate ?? ""),
+    narration: String(body.narration ?? ""),
+    lines: (body.lines as Array<Record<string, unknown>>).map((l) => ({
+      accountCode: String(l.accountCode ?? ""),
+      debit: typeof l.debit === "number" ? l.debit : 0,
+      credit: typeof l.credit === "number" ? l.credit : 0,
+      narration: typeof l.narration === "string" ? l.narration : null,
+      partyId: typeof l.partyId === "number" ? l.partyId : null,
+    })),
+    userId: user.userId,
+  });
+
+  if (!result.ok) {
+    res.status(409).json({ error: result.error, warnings: result.warnings });
+    return;
+  }
+  res.json({ voucher: result.voucher, warnings: result.warnings });
 });
 
 router.post("/dms/ledger/post", async (req, res): Promise<void> => {

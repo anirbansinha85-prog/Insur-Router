@@ -945,6 +945,60 @@ reduction of cost is the dealership's CA's judgement, and R-98 says feed their
 books rather than decide their policy. Named in the warnings, worked on the
 claims screen.
 
+### The cost side, and the door it needed
+
+`lib/dms/ledger/journal.ts` and the chart's second half (OBJ-50, R-138 to
+R-142). Read out of the database, the gap was one line long: **28 accounts,
+three of them expenses, two of those cost of goods sold.** A five-branch
+dealership's entire operating cost — rent, salaries, power, advertising,
+interest, depreciation — was one account called *Discount Allowed*, and **no
+route in the product touched `ledger_accounts`**, so nobody could add a head.
+
+**Sixteen starter accounts, and none of them `isSystem`** (R-138). Every account
+in `CHART` is undeletable because a posting rule names it by code; nothing names
+these. Marking them system would make them undeletable because *we* decided a
+dealership ought to want them, which is not the same thing.
+
+**`offerStarterChart` is a deliberate act, not a seeding step** (R-140). The
+first version seeded them inside `ensureChart` on an empty chart, which was
+wrong in both directions and the verifier said so on its first run: every
+dealership already using the product has a chart, so **none would ever have
+received the heads** — and a gap-filling rule puts *Printing & Stationery* back
+next Tuesday for somebody who deliberately deleted it.
+
+**`postJournal` is the eighth door and the only one that starts from a person.**
+The other seven all begin with a document DDMS issued, so nothing could book an
+accrual, a provision, a depreciation charge, or a March reclassification. It
+refuses a journal that is unbalanced, one-sided, negative, empty, against an
+unknown or retired account, or into a locked period (the trigger's own sentence,
+caught not restated). It is a **new voucher, never an edit** (R-141) — `/books`
+still has no edit control.
+
+> **A line against a control account with no party is warned, not refused.** The
+> balance on `1100` is meant to equal the party ledgers under it, so a line with
+> nobody's name leaves money that reconciles to nothing — but a provision for
+> doubtful debts genuinely belongs to no single customer. The product names the
+> consequence and points at the reconciliation.
+
+> **A guard that fires first decides what the refusal says** (R-142). A line for
+> minus a hundred was refused with *has no amount on it*, because `debit <= 0`
+> caught it before the negative check. True, passes a test, and tells the person
+> the opposite of what happened. The order of two guards was the whole bug, and
+> it was only caught because the check asserted the sentence rather than the
+> boolean.
+
+> **`ddms_worker` may not write `ledger_accounts`.** Creating an account is a
+> person's act. Sixth time a verifier has reported a real boundary by reaching
+> for a wider credential.
+
+> **Voucher numbers are bare integers.** `nextVoucherNo` returns `"1"`, `"2"` for
+> every kind, gapless per kind per financial year — not `JV/2026-27/0001`.
+> Nothing is wrong; an auditor expects a series on the face of a voucher, and
+> `numberingGaps` parses digits out of it. Named rather than changed, because
+> changing the format mid-year is its own decision.
+
+`pnpm run verify:journal`.
+
 ### GSTR-1 and Tally share one file
 
 They are one claim about the same numbers; if they disagreed nobody could tell
@@ -2027,6 +2081,7 @@ pnpm run db:seed-network       # the two extra branches, hub-and-spoke
 pnpm run db:seed-branch-data   # three months of trading across all five
 pnpm run db:export-books       # the 13 reports a CA opens, per company
 pnpm run verify:history        # the record history and the job-card handover
+pnpm run verify:journal        # the chart's cost side and the journal door
 ```
 
 Order matters twice. `db:seed-owners` must run **after** `db:seed` — panel
