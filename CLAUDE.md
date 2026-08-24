@@ -2,6 +2,11 @@
 
 Guidance for Claude Code when working in this repository.
 
+> **Opening this project for the first time?** Read `docs/ORIENTATION.md` first.
+> It says what to read, in what order, and traces how the project got from an
+> insurance dashboard to an agentic ERP. This file is the second thing to read
+> and the most important one; `docs/ddms-requirements.md` is the third.
+
 ## What this is
 
 A pnpm workspace holding **three products that share one database**, plus a
@@ -201,7 +206,7 @@ pnpm run typecheck:libs                         # before checking leaf packages
 
 ## Data model
 
-Forty-four tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
+Sixty-one tables, all in `lib/db/src/schema/`. Every one of them has RLS enabled;
 which of them `ddms_app` may read, and on what terms, is in `lib/db/sql/rls.sql`.
 
 **The owner tier** — who the data belongs to:
