@@ -2062,6 +2062,40 @@ from `browser-executor.ts` — do not inline a `chromium.launch({...})` config.
 
 ## Running locally
 
+**One command starts everything: `pnpm run stack`.** It builds the API server,
+starts it, waits for `/api/healthz` to answer, and only then starts Vite — so the
+first screen never loads against a proxy target that is not listening yet. Ctrl-C
+stops both, and neither outlives the other.
+
+It exists because starting the stack by hand goes wrong in three ways that all
+look like different bugs:
+
+> **`pnpm run dev` on the API server fails on Windows.** The script opens with
+> `export NODE_ENV=development`, and pnpm hands package scripts to `cmd.exe`,
+> which has no `export`. Nothing in the error says so.
+
+> **The `start` script does not load `.env.api`.** It needs
+> `--env-file=.env.api`, which appears only in the verifiers''' comments. Without
+> it the server dies on `API_SERVICE_KEY` and looks like a missing secret rather
+> than a missing flag.
+
+> **`PORT` and `API_PORT` are different variables.** `.env.api` carries
+> `API_PORT`; `index.ts` reads `PORT`. Supplying only the env file gets you a
+> server that will not start on a port it has been told twice about.
+
+`dev.mjs` is a Node script rather than a shell one-liner for the first reason,
+and it spawns Vite directly rather than through pnpm because Git Bash rewrites
+`/ddms/` into a Windows path on the way to `BASE_PATH`.
+
+> **It refuses to start if `DATABASE_URL` is in `.env.api`**, before it checks
+> ports or builds anything — the rule below, checked rather than remembered. A
+> server that quietly picked up the owner credential would serve every tenant'''s
+> rows to every tenant, and nothing on any screen would look wrong.
+
+Everything below is what `pnpm run stack` does for you, and what to set up once
+before it will work.
+
+
 Node 24 and pnpm are required. **Nothing calls dotenv** — a `.env` file is not
 read automatically. Use `node --env-file=.env` or set vars inline.
 
