@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * dev.mjs — starts the API server and the DDMS frontend together.
+ * dev.mjs — starts the whole local stack: the API server, the mock OEM DMS,
+ * and every web artifact (DDMS, InsurRouter, VeloDocs).
  *
  * Written as a Node script rather than a shell one-liner on purpose. pnpm hands
  * package scripts to cmd.exe on Windows, which does not understand `export`, and
@@ -27,14 +28,22 @@ import { fileURLToPath } from "node:url";
 const root = path.dirname(fileURLToPath(import.meta.url));
 
 const API_ENV_FILE = ".env.api";
-const DDMS_PORT = Number(process.env.DDMS_PORT ?? 31280);
-const DDMS_BASE_PATH = process.env.BASE_PATH ?? "/ddms/";
 const DMS_MOCK_PORT = Number(process.env.DMS_PORT ?? 9090);
+
+/**
+ * The web artifacts, in the order they should appear. Ports and base paths are
+ * NOT written here — each artifact's `.replit-artifact/artifact.toml` is the
+ * source of truth for both, and a second copy in this file is a second copy
+ * that drifts. `readArtifact` reads them.
+ *
+ * Only `only` narrows the set: `pnpm run stack ddms` starts one.
+ */
+const WEB_ARTIFACTS = ["ddms", "insur-router", "doc-ingest"];
 const HEALTH_TIMEOUT_MS = 60_000;
 
 const paint = {
   api: (s) => `\x1b[36m[api ]\x1b[0m ${s}`,
-  web: (s) => `\x1b[35m[web ]\x1b[0m ${s}`,
+  web: (name) => (s) => `\x1b[35m[\x1b[0m${name.padEnd(4).slice(0, 4)}\x1b[35m]\x1b[0m ${s}`,
   dms: (s) => `\x1b[33m[dms ]\x1b[0m ${s}`,
   run: (s) => `\x1b[32m[stack]\x1b[0m ${s}`,
   bad: (s) => `\x1b[31m[stack]\x1b[0m ${s}`,
@@ -122,6 +131,28 @@ async function requireDatabase() {
   }
 }
 
+/**
+ * Read one artifact's port and base path from its own `.replit-artifact/
+ * artifact.toml`. That file is what the platform reads, so it is the only
+ * honest source for these two values — hardcoding them here would give a
+ * second answer that silently disagrees the first time one is changed.
+ *
+ * A deliberately small reader: it wants two keys out of `[services.env]` and a
+ * localPort, not a TOML parser.
+ */
+function readArtifact(name) {
+  const file = path.join(root, "artifacts", name, ".replit-artifact", "artifact.toml");
+  if (!existsSync(file)) return null;
+  const text = readFileSync(file, "utf8");
+
+  const title = /^\s*title\s*=\s*"([^"]+)"/m.exec(text)?.[1] ?? name;
+  const port = Number(/^\s*localPort\s*=\s*(\d+)/m.exec(text)?.[1]);
+  const basePath = /^\s*BASE_PATH\s*=\s*"([^"]+)"/m.exec(text)?.[1];
+
+  if (!Number.isInteger(port) || port <= 0 || !basePath) return null;
+  return { name, title, port, basePath };
+}
+
 function portFree(port) {
   return new Promise((resolve) => {
     const probe = createServer();
@@ -185,9 +216,30 @@ async function main() {
 
   const apiPort = Number(apiEnv.API_PORT ?? 8080);
 
+  // Which artifacts to start. An argument narrows the set, so a demo of one
+  // product does not need the other two listening.
+  const only = process.argv.slice(2).filter((a) => !a.startsWith("-"));
+  const wanted = only.length ? WEB_ARTIFACTS.filter((a) => only.includes(a)) : WEB_ARTIFACTS;
+
+  if (only.length && wanted.length === 0) {
+    console.error(paint.bad(`no such artifact: ${only.join(", ")}`));
+    console.error(paint.bad(`known: ${WEB_ARTIFACTS.join(", ")}`));
+    process.exit(1);
+  }
+
+  const artifacts = [];
+  for (const name of wanted) {
+    const a = readArtifact(name);
+    if (!a) {
+      console.error(paint.bad(`could not read artifacts/${name}/.replit-artifact/artifact.toml`));
+      process.exit(1);
+    }
+    artifacts.push(a);
+  }
+
   await requireFreePort(apiPort, "the API server");
-  await requireFreePort(DDMS_PORT, "the DDMS frontend");
   await requireFreePort(DMS_MOCK_PORT, "the DMS mock");
+  for (const a of artifacts) await requireFreePort(a.port, `${a.title}`);
 
   await requireDatabase();
 
@@ -240,29 +292,37 @@ async function main() {
     paint.dms,
   );
 
-  // 4. Start Vite. Spawned directly rather than through pnpm so no shell touches
-  //    BASE_PATH — Git Bash would rewrite "/ddms/" into a Windows path.
-  console.log(paint.run(`starting the DDMS frontend on ${DDMS_PORT}…`));
-  const web = run(
-    process.execPath,
-    ["./node_modules/vite/bin/vite.js", "--config", "vite.config.ts", "--host", "0.0.0.0"],
-    {
-      cwd: path.join(root, "artifacts", "ddms"),
-      env: {
-        ...process.env,
-        NODE_ENV: "development",
-        PORT: String(DDMS_PORT),
-        BASE_PATH: DDMS_BASE_PATH,
-        API_PORT: String(apiPort),
-      },
-    },
-    paint.web,
-  );
+  // 4. Start each web artifact. Spawned directly rather than through pnpm so no
+  //    shell touches BASE_PATH — Git Bash rewrites "/ddms/" into a Windows path.
+  const webs = [];
+  for (const a of artifacts) {
+    console.log(paint.run(`starting ${a.title} on ${a.port}${a.basePath}…`));
+    webs.push({
+      artifact: a,
+      child: run(
+        process.execPath,
+        ["./node_modules/vite/bin/vite.js", "--config", "vite.config.ts", "--host", "0.0.0.0"],
+        {
+          cwd: path.join(root, "artifacts", a.name),
+          env: {
+            ...process.env,
+            NODE_ENV: "development",
+            PORT: String(a.port),
+            BASE_PATH: a.basePath,
+            API_PORT: String(apiPort),
+          },
+        },
+        paint.web(a.name === "insur-router" ? "insr" : a.name === "doc-ingest" ? "velo" : a.name),
+      ),
+    });
+  }
 
   setTimeout(() => {
     console.log("");
-    console.log(paint.run(`open  http://localhost:${DDMS_PORT}${DDMS_BASE_PATH}`));
-    console.log(paint.run(`ctrl-c stops all three.`));
+    for (const { artifact: a } of webs) {
+      console.log(paint.run(`${a.title.padEnd(12)} http://localhost:${a.port}${a.basePath}`));
+    }
+    console.log(paint.run(`ctrl-c stops everything.`));
     console.log("");
   }, 3000);
 
@@ -272,7 +332,9 @@ async function main() {
     if (stopping) return;
     stopping = true;
     console.log(paint.run("stopping…"));
-    for (const child of [api, web, dms]) if (!child.killed) child.kill();
+    for (const child of [api, dms, ...webs.map((w) => w.child)]) {
+      if (!child.killed) child.kill();
+    }
     setTimeout(() => process.exit(0), 500);
   };
 
@@ -291,11 +353,14 @@ async function main() {
     console.error(paint.bad(`the DMS mock exited (${code}). Ingest paths will report unavailable.`));
   });
 
-  web.on("exit", (code) => {
-    if (stopping) return;
-    console.error(paint.bad(`the frontend exited (${code}). Stopping the API too.`));
-    stopAll();
-  });
+  // A frontend dying takes down only itself. Three products share this stack and
+  // one of them failing is not a reason to end a demo of another.
+  for (const { artifact: a, child } of webs) {
+    child.on("exit", (code) => {
+      if (stopping) return;
+      console.error(paint.bad(`${a.title} exited (${code}). The rest are still up.`));
+    });
+  }
 }
 
 main().catch((err) => {
