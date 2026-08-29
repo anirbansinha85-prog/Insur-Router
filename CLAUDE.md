@@ -2062,10 +2062,28 @@ from `browser-executor.ts` — do not inline a `chromium.launch({...})` config.
 
 ## Running locally
 
-**One command starts everything: `pnpm run stack`.** It builds the API server,
-starts it, waits for `/api/healthz` to answer, and only then starts Vite — so the
-first screen never loads against a proxy target that is not listening yet. Ctrl-C
-stops both, and neither outlives the other.
+**One command starts everything: `pnpm run stack`.** It reaches the database,
+builds the API server, starts it, waits for `/api/healthz`, starts the mock OEM
+DMS, and only then starts Vite — so the first screen never loads against a proxy
+target that is not listening yet. Ctrl-C stops all three.
+
+> **It reaches the database before it starts anything** (the probe in
+> `requireDatabase`). A paused Supabase project does not present as a database
+> problem: `/api/healthz` never touches Postgres, so the server reports healthy,
+> every screen loads, and the only symptom is a 500 on sign-in that reads like a
+> wrong password. **A control that passes while the thing it guards is down is
+> worse than no control** — the same reason a reconciliation here says *not run*
+> rather than reporting clean. The probe uses `DATABASE_URL_LOGIN`, the role the
+> login route itself uses, and when the pooler answers *tenant or user not found*
+> it says that this almost always means the project is paused.
+
+> **It starts `artifacts/dms-mock` on 9090.** The product reads a manufacturer's
+> system it does not control and may never write to (R-5/R-40); the mock stands
+> in for it locally. Without it every ingest path retries three times and fails
+> as `unavailable`, which reads like a bug rather than a missing dependency —
+> `verify:ingest` is the one verifier that cannot pass without it. The mock dying
+> does not stop the other two: only the ingest screens depend on it, and they
+> degrade rather than break.
 
 It exists because starting the stack by hand goes wrong in three ways that all
 look like different bugs:

@@ -29,11 +29,13 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const API_ENV_FILE = ".env.api";
 const DDMS_PORT = Number(process.env.DDMS_PORT ?? 31280);
 const DDMS_BASE_PATH = process.env.BASE_PATH ?? "/ddms/";
+const DMS_MOCK_PORT = Number(process.env.DMS_PORT ?? 9090);
 const HEALTH_TIMEOUT_MS = 60_000;
 
 const paint = {
   api: (s) => `\x1b[36m[api ]\x1b[0m ${s}`,
   web: (s) => `\x1b[35m[web ]\x1b[0m ${s}`,
+  dms: (s) => `\x1b[33m[dms ]\x1b[0m ${s}`,
   run: (s) => `\x1b[32m[stack]\x1b[0m ${s}`,
   bad: (s) => `\x1b[31m[stack]\x1b[0m ${s}`,
 };
@@ -71,6 +73,53 @@ function refuseOwnerCredential(env) {
     ),
   );
   process.exit(1);
+}
+
+/**
+ * Reach the database before starting anything, using the same role the login
+ * route uses. This exists because a paused Supabase project does not look like
+ * a database problem: /api/healthz never touches Postgres, so the server
+ * reports healthy, every screen loads, and the failure surfaces only as a 500
+ * on login that reads like a wrong password. A control that passes while the
+ * thing it guards is down is worse than no control, so this runs first and
+ * names the actual cause.
+ */
+async function requireDatabase() {
+  const { createRequire } = await import("node:module");
+  const req = createRequire(path.join(root, "scripts", "package.json"));
+  const pg = req("pg");
+
+  const fromFile = readEnvFile(path.join(root, API_ENV_FILE));
+  const url = process.env.DATABASE_URL_LOGIN ?? fromFile.DATABASE_URL_LOGIN;
+  if (!url) {
+    console.error(paint.bad("DATABASE_URL_LOGIN is not set — cannot check the database."));
+    process.exit(1);
+  }
+
+  const client = new pg.Client({ connectionString: url, connectionTimeoutMillis: 10_000 });
+  try {
+    await client.connect();
+    const r = await client.query("select count(*)::int as n from users");
+    await client.end();
+    console.log(paint.run(`database reachable — ${r.rows[0].n} users`));
+  } catch (err) {
+    try {
+      await client.end();
+    } catch {}
+    console.error(paint.bad(`the database is not reachable: ${err.message}`));
+    if (/not found/i.test(String(err.message))) {
+      console.error(
+        paint.bad(
+          "That message comes from the pooler and almost always means the Supabase " +
+            "project is PAUSED. Restore it at https://supabase.com/dashboard and run this again.",
+        ),
+      );
+    }
+    console.error(
+      paint.bad("Not starting — login would fail with a 500 that looks like a wrong password."),
+    );
+    process.exit(1);
+  }
 }
 
 function portFree(port) {
@@ -138,6 +187,9 @@ async function main() {
 
   await requireFreePort(apiPort, "the API server");
   await requireFreePort(DDMS_PORT, "the DDMS frontend");
+  await requireFreePort(DMS_MOCK_PORT, "the DMS mock");
+
+  await requireDatabase();
 
   // 1. Build the API server. esbuild, ~3s.
   console.log(paint.run("building the API server…"));
@@ -176,7 +228,19 @@ async function main() {
   }
   console.log(paint.run(`API healthy on http://localhost:${apiPort}`));
 
-  // 3. Start Vite. Spawned directly rather than through pnpm so no shell touches
+  // 3. Start the mock OEM DMS. The product reads a manufacturer's system it does
+  //    not control and may never write to (R-5/R-40); this stands in for it
+  //    locally. Without it every ingest path fails as "unavailable" after
+  //    retries, which reads like a bug rather than a missing dependency.
+  console.log(paint.run(`starting the DMS mock on ${DMS_MOCK_PORT}…`));
+  const dms = run(
+    process.execPath,
+    ["./artifacts/dms-mock/src/index.ts"],
+    { env: { ...process.env, DMS_PORT: String(DMS_MOCK_PORT) } },
+    paint.dms,
+  );
+
+  // 4. Start Vite. Spawned directly rather than through pnpm so no shell touches
   //    BASE_PATH — Git Bash would rewrite "/ddms/" into a Windows path.
   console.log(paint.run(`starting the DDMS frontend on ${DDMS_PORT}…`));
   const web = run(
@@ -198,7 +262,7 @@ async function main() {
   setTimeout(() => {
     console.log("");
     console.log(paint.run(`open  http://localhost:${DDMS_PORT}${DDMS_BASE_PATH}`));
-    console.log(paint.run(`ctrl-c stops both.`));
+    console.log(paint.run(`ctrl-c stops all three.`));
     console.log("");
   }, 3000);
 
@@ -208,7 +272,7 @@ async function main() {
     if (stopping) return;
     stopping = true;
     console.log(paint.run("stopping…"));
-    for (const child of [api, web]) if (!child.killed) child.kill();
+    for (const child of [api, web, dms]) if (!child.killed) child.kill();
     setTimeout(() => process.exit(0), 500);
   };
 
@@ -220,6 +284,13 @@ async function main() {
     console.error(paint.bad(`the API server exited (${code}). Stopping the frontend too.`));
     stopAll();
   });
+  // The mock dying is not worth stopping a demo over: only the ingest screens
+  // depend on it, and they degrade rather than break.
+  dms.on("exit", (code) => {
+    if (stopping) return;
+    console.error(paint.bad(`the DMS mock exited (${code}). Ingest paths will report unavailable.`));
+  });
+
   web.on("exit", (code) => {
     if (stopping) return;
     console.error(paint.bad(`the frontend exited (${code}). Stopping the API too.`));

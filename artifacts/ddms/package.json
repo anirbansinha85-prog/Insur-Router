@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "//": "DDMS is its own product, so it gets its own dependency list rather than inheriting InsurRouter's. It needs a fraction of the UI surface — no forms, no charts, no carousels — and keeping the list honest is what stops it drifting back into being a page inside something else.",
+  "//": "DDMS is its own product, so it gets its own dependency list rather than inheriting InsurRouter's. It needs a fraction of the UI surface \u2014 no forms, no charts, no carousels \u2014 and keeping the list honest is what stops it drifting back into being a page inside something else.",
   "scripts": {
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
     "build": "vite build --config vite.config.ts",
@@ -15,6 +15,7 @@
     "@replit/vite-plugin-cartographer": "catalog:",
     "@replit/vite-plugin-dev-banner": "catalog:",
     "@replit/vite-plugin-runtime-error-modal": "catalog:",
+    "@tailwindcss/typography": "^0.5.15",
     "@tailwindcss/vite": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@types/node": "catalog:",
