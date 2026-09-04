@@ -4963,3 +4963,92 @@ what happens without one.
 than balances; insurance commission, which needs a premium on `policies` before
 anything is possible; bank accounts before a statement import; credit notes; and
 the year-end close.
+
+---
+
+## 3o. Registered 29 August — OBJ-52 to OBJ-54, parked against a later version
+
+Anthropic published `anthropics/commerce-agents` (Apache 2.0), a reference
+blueprint for shopping and merchant agents. The merchant half is the same shape
+as this product: staff-facing, back-office, writes staged behind approval.
+
+**The finding is not a list of things to build.** It is that the architecture
+here already matches the pattern, arrived at separately and for its own reasons:
+
+| Their pattern | Already here |
+|---|---|
+| Backend interface — the agent calls server-side methods, never the database | `lib/dms/tools.ts`, `registry.ts` — 13 registered actions |
+| Staging — a merchant write is approved before it applies | `actions.ts`, `proposals.ts`, the outbox |
+| Provenance gates | `explain.ts`, `trace.ts`, `precedent.ts` |
+| Memory validation | one door for model calls, output checked for invented figures |
+| No live effects | the DMS integration is read-only permanently (R-5/R-40); `SIM-` prefixes (R-41) |
+| Approval workflows | rules authorise, the agent proposes (R-49); `autonomy.ts` |
+| Skills, each with its own description | `journeys/`, `rules.ts` |
+
+Three ideas do not already exist here. They are **registered and parked** rather
+than built, in the order they are worth doing.
+
+### OBJ-52 — the registry, offered over MCP
+
+The 13 registry actions already have the shape MCP asks for: a name, a typed
+input, a permission check, an audit trail. Nothing about them assumes this
+product'''s own screens are the caller.
+
+Offering them as an MCP server would let a dealership'''s accountant ask *"which
+job cards at Naraina are waiting on the customer?"* from a general assistant and
+get an answer **through the permission layer and the rules**, rather than from a
+model reading a database it should not hold. The refusals, the audit trail and
+the tenant boundary come along unchanged, because they live under the registry
+rather than in front of it.
+
+> **The reason to do this is not reach, it is that the boundary already holds.**
+> A product whose agent surface is a set of authorised actions can be exposed
+> safely; one whose agent surface is a database connection cannot, and no amount
+> of prompt care fixes the difference.
+
+The known cost: a second caller means the registry'''s errors become somebody
+else'''s user interface. Several currently read as developer messages.
+
+### OBJ-53 — a journey a dealership can add without a deploy
+
+`journeys/` are TypeScript. The blueprint keeps each flow in its own directory
+with a written description of when it applies, which means a flow can be added
+by writing rather than by shipping.
+
+*"How we handle a Splendor warranty claim"* differs between dealerships, and the
+ones who know it are not the ones who can deploy. Worth having; not urgent, and
+it should not happen until a real dealership has asked for a flow this product
+does not have — building the extension point before the first extension is how
+you get the wrong one.
+
+### OBJ-54 — the agent loop, separable from the agent
+
+`agent.ts` is one bespoke loop. The blueprint separates what the agent decides
+from what drives it, so the same agent runs turn-by-turn, under an SDK, or
+hosted.
+
+**Only worth it if OBJ-52 happens**, and possibly not even then. Listed for
+completeness rather than recommended: a second runtime with no second caller is
+an abstraction paid for and unused.
+
+### What is deliberately not taken
+
+**The shopping agent.** It is customer-facing conversational retail. This
+product is the opposite on purpose — staff-facing, worklist-driven, the agent
+proposing and a person deciding — and R-49 says why. A reference implementation
+is a good place to take architecture from and a bad reason to change what the
+product is.
+
+**The stack.** Python 3.11 and their package layout answer questions this
+repository has already answered differently.
+
+### Status
+
+| # | Objective | Status |
+|---|---|---|
+| OBJ-52 | The registry, offered over MCP | **parked** — first of the three worth doing |
+| OBJ-53 | A journey a dealership can add without a deploy | **parked** — wait for a real request |
+| OBJ-54 | The agent loop, separable from the agent | **parked** — only after OBJ-52, if then |
+
+No requirements are raised. A parked objective that carries requirements would
+put unmet rows in a register whose whole value is that every row in it is true.

@@ -2274,6 +2274,26 @@ providers fail at navigation until you set a real `portalUrl`. API-mode
 submissions succeed regardless, because `executeGenericApiStub` never makes a
 real request.
 
+## What is parked, and why it is parked rather than forgotten
+
+OBJ-52 to OBJ-54, registered 29 August against a later version. `docs/ddms-requirements.md`
+§3o carries the reasoning; the short form:
+
+| # | Objective | Status |
+|---|---|---|
+| OBJ-52 | The 13 registry actions, offered over MCP | **parked** — first worth doing |
+| OBJ-53 | A journey a dealership can add without a deploy | **parked** — wait for a real request |
+| OBJ-54 | The agent loop, separable from the agent | **parked** — only after OBJ-52, if then |
+
+They came from reading `anthropics/commerce-agents`, Anthropic'''s reference
+blueprint for merchant agents. The finding was not a list of things to build:
+**the architecture here already matches the pattern** — server-side actions
+rather than database access, writes staged behind approval, provenance on every
+finding, one door for model calls, no live effects. Arrived at separately.
+
+> **No requirements are raised for a parked objective.** The register'''s whole
+> value is that every row in it is true today; unmet rows would end that.
+
 ## Gotchas
 
 - **`.env` is gitignored, `.env.example` is tracked.** Keep the template current

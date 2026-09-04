@@ -279,6 +279,17 @@ screen the user would otherwise be misled by.
 
 ---
 
+## 6b. What is parked
+
+Three objectives are registered and deliberately not built — OBJ-52 (the
+registry offered over MCP), OBJ-53 (a journey a dealership can add without a
+deploy), OBJ-54 (the agent loop separable from the agent). `docs/ddms-requirements.md`
+§3o says why, and why the shopping-agent half of the blueprint they came from is
+deliberately not taken.
+
+**Do not treat these as work in progress.** Nothing is half-built for them, and
+no requirement depends on them.
+
 ## 7. If you are an agent, do this
 
 1. Read `CLAUDE.md` end to end. Do not skip the blockquotes.
