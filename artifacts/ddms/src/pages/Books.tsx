@@ -50,6 +50,22 @@ import {
 const today = new Date()
 const thisMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`
 
+/**
+ * The last day of a `YYYY-MM` period.
+ *
+ * The feed asked for the 31st of every month. `voucher_date` is a `date`
+ * column, and Postgres rejects the 31st of a 30-day month outright rather than
+ * clamping it — so the Tally download and the return failed for four months of
+ * the year and every February, and the failure read as a server fault rather
+ * than as a date nobody has. Day 0 of the next month is the last day of this
+ * one, which is the only arithmetic that is right in a leap year too.
+ */
+function lastDayOf(period: string): string {
+  const [year, month] = period.split("-").map(Number)
+  const day = new Date(Date.UTC(year, month, 0)).getUTCDate()
+  return `${period}-${String(day).padStart(2, "0")}`
+}
+
 function rupees(v: string | number): string {
   const n = Number(v)
   return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -210,7 +226,7 @@ export default function Books() {
     { query: { queryKey: ["/api/dms/ledger/gstr1", period], enabled: showReturn } },
   )
   const feed = useGetTallyFeed(
-    { from: `${period}-01`, to: `${period}-31` },
+    { from: `${period}-01`, to: lastDayOf(period) },
     { query: { queryKey: ["/api/dms/ledger/tally", period] } },
   )
   const handedOver = useMarkTallyHandedOver()
@@ -328,7 +344,7 @@ export default function Books() {
           </p>
           <div className="flex items-center gap-2 mt-2.5">
             <a
-              href={`/api/dms/ledger/tally?from=${period}-01&to=${period}-31&format=xml`}
+              href={`/api/dms/ledger/tally?from=${period}-01&to=${lastDayOf(period)}&format=xml`}
               className="inline-flex items-center gap-1.5 text-xs font-semibold h-8 px-3 rounded-md
                          bg-slate-900 text-white hover:bg-slate-800"
             >
