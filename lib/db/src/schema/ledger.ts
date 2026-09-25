@@ -142,7 +142,7 @@ export const vouchersTable = pgTable(
 
     narration: text("narration"),
 
-    /** What this posts. `SALE_DOCUMENT` is the only source today. */
+    /** What this posts, and what `vouchers_source_unique` is keyed on. */
     sourceKind: text("source_kind", {
       enum: [
         "SALE_DOCUMENT",
@@ -151,6 +151,11 @@ export const vouchersTable = pgTable(
         "PURCHASE_INVOICE",
         // Whatever the dealership kept before us, carried in once (OBJ-38).
         "OPENING_BALANCE",
+        // A workshop invoice. Added because posting these as `MANUAL` with a
+        // null source put them outside `vouchers_source_unique` — the index
+        // below only covers rows that name their source, so the one document
+        // type that did not name one could post twice for ever.
+        "SERVICE_INVOICE",
         "MANUAL",
       ],
     }).notNull(),

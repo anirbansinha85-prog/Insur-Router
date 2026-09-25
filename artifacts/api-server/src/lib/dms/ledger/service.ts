@@ -409,6 +409,56 @@ export async function issueServiceInvoice(input: {
 
   const fy = financialYearOf(input.invoiceDate);
 
+
+  const [invoice] = await db
+    .insert(serviceInvoicesTable)
+    .values({
+      ownerId: input.ownerId,
+      showroomId: input.showroomId,
+      customerId: input.customerId,
+      invoiceNo,
+      invoiceDate: input.invoiceDate,
+      jobCardRef: input.jobCardRef ?? null,
+      registrationNo: input.registrationNo ?? null,
+      chassisNo: input.chassisNo ?? null,
+      modelDescription: input.modelDescription ?? null,
+      odometerKm: input.odometerKm ?? null,
+      placeOfSupply: input.placeOfSupply ?? placement.registration.state,
+      customerGstin: input.customerGstin ?? null,
+      labourAmount: money(labourAmount),
+      partsAmount: money(partsAmount),
+      taxableAmount: money(taxable),
+      cgstAmount: money(cgst),
+      sgstAmount: money(sgst),
+      igstAmount: money(igst),
+      advanceAdjusted: money(advanceAdjusted),
+      advanceTaxAdjusted: money(advanceTaxAdjusted),
+      totalAmount: money(total),
+      payableAmount: money(payable),
+      sellerLegalName: placement.entity.legalName,
+      sellerGstin: placement.registration.gstin,
+      voucherId: null,
+      narration: input.narration ?? null,
+      issuedByUserId: input.userId ?? null,
+    })
+    .returning();
+
+  // **The invoice is written before the voucher that posts it, and that order
+  // is the fix.**
+  //
+  // This posted `MANUAL` with a null source, which put service outside R-101
+  // altogether: `vouchers_source_unique` only covers rows where `source_id is
+  // not null`, so the one guarantee that a document posts once did not apply
+  // to one of the eight posting doors. Running the branch seeder four times
+  // left 27 vouchers worth ₹47,008.20 at Okhla that nothing could find — the
+  // invoices were replaced, their vouchers were not, and service income there
+  // read about four times what it was.
+  //
+  // Naming the source needs the invoice's id, so the invoice row is inserted
+  // first and its `voucherId` filled in afterwards. That also turns the
+  // failure mode the right way up: an interruption now leaves an invoice with
+  // no voucher, which is visible on a screen and can be posted, rather than a
+  // voucher with no invoice, which is invisible and inflates the books.
   let voucher: typeof vouchersTable.$inferSelect | undefined;
   let voucherNo: string | null = null;
 
@@ -424,8 +474,8 @@ export async function issueServiceInvoice(input: {
       voucherDate: input.invoiceDate,
       financialYear: fy,
       narration: `Service ${invoiceNo}${input.registrationNo ? ` — ${input.registrationNo}` : ""}`,
-      sourceKind: "MANUAL",
-      sourceId: null,
+      sourceKind: "SERVICE_INVOICE",
+      sourceId: invoice!.id,
       totalDebit: money(totalDebit),
       totalCredit: money(totalCredit),
       warnings,
@@ -455,38 +505,15 @@ export async function issueServiceInvoice(input: {
     );
   }
 
-  const [invoice] = await db
-    .insert(serviceInvoicesTable)
-    .values({
-      ownerId: input.ownerId,
-      showroomId: input.showroomId,
-      customerId: input.customerId,
-      invoiceNo,
-      invoiceDate: input.invoiceDate,
-      jobCardRef: input.jobCardRef ?? null,
-      registrationNo: input.registrationNo ?? null,
-      chassisNo: input.chassisNo ?? null,
-      modelDescription: input.modelDescription ?? null,
-      odometerKm: input.odometerKm ?? null,
-      placeOfSupply: input.placeOfSupply ?? placement.registration.state,
-      customerGstin: input.customerGstin ?? null,
-      labourAmount: money(labourAmount),
-      partsAmount: money(partsAmount),
-      taxableAmount: money(taxable),
-      cgstAmount: money(cgst),
-      sgstAmount: money(sgst),
-      igstAmount: money(igst),
-      advanceAdjusted: money(advanceAdjusted),
-      advanceTaxAdjusted: money(advanceTaxAdjusted),
-      totalAmount: money(total),
-      payableAmount: money(payable),
-      sellerLegalName: placement.entity.legalName,
-      sellerGstin: placement.registration.gstin,
-      voucherId: voucher?.id ?? null,
-      narration: input.narration ?? null,
-      issuedByUserId: input.userId ?? null,
-    })
-    .returning();
+  // The link, once there is something to link to. Written here rather than at
+  // insert time because the voucher now names the invoice, not the other way
+  // round, and only one of the two can be written first.
+  if (voucher) {
+    await db
+      .update(serviceInvoicesTable)
+      .set({ voucherId: voucher.id })
+      .where(eq(serviceInvoicesTable.id, invoice!.id));
+  }
 
   await db.insert(serviceInvoiceLinesTable).values(
     computed.map((l) => ({

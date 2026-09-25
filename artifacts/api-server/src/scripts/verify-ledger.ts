@@ -442,6 +442,18 @@ check(
 section("7. What comes out is lodgeable (R-99)");
 
 const period = doc.documentDate.slice(0, 7);
+
+/**
+ * The last day of `period`, because the 31st does not exist in four months of
+ * the year and Postgres rejects it rather than clamping. The feed asked for it
+ * anyway, so this check failed for reasons unrelated to what it verifies — in
+ * September, April, June and November, and every February. The same literal
+ * was in `Books.tsx`, where it broke the download itself.
+ */
+const periodEnd = (p: string): string => {
+  const [y, m] = p.split("-").map(Number);
+  return `${p}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0")}`;
+};
 const gstr1 = await gstr1For({ ownerId: OWNER, showroomIds: OUTLETS, period });
 
 check(
@@ -474,6 +486,12 @@ const ledgerTaxable = await ownerDb
   .where(
     and(
       eq(vouchersTable.ownerId, OWNER),
+      // The same outlets the return covers. Without this the books side summed
+      // every outlet the owner holds while the return covered two, so the two
+      // figures described different populations and the check passed only while
+      // no other branch had sold anything in the period it happened to pick.
+      // Janakpuri and Dwarka have sold since the branch network was seeded.
+      inArray(vouchersTable.showroomId, OUTLETS),
       eq(vouchersTable.kind, "SALES"),
       eq(voucherLinesTable.accountCode, "4100"),
       sql`${vouchersTable.voucherDate}::text like ${period + "%"}`,
@@ -498,7 +516,7 @@ const feed = await tallyFeed({
   ownerId: OWNER,
   showroomIds: OUTLETS,
   from: `${period}-01`,
-  to: `${period}-31`,
+  to: periodEnd(period),
 });
 check(
   "the Tally feed contains the vouchers",
@@ -521,7 +539,7 @@ const after = await tallyFeed({
   ownerId: OWNER,
   showroomIds: OUTLETS,
   from: `${period}-01`,
-  to: `${period}-31`,
+  to: periodEnd(period),
 });
 check(
   "marking a feed handed over stops it being sent twice",
