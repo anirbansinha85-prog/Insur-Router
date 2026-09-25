@@ -44,7 +44,7 @@
  * failure mode is a message a dealership has to apologise for.
  */
 
-import { and, desc, eq, gte, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, or } from "drizzle-orm";
 import {
   db,
   decisionLogTable,
@@ -446,20 +446,48 @@ export async function createDraft(input: DraftInput): Promise<DraftResult> {
   // has to release — a nudge next week is legitimate — so the window belongs
   // here, where "again already?" and "again, later" can be told apart.
   const since = new Date(Date.now() - (input.reuseWindowMs ?? 24 * 60 * 60 * 1_000));
+
+  // **An open message blocks another one at any age; a closed one only inside
+  // the window.** The two halves answer different questions and the age test
+  // belongs to only one of them.
+  //
+  // `outbound_messages_open_unique` forbids a second DRAFT or APPROVED for the
+  // same record, audience and channel — with no time limit, because the point
+  // is that one is still waiting for somebody. Applying the window to those
+  // rows meant an unapproved draft older than its cadence was not found here
+  // and the insert was attempted anyway, where Postgres refused it. That threw
+  // out of `runRules`, which had one try around every showroom, so the rest of
+  // that rule's records, every later rule, `withdrawStaleDrafts` and every
+  // later outlet of the same owner were all skipped. No rule has drafted since
+  // 5 August because of one draft nobody approved on the 4th.
+  //
+  // For SENT and HELD_NO_TRANSPORT the window is still right and is still the
+  // reason it exists: the index has released, a nudge next week is legitimate,
+  // and "again already?" has to be told apart from "again, later".
+  const sameThread = and(
+    eq(outboundMessagesTable.module, base.module),
+    eq(outboundMessagesTable.recordKey, base.recordKey),
+    eq(outboundMessagesTable.audience, base.audience),
+    eq(outboundMessagesTable.channel, base.channel),
+  );
   const [existing] = await db
     .select()
     .from(outboundMessagesTable)
     .where(
       and(
-        eq(outboundMessagesTable.module, base.module),
-        eq(outboundMessagesTable.recordKey, base.recordKey),
-        eq(outboundMessagesTable.audience, base.audience),
-        eq(outboundMessagesTable.channel, base.channel),
-        // CANCELLED and FAILED are absent on purpose. Somebody who cancelled a
-        // draft and wants another has said so, and a message that failed to go
-        // is the one case where trying again is the whole point.
-        inArray(outboundMessagesTable.status, ["DRAFT", "APPROVED", "SENT", "HELD_NO_TRANSPORT"]),
-        gte(outboundMessagesTable.createdAt, since),
+        sameThread,
+        or(
+          // Still open, whenever it was raised.
+          inArray(outboundMessagesTable.status, ["DRAFT", "APPROVED"]),
+          // Already closed, and recent enough that another would be a repeat.
+          // CANCELLED and FAILED are absent on purpose: somebody who cancelled
+          // a draft and wants another has said so, and a message that failed to
+          // go is the one case where trying again is the whole point.
+          and(
+            inArray(outboundMessagesTable.status, ["SENT", "HELD_NO_TRANSPORT"]),
+            gte(outboundMessagesTable.createdAt, since),
+          ),
+        ),
       ),
     )
     .orderBy(desc(outboundMessagesTable.createdAt));

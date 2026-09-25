@@ -235,6 +235,14 @@ export interface RuleRunResult {
   held: number;
   /** Open drafts withdrawn because the record they were about moved on. */
   withdrawn: number;
+  /**
+   * Records this pass could not draft for, having thrown.
+   *
+   * Counted rather than thrown on, so one bad record no longer ends the pass —
+   * and reported, because a run that drafted nothing because every record
+   * failed is a different run from one that had nothing to do.
+   */
+  failed: number;
   durationMs: number;
 }
 
@@ -289,6 +297,7 @@ export async function runRules(
     awaitingPerson: 0,
     held: 0,
     withdrawn: 0,
+    failed: 0,
     durationMs: 0,
   };
 
@@ -319,41 +328,60 @@ export async function runRules(
       result.matched++;
       handled.add(`${rule.module}:${recordKey}`);
 
-      const draft = await createDraft({
-        ownerId,
-        // Null: a rule drafted this, not a person. R-60.
-        userId: null,
-        showroomId,
-        ownerShowroomIds,
-        template: rule.template,
-        recordKey,
-        reuseWindowMs: rule.cadenceDays * DAY_MS,
-      });
+      // **One record's failure is one record's failure.** Everything inside
+      // this loop reaches the database, and an unhandled throw here used to
+      // leave the pass: the rest of this rule's records, every later rule,
+      // `withdrawStaleDrafts` below, and — because `runPass` wraps every
+      // showroom in one try — every later outlet of the same owner. The
+      // symptom was silence, not an error on any screen.
+      //
+      // So a record that cannot be drafted is counted and named, and the pass
+      // carries on. `result.failed` exists so that silence is visible: a run
+      // that drafted nothing because forty records each failed is not the same
+      // run as one where there was nothing to do.
+      try {
+        const draft = await createDraft({
+          ownerId,
+          // Null: a rule drafted this, not a person. R-60.
+          userId: null,
+          showroomId,
+          ownerShowroomIds,
+          template: rule.template,
+          recordKey,
+          reuseWindowMs: rule.cadenceDays * DAY_MS,
+        });
 
-      if (!draft.ok) {
-        // The commonest refusal is the state check inside `createDraft` — the
-        // row moved between the detector's pass and this one. Expected, and
-        // worth a line rather than a warning.
-        logger.debug(
-          { rule: rule.id, recordKey, showroomId, error: draft.error },
-          "Rule did not draft",
+        if (!draft.ok) {
+          // The commonest refusal is the state check inside `createDraft` — the
+          // row moved between the detector's pass and this one. Expected, and
+          // worth a line rather than a warning.
+          logger.debug(
+            { rule: rule.id, recordKey, showroomId, error: draft.error },
+            "Rule did not draft",
+          );
+          continue;
+        }
+
+        if (draft.reused) {
+          result.withinCadence++;
+          continue;
+        }
+
+        result.drafted++;
+
+        // And then the gate, which is the only thing that decides whether this
+        // may go anywhere. A customer message is refused here every time and
+        // waits in the Outbox for a person — that refusal is the product working.
+        const sent = await sendMessage(ownerId, null, draft.message.id);
+        if (!sent.ok) result.awaitingPerson++;
+        else if (sent.message.status === "HELD_NO_TRANSPORT") result.held++;
+      } catch (err) {
+        result.failed++;
+        logger.error(
+          { err: err instanceof Error ? err.message : String(err), rule: rule.id, recordKey, showroomId },
+          "Rule failed on one record — the pass continues",
         );
-        continue;
       }
-
-      if (draft.reused) {
-        result.withinCadence++;
-        continue;
-      }
-
-      result.drafted++;
-
-      // And then the gate, which is the only thing that decides whether this
-      // may go anywhere. A customer message is refused here every time and
-      // waits in the Outbox for a person — that refusal is the product working.
-      const sent = await sendMessage(ownerId, null, draft.message.id);
-      if (!sent.ok) result.awaitingPerson++;
-      else if (sent.message.status === "HELD_NO_TRANSPORT") result.held++;
     }
   }
 
