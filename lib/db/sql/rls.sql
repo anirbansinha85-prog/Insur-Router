@@ -1321,6 +1321,24 @@ create policy policies_own on public.policies
   for select to ddms_app
   using (application_id in (select app.owned_application_ids()));
 
+-- Insert, and nothing else. `POST /applications/:id/execute` writes the policy
+-- an insurer returned, on the request path, as the person who pressed submit —
+-- so `ddms_app` is the role that has to be able to write it.
+--
+-- Select-only meant every submission failed at its last step: the status was
+-- already `submitting` and the step logs already written when the insert was
+-- refused, leaving the application stuck in a state nothing clears and the
+-- worklist reporting it as in progress. A retry called the insurer again.
+--
+-- Two policies rather than one `for all`, and the pair is the point: a policy
+-- row is the record that an insurer issued a cover note. Nobody here may edit
+-- one afterwards or make it never have happened, which is why the grant beside
+-- this is `select, insert` and there is no update or delete policy to match.
+drop policy if exists policies_insert_own on public.policies;
+create policy policies_insert_own on public.policies
+  for insert to ddms_app
+  with check (application_id in (select app.owned_application_ids()));
+
 -- Reference data belonging to nobody. Insurers and OCR engines are the same
 -- rows for every dealership, so scoping them would be a lie about what they
 -- are. Every session may read them; only a platform administrator may write
@@ -1579,10 +1597,13 @@ grant select on
   public.showrooms,
   public.showroom_dms_accounts,
   public.insurer_panel_entries,
-  public.policies,
   public.providers,
   public.ocr_engines
 to ddms_app;
+
+-- Insert but no update and no delete: issuing writes a policy, and nothing in
+-- this product may rewrite one afterwards. See `policies_insert_own` above.
+grant select, insert on public.policies to ddms_app;
 
 grant select, insert on public.decision_log to ddms_app;
 grant select, insert on public.record_events to ddms_app;
