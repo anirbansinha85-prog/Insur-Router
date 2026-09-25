@@ -58,7 +58,13 @@ import {
 } from "../lib/ocr-engines";
 import { EMPTY_MSA_FIELDS } from "../lib/document-extraction";
 import { logger } from "../lib/logger";
-import { requireModule, requireUser, resolveOwningShowroom, sessionScope } from "../lib/session";
+import {
+  assertShowroomAccess,
+  requireModule,
+  requireUser,
+  resolveOwningShowroom,
+  sessionScope,
+} from "../lib/session";
 
 // ─── SSRF protection ─────────────────────────────────────────────────────────
 
@@ -308,15 +314,29 @@ router.post("/ingest/dms-pull", async (req, res): Promise<void> => {
     // adapter translates a wire format and should not touch the database, and
     // keeping the split means a second OEM inherits this for free.
     const tenant = await resolveTenantByDealerCode(deal.dealerCode);
+
+    // Whose deal is this? The answer has to be settled before any of it is
+    // returned. A deal id is guessable and this route reaches one global DMS,
+    // so without these two checks anybody holding a DEAL role could read
+    // another dealership's customer — name, address, date of birth and PAN —
+    // by trying deal numbers. `start-application` has had this check since it
+    // could create a row in the wrong tenant; reading the same record is the
+    // same disclosure without the row.
+    //
+    // Both refusals are the 404 a missing deal gets, never a 403: a refusal
+    // that differs from an absence confirms the deal exists and whose it is.
     if (!tenant) {
-      // A configuration gap, not a failure. The deal is real; the operator has
-      // simply not linked this dealer code to a showroom yet. Say so and carry
-      // on rather than failing the pull or inventing an owner.
-      result.dealContext.gaps.push(
-        `Dealer code ${deal.dealerCode} is not linked to a showroom — ` +
-          `the application cannot be attributed to an owner until it is`,
+      // An unmapped dealer code was previously reported as a configuration gap
+      // and the record returned anyway. There is no owner to check against, so
+      // there is nobody this may be shown to.
+      logger.warn(
+        { dealId: deal.dealId, dealerCode: deal.dealerCode },
+        "DMS pull refused — dealer code is not linked to any showroom",
       );
+      res.status(404).json({ error: `No deal ${resolvedDealId}` });
+      return;
     }
+    if (!(await assertShowroomAccess(req, res, tenant.showroomId))) return;
 
     logger.info(
       {
