@@ -700,15 +700,29 @@ export async function buildQueue(input: QueueInput): Promise<QueueResult> {
         assigneeGone: false,
         contactName: null,
         contactMobile: null,
-        actions: [
-          {
-            action: "VEHICLE_MARK_OFFERED",
-            label: "Mark offered",
-            doneLabel: "Offered",
-            done: Boolean(r.ddms.offeredAt),
-            tone: "amber",
-          },
-        ],
+        // An offer is made *to somebody*, so the action carries the enquiry the
+        // note already names — `matchingEnquiries[0]`, which is the row the
+        // advice was written from, ordered by the grade the salesman gave and
+        // then by who has waited longest.
+        //
+        // Without it `applyAction` refused every press with "enqId is required
+        // to record an offer": the only vehicle control on the queue could not
+        // succeed, while the same action worked from the Inventory screen,
+        // which has passed the enquiry since it was built. Where there is
+        // nobody to offer it to the button is absent rather than broken — a
+        // control that cannot be completed is worse than no control.
+        actions: r.matchingEnquiries[0]
+          ? [
+              {
+                action: "VEHICLE_MARK_OFFERED" as const,
+                label: "Mark offered",
+                doneLabel: "Offered",
+                done: Boolean(r.ddms.offeredAt),
+                tone: "amber" as const,
+                extra: { enqId: r.matchingEnquiries[0].enqId },
+              },
+            ]
+          : [],
         assignAction: null,
         assignRole: null,
         source: "DERIVED",
