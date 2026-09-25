@@ -251,7 +251,15 @@ async function syncDealerEnquiries(
    * unless it asks. Same rule as deals, and the same reason.
    */
   const seenIds = listed.map((l) => l.key);
-  const gone = source.listIsComplete
+  // **An empty listing is a fault, not an empty branch.** The filter below
+  // only excludes what was seen, so with nothing seen it contributed no
+  // condition at all and the update marked every row gone — the opposite of
+  // what the comment beside it said, and of what the warning underneath
+  // reports. One blank reply from the manufacturer, or a dropped file whose
+  // rows were all rejected, emptied the screen and — for registrations —
+  // abandoned every live delivery journey, permanently. The deal sync has
+  // guarded the whole statement since it was written; these six did not.
+  const gone = source.listIsComplete && seenIds.length > 0
     ? await db
         .update(dmsEnquiriesTable)
         .set({ disappearedAt: new Date() })
