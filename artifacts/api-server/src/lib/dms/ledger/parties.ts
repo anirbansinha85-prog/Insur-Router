@@ -218,16 +218,47 @@ export async function partyStatement(input: {
     .orderBy(asc(vouchersTable.voucherDate), asc(vouchersTable.id), asc(voucherLinesTable.seq));
 
   /*
-   * The opening balance starts the running total, because a statement that
-   * began at zero would tell a customer who has owed money since March that he
-   * owes only what he has bought since April.
+   * What was brought forward, **read from the ledger and not from the party row**.
+   *
+   * This seeded the running total with `party.openingAmount` and then walked
+   * every posted line tagged with the party — including the opening-balance
+   * voucher's own line, which `postOpeningBalances` writes with that same figure
+   * on it. So from the moment a dealership brought its opening balances in, every
+   * statement counted them twice: a customer who opened owing ₹50,000 and had
+   * bought nothing since was shown a closing balance of ₹100,000, and that is the
+   * figure somebody would have rung him about.
+   *
+   * There was a second defect inside the first. A statement drawn *from* April
+   * used the all-time opening as its brought-forward figure and then excluded
+   * March's transactions entirely, so the one number a statement exists to get
+   * right was wrong for every date-filtered statement.
+   *
+   * Both go away by asking the ledger. Brought forward **is** the net of every
+   * posted line before the window — that is what the phrase means — and with no
+   * `from` it is zero, which is correct: the opening voucher is dated the day
+   * before the books open, so it appears as the statement's first row rather than
+   * as a figure above it.
+   *
+   * `party.openingAmount` keeps its one legitimate job: it is what onboarding
+   * typed, and `postOpeningBalances` is what reads it.
    */
-  let running =
-    party.openingSide === "DEBIT"
-      ? n(party.openingAmount)
-      : party.openingSide === "CREDIT"
-        ? -n(party.openingAmount)
-        : 0;
+  const broughtForward = input.from
+    ? await db
+        .select({
+          net: sql<string>`coalesce(sum(${voucherLinesTable.debit}::numeric - ${voucherLinesTable.credit}::numeric), 0)`,
+        })
+        .from(voucherLinesTable)
+        .innerJoin(vouchersTable, eq(voucherLinesTable.voucherId, vouchersTable.id))
+        .where(
+          and(
+            eq(voucherLinesTable.partyId, input.partyId),
+            eq(vouchersTable.status, "POSTED"),
+            sql`${vouchersTable.voucherDate} < ${input.from}`,
+          ),
+        )
+    : [];
+
+  let running = round2(n(broughtForward[0]?.net));
 
   const rows: PartyStatementRow[] = lines.map((l) => {
     running = round2(running + n(l.debit) - n(l.credit));

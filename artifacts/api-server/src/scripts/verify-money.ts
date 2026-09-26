@@ -102,7 +102,26 @@ async function wipe(): Promise<void> {
       .from(moneyDocumentsTable)
       .where(inArray(moneyDocumentsTable.partyId, ids));
     for (const d of docs) {
+      /*
+       * The allocation journals first, and they are read before the allocations are
+       * deleted because the allocation row is the only thing that names them.
+       *
+       * An allocation applied after the receipt posts `Dr 2400 / Cr 1100`, so this
+       * run leaves vouchers the receipt does not own. They net to zero once the
+       * reversal is included, which means the trial balance balances either way and
+       * would never have told us — the same shape as the 27 orphan service vouchers
+       * at Okhla, which also balanced.
+       */
+      const allocVouchers = await ownerDb
+        .select({ voucherId: billAllocationsTable.voucherId })
+        .from(billAllocationsTable)
+        .where(eq(billAllocationsTable.moneyDocumentId, d.id));
       await ownerDb.delete(billAllocationsTable).where(eq(billAllocationsTable.moneyDocumentId, d.id));
+      for (const a of allocVouchers) {
+        if (!a.voucherId) continue;
+        await ownerDb.delete(voucherLinesTable).where(eq(voucherLinesTable.voucherId, a.voucherId));
+        await ownerDb.delete(vouchersTable).where(eq(vouchersTable.id, a.voucherId));
+      }
       if (d.voucherId) {
         await ownerDb.delete(voucherLinesTable).where(eq(voucherLinesTable.voucherId, d.voucherId));
         await ownerDb.delete(vouchersTable).where(eq(vouchersTable.id, d.voucherId));
@@ -362,6 +381,43 @@ check(
   `INV/B ${rupees(n(bAfter!.outstanding))} · INV/A ${rupees(n(aAfter!.outstanding))}`,
 );
 
+/*
+ * **And the books moved with it**, which they did not before.
+ *
+ * ₹22,000 taken on account is a liability on `2400` Customer Advances; applying it
+ * to a bill turns it into a reduction of the debt on `1100`. This only moved the
+ * bill, so the books showed the customer owing the full ₹62,000 *and* holding
+ * ₹22,000 of his own money — the same rupees on both sides of the trial balance,
+ * which balanced throughout and was wrong throughout.
+ *
+ * Asserted on the voucher rather than on the balances, because the balances carry
+ * every other movement in this run and a figure that happens to agree is not
+ * evidence. The two lines, the two accounts and the party on both of them are.
+ */
+const moved = await ownerDb
+  .select({
+    accountCode: voucherLinesTable.accountCode,
+    debit: voucherLinesTable.debit,
+    credit: voucherLinesTable.credit,
+    partyId: voucherLinesTable.partyId,
+  })
+  .from(voucherLinesTable)
+  .where(eq(voucherLinesTable.voucherId, applied.voucherId ?? -1));
+check(
+  "**and the money moved out of advances and onto the debt**",
+  moved.length === 2 &&
+    moved.some((l) => l.accountCode === "2400" && round2(n(l.debit)) === 22_000) &&
+    moved.some((l) => l.accountCode === "1100" && round2(n(l.credit)) === 22_000),
+  moved.length === 0
+    ? "no voucher was posted, so the bill is settled and the books still show the debt"
+    : moved.map((l) => `${l.accountCode} ${rupees(n(l.debit))}/${rupees(n(l.credit))}`).join(" · "),
+);
+check(
+  "with the customer named on both legs, so his own ledger follows",
+  moved.length === 2 && moved.every((l) => l.partyId === two.id),
+  "a control account that moves without the party moving is the defect R-110 is written against",
+);
+
 const over = await applyAllocation({
   ownerId: OWNER,
   moneyDocumentId: vague.document!.id,
@@ -390,6 +446,33 @@ check(
   "so the record says they decided and then changed their mind",
   rows.length === 2 && rows.some((r) => n(r.amount) < 0),
   `${rows.length} rows: ${rows.map((r) => rupees(n(r.amount))).join(", ")}`,
+);
+
+/*
+ * **And the books changed their mind with them.**
+ *
+ * The reversing allocation has to post the mirror of whatever applying it posted,
+ * or the money is back on account in the sub-ledger and still off the debt in the
+ * ledger — which is the original defect with the sign flipped. Both rows name
+ * their own voucher, so this reads the record rather than inferring from dates.
+ */
+const undoRow = rows.find((r) => n(r.amount) < 0);
+const undoLines = await ownerDb
+  .select({
+    accountCode: voucherLinesTable.accountCode,
+    debit: voucherLinesTable.debit,
+    credit: voucherLinesTable.credit,
+  })
+  .from(voucherLinesTable)
+  .where(eq(voucherLinesTable.voucherId, undoRow?.voucherId ?? -1));
+check(
+  "**and the ledger moved back with it**",
+  undoLines.length === 2 &&
+    undoLines.some((l) => l.accountCode === "1100" && round2(n(l.debit)) === 22_000) &&
+    undoLines.some((l) => l.accountCode === "2400" && round2(n(l.credit)) === 22_000),
+  undoLines.length === 0
+    ? "nothing was posted, so the money is on account in the sub-ledger and off the debt in the books"
+    : undoLines.map((l) => `${l.accountCode} ${rupees(n(l.debit))}/${rupees(n(l.credit))}`).join(" · "),
 );
 
 // ────────────────────────────────────────────────────────────────────────────

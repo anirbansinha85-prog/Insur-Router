@@ -41,7 +41,7 @@ import {
 
 import { logger } from "../../logger";
 import { accountsByCode, ensureChart } from "./accounts";
-import { financialYearOf, nextVoucherNo, type Line } from "./post";
+import { financialYearOf, nextVoucherNo, postingRefusal, type Line } from "./post";
 import { placementOf } from "../org";
 import { taxWithin } from "../invoice/pricing";
 import { LABOUR_GST_PCT } from "@workspace/quoting/tax";
@@ -397,6 +397,9 @@ export async function recordMoney(input: {
       amount: a.amount,
       decidedBy,
       userId: input.userId ?? null,
+      // The voucher above already credited the control account for this part, so
+      // there is nothing for the allocation to move.
+      postedWithReceipt: true,
     });
     if (!applied.ok) warnings.push(applied.error!);
   }
@@ -429,6 +432,43 @@ export async function recordMoney(input: {
  * than the bill is outstanding leaves a credit balance on an invoice that was
  * settled, and more than the receipt holds settles debts with money nobody
  * paid.
+ *
+ * ## An allocation made later is a posting, and it was not being posted
+ *
+ * Which account a receipt sits in depends on whether it was applied to a bill,
+ * and that is decided in `recordMoney`: the applied part credits `1100` Sundry
+ * Debtors and the rest credits `2400` Customer Advances, because money taken for
+ * something not yet delivered is a liability rather than a reduction of a debt
+ * that does not exist yet.
+ *
+ * So applying it **afterwards** moves money between two accounts, and this only
+ * moved the sub-ledger. A customer who paid ₹2,000 on account against a ₹5,000
+ * invoice ended up with the bill showing ₹3,000 outstanding while the books
+ * showed him owing the whole ₹5,000 *and* holding ₹2,000 of his money as a
+ * liability — the same rupees counted on both sides. The trial balance balanced
+ * throughout, which is why nothing caught it, and `controlAccountCheck` is the
+ * reconciliation that would have.
+ *
+ * The journal is `Dr 2400 / Cr 1100`, party-tagged on both legs so the subsidiary
+ * ledger follows the control account (R-110).
+ *
+ * ## Three cases, and only one of them posts
+ *
+ * **At receipt time** the voucher already credited `1100` for the applied part,
+ * so there is nothing to move. `recordMoney` passes `postedWithReceipt` to say so
+ * — a flag rather than an inference, because inferring it would mean deciding
+ * whether a voucher had already done something, and getting that wrong either
+ * double-counts or loses the entry.
+ *
+ * **A payment** debits `2100` Sundry Creditors whether it was applied or not, so
+ * an advance to a supplier already sits on the control account as a debit balance
+ * and a later allocation is purely a sub-ledger matter.
+ *
+ * **A service advance** is refused. The tax charged when that deposit was taken
+ * has to come back out when the work is invoiced, and `issueServiceInvoice` does
+ * that correctly inside the invoice's own voucher. Posting `Dr 2400` for the gross
+ * here would overdraw an account that only ever held the net, so this says where
+ * to do it instead rather than doing it wrongly.
  */
 export async function applyAllocation(input: {
   ownerId: number;
@@ -437,7 +477,9 @@ export async function applyAllocation(input: {
   amount: number;
   decidedBy?: "PERSON" | "AUTOMATIC";
   userId?: number | null;
-}): Promise<{ ok: boolean; error?: string }> {
+  /** Set by `recordMoney`: the receipt's own voucher already credited the control. */
+  postedWithReceipt?: boolean;
+}): Promise<{ ok: boolean; error?: string; voucherId?: number }> {
   const amount = round2(input.amount);
   if (!(amount > 0)) return { ok: false, error: "An allocation has to be a positive amount." };
 
@@ -480,6 +522,40 @@ export async function applyAllocation(input: {
     };
   }
 
+  /*
+   * The money moves out of advances and onto the debt, before the sub-ledger is
+   * touched. If the posting is refused — a closed period is the ordinary reason —
+   * the allocation does not happen at all, which is the right way round: a bill
+   * shown as settled by a payment the books never recorded is the defect.
+   */
+  let voucherId: number | undefined;
+  const needsPosting =
+    !input.postedWithReceipt && doc.direction === "RECEIPT" && round2(n(doc.unallocated)) > 0;
+
+  if (needsPosting && doc.advanceFor === "SERVICE") {
+    return {
+      ok: false,
+      error:
+        `${doc.documentNo} is an advance against a service job, and GST was charged on it when it was taken. ` +
+        "Setting it against a bill here would leave that tax collected twice, so it has to come off the service " +
+        "invoice instead — raise the invoice with this advance named on it and the tax comes back out with it.",
+    };
+  }
+
+  if (needsPosting) {
+    const posted = await postAllocationJournal({
+      ownerId: input.ownerId,
+      showroomId: doc.showroomId,
+      partyId: doc.partyId,
+      documentNo: doc.documentNo,
+      billNo: bill.billNo,
+      amount,
+      userId: input.userId ?? null,
+    });
+    if (!posted.ok) return { ok: false, error: posted.error };
+    voucherId = posted.voucherId;
+  }
+
   await db.insert(billAllocationsTable).values({
     ownerId: input.ownerId,
     moneyDocumentId: doc.id,
@@ -487,6 +563,7 @@ export async function applyAllocation(input: {
     amount: money(amount),
     decidedBy: input.decidedBy ?? "PERSON",
     decidedByUserId: input.userId ?? null,
+    voucherId: voucherId ?? null,
   });
 
   await db
@@ -499,7 +576,101 @@ export async function applyAllocation(input: {
     .set({ unallocated: money(round2(n(doc.unallocated) - amount)) })
     .where(eq(moneyDocumentsTable.id, doc.id));
 
-  return { ok: true };
+  return { ok: true, voucherId };
+}
+
+/**
+ * `Dr Customer Advances / Cr Sundry Debtors`, for one allocation, party-tagged.
+ *
+ * Its own function because `reverseAllocation` needs the mirror of it and two
+ * copies of a two-line journal is how the two stop agreeing. The amount is the
+ * allocation's, never the bill's or the receipt's — those are the two figures it
+ * would be natural to reach for and both are wrong for a part payment.
+ */
+async function postAllocationJournal(input: {
+  ownerId: number;
+  showroomId: number;
+  partyId: number;
+  documentNo: string;
+  billNo: string;
+  amount: number;
+  userId: number | null;
+  /** Reversing an allocation posts the same two lines the other way up. */
+  undo?: boolean;
+}): Promise<{ ok: true; voucherId: number } | { ok: false; error: string }> {
+  await ensureChart(input.ownerId);
+  const accounts = await accountsByCode(input.ownerId);
+  const advance = accounts.get("2400");
+  const debtors = accounts.get("1100");
+  if (!advance || !debtors) {
+    return { ok: false, error: "The ledger accounts for advances and debtors are missing for this dealership." };
+  }
+
+  const [party] = await db
+    .select({ name: partiesTable.name, gstin: partiesTable.gstin })
+    .from(partiesTable)
+    .where(eq(partiesTable.id, input.partyId));
+
+  const on = new Date().toISOString().slice(0, 10);
+  const fy = financialYearOf(on);
+  const voucherNo = await nextVoucherNo(input.ownerId, "JOURNAL", fy);
+  const narration = input.undo
+    ? `${input.documentNo} taken back off ${input.billNo}`
+    : `${input.documentNo} applied to ${input.billNo}`;
+
+  let voucher: typeof vouchersTable.$inferSelect | undefined;
+  try {
+    [voucher] = await db
+      .insert(vouchersTable)
+      .values({
+        ownerId: input.ownerId,
+        showroomId: input.showroomId,
+        kind: "JOURNAL",
+        voucherNo,
+        voucherDate: on,
+        financialYear: fy,
+        narration,
+        sourceKind: "MANUAL",
+        sourceId: null,
+        totalDebit: money(input.amount),
+        totalCredit: money(input.amount),
+        warnings: [],
+        postedByUserId: input.userId,
+      })
+      .returning();
+  } catch (err) {
+    const refusal = postingRefusal(err);
+    if (refusal) return { ok: false, error: refusal };
+    throw err;
+  }
+
+  const legs = input.undo
+    ? [
+        { account: debtors, debit: input.amount, credit: 0 },
+        { account: advance, debit: 0, credit: input.amount },
+      ]
+    : [
+        { account: advance, debit: input.amount, credit: 0 },
+        { account: debtors, debit: 0, credit: input.amount },
+      ];
+
+  await db.insert(voucherLinesTable).values(
+    legs.map((l, i) => ({
+      voucherId: voucher!.id,
+      seq: i + 1,
+      accountId: l.account.id,
+      accountCode: l.account.code,
+      accountName: l.account.name,
+      debit: money(l.debit),
+      credit: money(l.credit),
+      narration,
+      partyId: input.partyId,
+      partyName: party?.name ?? null,
+      partyGstin: party?.gstin ?? null,
+    })),
+  );
+
+  return { ok: true, voucherId: voucher!.id };
 }
 
 /**
@@ -535,6 +706,50 @@ export async function reverseAllocation(input: {
 
   const amount = round2(n(alloc.amount));
 
+  /*
+   * If applying it moved money between accounts, taking it back moves it home.
+   *
+   * Which it is cannot be inferred and must not be guessed: `voucherId` is set
+   * exactly when a journal was posted, so reading it is reading the same fact
+   * recorded once rather than deciding it twice. Null means the receipt's own
+   * voucher had already credited the control account, and there is nothing to
+   * move.
+   *
+   * The mirror posts **before** the sub-ledger changes, for the same reason
+   * applying does: if a closed period refuses it, the allocation stays as it was
+   * rather than being undone in one place and standing in the other.
+   */
+  let undoVoucherId: number | undefined;
+  if (alloc.voucherId !== null) {
+    const [doc] = await db
+      .select({
+        showroomId: moneyDocumentsTable.showroomId,
+        partyId: moneyDocumentsTable.partyId,
+        documentNo: moneyDocumentsTable.documentNo,
+      })
+      .from(moneyDocumentsTable)
+      .where(eq(moneyDocumentsTable.id, alloc.moneyDocumentId));
+    const [bill] = await db
+      .select({ billNo: partyBillsTable.billNo })
+      .from(partyBillsTable)
+      .where(eq(partyBillsTable.id, alloc.partyBillId));
+
+    if (doc) {
+      const undone = await postAllocationJournal({
+        ownerId: input.ownerId,
+        showroomId: doc.showroomId,
+        partyId: doc.partyId,
+        documentNo: doc.documentNo,
+        billNo: bill?.billNo ?? "that bill",
+        amount,
+        userId: input.userId ?? null,
+        undo: true,
+      });
+      if (!undone.ok) return { ok: false, error: undone.error };
+      undoVoucherId = undone.voucherId;
+    }
+  }
+
   await db.insert(billAllocationsTable).values({
     ownerId: input.ownerId,
     moneyDocumentId: alloc.moneyDocumentId,
@@ -543,6 +758,9 @@ export async function reverseAllocation(input: {
     reversalOfId: alloc.id,
     decidedBy: "PERSON",
     decidedByUserId: input.userId ?? null,
+    // The mirror names itself too, so nothing has to work out later which voucher
+    // undid which allocation.
+    voucherId: undoVoucherId ?? null,
   });
 
   await db

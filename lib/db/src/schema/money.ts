@@ -151,6 +151,23 @@ export const billAllocationsTable = pgTable(
     reversalOfId: integer("reversal_of_id"),
 
     /**
+     * The journal this allocation posted, where it posted one.
+     *
+     * An allocation made **at** receipt time changes no balance: the receipt's own
+     * voucher already credited the debtors control for the applied part. An
+     * allocation made **later** moves money out of `2400` Customer Advances and
+     * onto `1100`, which is a posting — and until this column existed that posting
+     * did not happen, so the bill showed settled while the books showed both a
+     * debt and an advance for the same rupees.
+     *
+     * Null therefore means *no balance moved*, not *not recorded*, and reversing
+     * reads it to know whether there is a mirror to post. Inferring it from dates
+     * would be guessing at whether a voucher already exists, and that guess is
+     * either a double count or a lost entry.
+     */
+    voucherId: integer("voucher_id"),
+
+    /**
      * Who decided this, and it matters (R-111).
      *
      * `PERSON` is somebody choosing which invoice this money settles.
