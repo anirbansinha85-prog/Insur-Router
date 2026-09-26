@@ -44,7 +44,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { placementOf } from "../lib/dms/org";
 import { generateDocument } from "../lib/dms/invoice";
-import { postSaleDocument } from "../lib/dms/ledger/post";
+import { postedVoucherFor, postSaleDocument } from "../lib/dms/ledger/post";
 import { loadPolicy } from "../lib/dms/policy";
 import { ensureParty, openBill, partyStatement } from "../lib/dms/ledger/parties";
 import {
@@ -221,7 +221,10 @@ const sale = await generateDocument({
   policy,
 });
 if (!sale.ok) throw new Error(sale.error);
-const salePost = await postSaleDocument({ ownerId: OWNER, documentId: sale.document.id, userId: 1 });
+// Issuing posts it (R-101), so the question here is which voucher it is in the
+// books as, not whether to put it there. Asserting on this is what fails if
+// posting-on-issue is ever taken back out.
+const salePost = await postedVoucherFor({ ownerId: OWNER, documentId: sale.document.id });
 if (!salePost.ok) throw new Error(salePost.error);
 
 const INVOICE = n(sale.document.totalAmount);

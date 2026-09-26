@@ -40,6 +40,8 @@ import {
   showroomDmsAccountsTable,
   legalEntitiesTable,
   gstRegistrationsTable,
+  partyBillsTable,
+  partiesTable,
 } from "@workspace/db";
 import { and, eq, inArray, sql } from "drizzle-orm";
 
@@ -87,6 +89,28 @@ console.log(`\nOBJ-39 — stock that moves without being sold, run by ${RUN_BY}\
     .from(stockMovesTable)
     .where(sql`${stockMovesTable.narration} like 'verify-moves%'`);
   for (const m of stale) {
+    /*
+     * **Both** legs and both bills, not just the one the move points at.
+     *
+     * A cross-registration transfer posts a supply at the sending branch and a
+     * purchase at the receiving one, and `stock_moves.voucherId` names only the
+     * first. Deleting one and leaving the other is how a run leaves a purchase
+     * voucher with an input credit against a challan that no longer exists — and
+     * because the two legs balance separately, the trial balance would never say.
+     */
+    for (const kind of ["STOCK_TRANSFER_OUT", "STOCK_TRANSFER_IN"] as const) {
+      const legs = await ownerDb
+        .select({ id: vouchersTable.id })
+        .from(vouchersTable)
+        .where(and(eq(vouchersTable.sourceKind, kind), eq(vouchersTable.sourceId, m.id)));
+      for (const v of legs) {
+        await ownerDb.delete(voucherLinesTable).where(eq(voucherLinesTable.voucherId, v.id));
+        await ownerDb.delete(vouchersTable).where(eq(vouchersTable.id, v.id));
+      }
+      await ownerDb
+        .delete(partyBillsTable)
+        .where(and(eq(partyBillsTable.sourceKind, kind), eq(partyBillsTable.sourceId, m.id)));
+    }
     if (m.voucherId) {
       await ownerDb.delete(voucherLinesTable).where(eq(voucherLinesTable.voucherId, m.voucherId));
       await ownerDb.delete(vouchersTable).where(eq(vouchersTable.id, m.voucherId));
@@ -94,6 +118,10 @@ console.log(`\nOBJ-39 — stock that moves without being sold, run by ${RUN_BY}\
     await ownerDb.delete(stockMoveLinesTable).where(eq(stockMoveLinesTable.stockMoveId, m.id));
     await ownerDb.delete(stockMovesTable).where(eq(stockMovesTable.id, m.id));
   }
+  // The sister-registration ledgers this file's temporary Karnataka branch made.
+  await ownerDb
+    .delete(partiesTable)
+    .where(and(eq(partiesTable.kind, "BRANCH"), sql`${partiesTable.gstin} = '29AAACS1234A1Z1'`));
   await ownerDb.delete(chassisEventsTable).where(inArray(chassisEventsTable.chassisNo, ALL_CHASSIS));
   await ownerDb
     .delete(dmsVehicleStockTable)
@@ -331,7 +359,12 @@ check(
 
 if (crossReceived.voucherId) {
   const lines = await ownerDb
-    .select({ code: voucherLinesTable.accountCode, debit: voucherLinesTable.debit, credit: voucherLinesTable.credit })
+    .select({
+      code: voucherLinesTable.accountCode,
+      debit: voucherLinesTable.debit,
+      credit: voucherLinesTable.credit,
+      partyId: voucherLinesTable.partyId,
+    })
     .from(voucherLinesTable)
     .where(eq(voucherLinesTable.voucherId, crossReceived.voucherId));
   const igst = lines.find((l) => l.code === "2220");
@@ -346,7 +379,139 @@ if (crossReceived.voucherId) {
     n(igst?.credit) === Math.round(COST * 0.18 * 100) / 100,
     "a transfer value is a cost being moved, not a price a customer agreed to — the ex-showroom back-calculation does not apply here",
   );
+
+  /*
+   * **The sending side gives up the bike, not just the revenue.**
+   *
+   * Without the cost relief the branch books the whole transfer value as margin
+   * and goes on carrying a motorcycle it has despatched. Every one of these
+   * checks passed before the fix except these, and that is the point: the old
+   * voucher was correct about the tax and silent about everything else.
+   */
+  const cogs = lines.find((l) => l.code === "5100");
+  const stockOut = lines.find((l) => l.code === "1200");
+  check(
+    "**and the cost comes off the sending branch's floor**",
+    Boolean(cogs) && Boolean(stockOut) && n(cogs!.debit) === n(stockOut!.credit),
+    cogs
+      ? `cost of goods ${rupees(n(cogs.debit))} against Vehicle Stock ${rupees(n(stockOut!.credit))}`
+      : "no cost relief, so the whole transfer value reads as margin and the bike is still on the floor",
+  );
+
+  const debtor = lines.find((l) => l.code === "1100");
+  check(
+    "and the debt names the registration that owes it",
+    Boolean(debtor?.partyId),
+    debtor?.partyId
+      ? `party ${debtor.partyId}`
+      : "a debt in a control account with no party against it can never be matched or settled",
+  );
 }
+
+/*
+ * **And the receiving registration posted its side.**
+ *
+ * It posted nothing at all before this. The branch had a machine in its showroom
+ * with no cost in its books, and the input credit on a genuine taxable supply —
+ * real money — was never claimed. Two registrations are two persons, so a supply
+ * between them has a purchase on the other end of it.
+ */
+const inLeg = await ownerDb
+  .select({ id: vouchersTable.id, kind: vouchersTable.kind, showroomId: vouchersTable.showroomId })
+  .from(vouchersTable)
+  .where(
+    and(
+      eq(vouchersTable.sourceKind, "STOCK_TRANSFER_IN"),
+      eq(vouchersTable.sourceId, crossMove.move!.id),
+    ),
+  );
+check(
+  "**the receiving registration books the purchase**",
+  inLeg.length === 1 && inLeg[0]!.kind === "PURCHASE" && inLeg[0]!.showroomId === blr!.id,
+  inLeg.length === 0
+    ? "nothing was posted at the receiving branch, so it holds a bike with no cost and claims no credit"
+    : `${inLeg[0]!.kind} at branch ${inLeg[0]!.showroomId}`,
+);
+
+if (inLeg.length === 1) {
+  const inLines = await ownerDb
+    .select({
+      code: voucherLinesTable.accountCode,
+      debit: voucherLinesTable.debit,
+      credit: voucherLinesTable.credit,
+      partyId: voucherLinesTable.partyId,
+    })
+    .from(voucherLinesTable)
+    .where(eq(voucherLinesTable.voucherId, inLeg[0]!.id));
+  const credit = inLines.find((l) => l.code === "1620");
+  check(
+    "**with the input credit claimed**, which is money rather than presentation",
+    n(credit?.debit) === Math.round(COST * 0.18 * 100) / 100,
+    credit
+      ? `Input IGST ${rupees(n(credit.debit))} claimable at the receiving GSTIN`
+      : "the credit on a real supply was never claimed, so the group paid tax it could have recovered",
+  );
+  const stockIn = inLines.find((l) => l.code === "1200");
+  const creditor = inLines.find((l) => l.code === "2100");
+  check(
+    "the bike arrives at cost and the sister registration is owed for it",
+    n(stockIn?.debit) === COST && Boolean(creditor?.partyId),
+    `Vehicle Stock ${rupees(n(stockIn?.debit))} · Sundry Creditors ${rupees(n(creditor?.credit))} against party ${creditor?.partyId}`,
+  );
+}
+
+/*
+ * The two bills, because a balance nobody can age is not a receivable. Both
+ * halves of one challan, one owed each way, so the two registrations can settle.
+ */
+const transferBills = await ownerDb
+  .select({
+    direction: partyBillsTable.direction,
+    sourceKind: partyBillsTable.sourceKind,
+    outstanding: partyBillsTable.outstanding,
+  })
+  .from(partyBillsTable)
+  .where(
+    and(
+      inArray(partyBillsTable.sourceKind, ["STOCK_TRANSFER_OUT", "STOCK_TRANSFER_IN"]),
+      eq(partyBillsTable.sourceId, crossMove.move!.id),
+    ),
+  );
+check(
+  "and each side has a bill it can settle against the other",
+  transferBills.length === 2 &&
+    transferBills.some((b) => b.direction === "RECEIVABLE") &&
+    transferBills.some((b) => b.direction === "PAYABLE"),
+  transferBills.length === 0
+    ? "no bills, so the inter-branch balance sits in a control account nobody can age or pay"
+    : transferBills.map((b) => `${b.direction} ${rupees(n(b.outstanding))}`).join(" · "),
+);
+
+/*
+ * And receiving it twice does not post it twice. It posted `MANUAL` with a null
+ * source before, which put it outside `vouchers_source_unique` altogether — the
+ * index only covers rows that name their source, so the one document type that
+ * named none could post for ever (R-101).
+ */
+const receivedAgain = await receiveStockMove({
+  ownerId: OWNER,
+  stockMoveId: crossMove.move!.id,
+  userId: 1,
+});
+const outLegs = await ownerDb
+  .select({ id: vouchersTable.id })
+  .from(vouchersTable)
+  .where(
+    and(
+      eq(vouchersTable.sourceKind, "STOCK_TRANSFER_OUT"),
+      eq(vouchersTable.sourceId, crossMove.move!.id),
+    ),
+  );
+check(
+  "**receiving it again does not post the supply again**",
+  outLegs.length === 1,
+  `${outLegs.length} supply voucher(s) for ${crossMove.move!.challanNo}${receivedAgain.ok ? "" : ` — ${receivedAgain.error}`}`,
+);
 
 // ────────────────────────────────────────────────────────────────────────────
 

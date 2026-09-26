@@ -39,7 +39,8 @@ import {
 } from "@workspace/db";
 
 import { accountForCharge, ensureChart, financialYearOf } from "../lib/dms/ledger";
-import { gstr1For, gstr1Csv, postSaleDocument, reverseVoucher, tallyFeed, markExported } from "../lib/dms/ledger";
+import { gstr1For, gstr1Csv,
+  postedVoucherFor, postSaleDocument, reverseVoucher, tallyFeed, markExported } from "../lib/dms/ledger";
 import { generateDocument } from "../lib/dms/invoice";
 import { loadPolicy } from "../lib/dms/policy";
 
@@ -205,7 +206,10 @@ if (!issued.ok) {
 }
 
 const doc = issued.document;
-const posted = await postSaleDocument({ ownerId: OWNER, documentId: doc.id, userId: 1 });
+// Issuing posts it (R-101), so the question here is which voucher it is in the
+// books as, not whether to put it there. Asserting on this is what fails if
+// posting-on-issue is ever taken back out.
+const posted = await postedVoucherFor({ ownerId: OWNER, documentId: doc.id });
 check("and it posted", posted.ok, posted.ok ? posted.voucher!.voucherNo : (posted.error ?? ""));
 if (!posted.ok) {
   console.log(`\n  Cannot continue. ${posted.error}\n`);
@@ -349,7 +353,10 @@ if (known) {
   });
 
   if (second.ok) {
-    const p2 = await postSaleDocument({ ownerId: OWNER, documentId: second.document.id, userId: 1 });
+    // Issuing posts it (R-101), so the question here is which voucher it is in the
+    // books as, not whether to put it there. Asserting on this is what fails if
+    // posting-on-issue is ever taken back out.
+    const p2 = await postedVoucherFor({ ownerId: OWNER, documentId: second.document.id });
     const l2 = p2.ok
       ? await ownerDb
           .select()

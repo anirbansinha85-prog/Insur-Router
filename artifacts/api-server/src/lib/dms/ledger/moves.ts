@@ -32,13 +32,15 @@ import {
   dmsVehicleStockTable,
   dmsPartStockTable,
   showroomsTable,
+  type LedgerAccountRow,
   type StockMoveRow,
   type ChassisEventRow,
 } from "@workspace/db";
 
 import { logger } from "../../logger";
 import { accountsByCode, ensureChart } from "./accounts";
-import { financialYearOf, nextVoucherNo, type Line } from "./post";
+import { ensureParty, openBill } from "./parties";
+import { financialYearOf, nextVoucherNo, postingRefusal, type Line } from "./post";
 import { placementOf, transferIsSupply } from "../org";
 import { taxWithin } from "../invoice/pricing";
 
@@ -515,6 +517,45 @@ export async function receiveStockMove(input: {
    * internal errand.
    */
   if (move.isSupply === "Y") {
+    /*
+     * **Both sides, because a supply has two of them.**
+     *
+     * This posted one voucher: the sending registration debited `1100` Sundry
+     * Debtors and credited `4100` Vehicle Sales with the tax. Four things were
+     * missing and each of them is a real number in somebody's books.
+     *
+     * The **cost** was never relieved, so the sending registration booked the
+     * whole transfer value as margin and went on carrying the bike on its floor.
+     *
+     * The **receiving registration posted nothing at all**. It had a motorcycle
+     * standing in its showroom with no cost in its books, and — worse — the input
+     * credit on a genuine taxable supply was never claimed. That is not a
+     * presentation defect, it is tax the group paid and did not recover.
+     *
+     * The debtor line carried **no party**, so the debt sat in a control account
+     * that nothing could ever match or settle, and `controlAccountCheck` had a
+     * figure on `1100` with no bill behind it.
+     *
+     * And it posted `MANUAL` with a null source, which put it outside
+     * `vouchers_source_unique` — so a retried receive posted the supply twice.
+     *
+     * ## Why two vouchers and not one
+     *
+     * Two registrations are two taxable persons. Each voucher belongs to the
+     * branch it happened at, which is what makes GSTR-1 pick up the supply under
+     * the sending GSTIN and the purchase register pick up the credit under the
+     * receiving one. One voucher spanning both would be filed under whichever
+     * branch it named and invisible to the other.
+     *
+     * ## What this deliberately does not do
+     *
+     * It does not eliminate the group's internal margin. The sender books revenue
+     * above its own cost and the receiver books stock at the transfer value, which
+     * is correct for each registration separately and shows a profit on an
+     * internal errand when the two are added together. Eliminating it is a
+     * consolidation entry belonging to the dealership's CA, and R-98's posture is
+     * to feed their books rather than to decide their policy.
+     */
     const from = await placementOf(move.fromShowroomId);
     const to = await placementOf(move.toShowroomId);
     const interState = from.registration.state !== to.registration.state;
@@ -539,65 +580,169 @@ export async function receiveStockMove(input: {
     const cgst = interState ? 0 : round2(tax / 2);
     const sgst = interState ? 0 : round2(tax - cgst);
     const igst = interState ? tax : 0;
+    const gross = round2(value + tax);
 
-    const vlines: Line[] = [
+    /*
+     * Each registration as a ledger in the other's books, keyed on the GSTIN
+     * because that is what makes them two persons in the first place.
+     */
+    const { party: buyer } = await ensureParty({
+      ownerId: input.ownerId,
+      entityId: from.entity.id,
+      kind: "BRANCH",
+      name: `${to.entity.legalName} — ${to.registration.state}`,
+      gstin: to.registration.gstin,
+      state: to.registration.state,
+    });
+    const { party: seller } = await ensureParty({
+      ownerId: input.ownerId,
+      entityId: to.entity.id,
+      kind: "BRANCH",
+      name: `${from.entity.legalName} — ${from.registration.state}`,
+      gstin: from.registration.gstin,
+      state: from.registration.state,
+    });
+
+    /*
+     * What the machines cost the sending branch, which is what comes off its
+     * floor. The transfer value is what the receiving branch pays; the cost is
+     * what the sender gives up, and they are different figures on purpose.
+     *
+     * A chassis with no cost against it relieves nothing and says so, exactly as
+     * a sale does — inventing a cost would put a fabricated figure in a set of
+     * books, and refusing the transfer would deny a movement that happened.
+     */
+    const chassisNos = lines.map((l) => l.chassisNo).filter((c): c is string => Boolean(c));
+    let cost = 0;
+    if (chassisNos.length > 0) {
+      const units = await db
+        .select({ chassisNo: dmsVehicleStockTable.chassisNo, cost: dmsVehicleStockTable.costAmount })
+        .from(dmsVehicleStockTable)
+        .where(
+          and(
+            eq(dmsVehicleStockTable.showroomId, move.fromShowroomId),
+            inArray(dmsVehicleStockTable.chassisNo, chassisNos),
+          ),
+        );
+      cost = round2(units.reduce((a, u) => a + n(u.cost), 0));
+      const missing = chassisNos.filter((c) => !units.some((u) => u.chassisNo === c));
+      if (missing.length > 0) {
+        warnings.push(
+          `${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} not in the sending outlet's stock with a cost against ${missing.length === 1 ? "it" : "them"}, ` +
+            "so the transfer is posted without relieving inventory for them. Until it is, the whole transfer value reads as margin.",
+        );
+      }
+    }
+
+    const receivedFy = financialYearOf(receivedDate);
+
+    // ── The sending registration: a supply ────────────────────────────────
+    const outLines: Line[] = [
       {
         accountCode: "1100",
-        debit: round2(value + tax),
+        debit: gross,
         credit: 0,
         narration: `Branch transfer out on ${move.challanNo}`,
+        partyId: buyer.id,
+        partyName: buyer.name,
+        partyGstin: buyer.gstin,
       },
       { accountCode: "4100", debit: 0, credit: value, narration: "Branch transfer", taxRatePct: rate },
     ];
-    if (cgst > 0) vlines.push({ accountCode: "2200", debit: 0, credit: cgst });
-    if (sgst > 0) vlines.push({ accountCode: "2210", debit: 0, credit: sgst });
-    if (igst > 0) vlines.push({ accountCode: "2220", debit: 0, credit: igst });
+    if (cgst > 0) outLines.push({ accountCode: "2200", debit: 0, credit: cgst, taxRatePct: rate / 2 });
+    if (sgst > 0) outLines.push({ accountCode: "2210", debit: 0, credit: sgst, taxRatePct: rate / 2 });
+    if (igst > 0) outLines.push({ accountCode: "2220", debit: 0, credit: igst, taxRatePct: rate });
+    if (cost > 0) {
+      outLines.push({ accountCode: "5100", debit: cost, credit: 0, narration: "Cost of stock transferred out" });
+      outLines.push({ accountCode: "1200", debit: 0, credit: cost, narration: chassisNos.join(", ") });
+    }
 
-    const fy = financialYearOf(receivedDate);
-    const voucherNo = await nextVoucherNo(input.ownerId, "SALES", fy);
-    const totalDebit = round2(vlines.reduce((a, l) => a + l.debit, 0));
-    const totalCredit = round2(vlines.reduce((a, l) => a + l.credit, 0));
+    const outVoucher = await postTransferLeg({
+      ownerId: input.ownerId,
+      showroomId: move.fromShowroomId,
+      kind: "SALES",
+      sourceKind: "STOCK_TRANSFER_OUT",
+      sourceId: move.id,
+      voucherDate: receivedDate,
+      financialYear: receivedFy,
+      narration: `Branch transfer ${move.challanNo} — ${from.registration.gstin} to ${to.registration.gstin}`,
+      warning:
+        "This transfer crossed two GST registrations, which GST treats as two persons, so it is a taxable supply and has been posted as one.",
+      lines: outLines,
+      need,
+      userId: input.userId ?? null,
+    });
+    if (!outVoucher.ok) return { ok: false, error: outVoucher.error, warnings };
 
-    const [voucher] = await db
-      .insert(vouchersTable)
-      .values({
-        ownerId: input.ownerId,
-        showroomId: move.fromShowroomId,
-        kind: "SALES",
-        voucherNo,
-        voucherDate: receivedDate,
-        financialYear: fy,
-        narration: `Branch transfer ${move.challanNo} — ${from.registration.gstin} to ${to.registration.gstin}`,
-        sourceKind: "MANUAL",
-        sourceId: null,
-        totalDebit: money(totalDebit),
-        totalCredit: money(totalCredit),
-        warnings: [
-          "This transfer crossed two GST registrations, which GST treats as two persons, so it is a taxable supply and has been posted as one.",
-        ],
-        postedByUserId: input.userId ?? null,
-      })
-      .returning();
+    // ── The receiving registration: a purchase, with the credit ───────────
+    const inLines: Line[] = [
+      { accountCode: "1200", debit: value, credit: 0, narration: chassisNos.join(", ") || "Branch transfer in" },
+    ];
+    if (cgst > 0) inLines.push({ accountCode: "1600", debit: cgst, credit: 0, taxRatePct: rate / 2 });
+    if (sgst > 0) inLines.push({ accountCode: "1610", debit: sgst, credit: 0, taxRatePct: rate / 2 });
+    if (igst > 0) inLines.push({ accountCode: "1620", debit: igst, credit: 0, taxRatePct: rate });
+    inLines.push({
+      accountCode: "2100",
+      debit: 0,
+      credit: gross,
+      narration: `Branch transfer in on ${move.challanNo}`,
+      partyId: seller.id,
+      partyName: seller.name,
+      partyGstin: seller.gstin,
+    });
 
-    await db.insert(voucherLinesTable).values(
-      vlines.map((l, i) => {
-        const a = need(l.accountCode);
-        return {
-          voucherId: voucher!.id,
-          seq: i + 1,
-          accountId: a.id,
-          accountCode: a.code,
-          accountName: a.name,
-          debit: money(l.debit),
-          credit: money(l.credit),
-          narration: l.narration ?? null,
-          taxRatePct: l.taxRatePct == null ? null : String(l.taxRatePct),
-        };
-      }),
-    );
-    voucherId = voucher!.id;
+    const inVoucher = await postTransferLeg({
+      ownerId: input.ownerId,
+      showroomId: move.toShowroomId,
+      kind: "PURCHASE",
+      sourceKind: "STOCK_TRANSFER_IN",
+      sourceId: move.id,
+      voucherDate: receivedDate,
+      financialYear: receivedFy,
+      narration: `Branch transfer ${move.challanNo} in — from ${from.registration.gstin}`,
+      warning:
+        `Input tax of ₹${round2(cgst + sgst + igst).toFixed(2)} on this transfer is claimable by ${to.registration.gstin}. ` +
+        "It is a real supply from another registration, so the credit is real too.",
+      lines: inLines,
+      need,
+      userId: input.userId ?? null,
+    });
+    if (!inVoucher.ok) return { ok: false, error: inVoucher.error, warnings };
+
+    /*
+     * The two bills, so the two registrations can actually settle with each other.
+     * Without them the balance is a figure in a control account that nobody can
+     * age, chase or pay, which is what a subsidiary ledger is for (R-111).
+     */
+    await openBill({
+      ownerId: input.ownerId,
+      partyId: buyer.id,
+      showroomId: move.fromShowroomId,
+      direction: "RECEIVABLE",
+      billNo: move.challanNo,
+      billDate: receivedDate,
+      dueDate: null,
+      amount: gross,
+      sourceKind: "STOCK_TRANSFER_OUT",
+      sourceId: move.id,
+    });
+    await openBill({
+      ownerId: input.ownerId,
+      partyId: seller.id,
+      showroomId: move.toShowroomId,
+      direction: "PAYABLE",
+      billNo: move.challanNo,
+      billDate: receivedDate,
+      dueDate: null,
+      amount: gross,
+      sourceKind: "STOCK_TRANSFER_IN",
+      sourceId: move.id,
+    });
+
+    voucherId = outVoucher.voucherId;
     warnings.push(
-      `${move.challanNo} moved stock between two GST registrations, so it is a taxable supply and voucher ${voucherNo} has been posted for it.`,
+      `${move.challanNo} moved stock between two GST registrations, so it is a taxable supply. ` +
+        `Voucher ${outVoucher.voucherNo} posts it at ${from.registration.gstin} and ${inVoucher.voucherNo} posts the purchase and the input credit at ${to.registration.gstin}.`,
     );
   }
 
@@ -979,3 +1124,99 @@ export async function negativeShelves(input: {
 }
 
 export { taxWithin };
+
+/**
+ * One leg of a cross-registration transfer, posted and balanced.
+ *
+ * Its own function because the two legs are the same shape — build lines, check
+ * they balance, insert the voucher, insert the lines — and two copies of that is
+ * how one leg quietly stops matching the other. The balance check is here rather
+ * than at the call sites for the same reason: an unbalanced entry in a set of
+ * books is not something to warn about.
+ *
+ * `sourceKind` differs per leg (`..._OUT` and `..._IN`) so both can name the same
+ * challan while `vouchers_source_unique` still refuses a second posting of either
+ * (R-101). One shared kind would have made the second leg collide with the first.
+ */
+async function postTransferLeg(input: {
+  ownerId: number;
+  showroomId: number;
+  kind: "SALES" | "PURCHASE";
+  sourceKind: "STOCK_TRANSFER_OUT" | "STOCK_TRANSFER_IN";
+  sourceId: number;
+  voucherDate: string;
+  financialYear: string;
+  narration: string;
+  warning: string;
+  lines: Line[];
+  need: (code: string) => LedgerAccountRow;
+  userId: number | null;
+}): Promise<
+  | { ok: true; voucherId: number; voucherNo: string }
+  | { ok: false; error: string }
+> {
+  const totalDebit = round2(input.lines.reduce((a, l) => a + l.debit, 0));
+  const totalCredit = round2(input.lines.reduce((a, l) => a + l.credit, 0));
+  if (Math.abs(totalDebit - totalCredit) > 0.005) {
+    return {
+      ok: false,
+      error:
+        `This transfer does not balance on the ${input.sourceKind === "STOCK_TRANSFER_OUT" ? "sending" : "receiving"} side: ` +
+        `debits ₹${totalDebit.toFixed(2)} against credits ₹${totalCredit.toFixed(2)}. Nothing has been posted.`,
+    };
+  }
+
+  const voucherNo = await nextVoucherNo(input.ownerId, input.kind, input.financialYear);
+
+  let voucher: typeof vouchersTable.$inferSelect | undefined;
+  try {
+    [voucher] = await db
+      .insert(vouchersTable)
+      .values({
+        ownerId: input.ownerId,
+        showroomId: input.showroomId,
+        kind: input.kind,
+        voucherNo,
+        voucherDate: input.voucherDate,
+        financialYear: input.financialYear,
+        narration: input.narration,
+        sourceKind: input.sourceKind,
+        sourceId: input.sourceId,
+        totalDebit: money(totalDebit),
+        totalCredit: money(totalCredit),
+        warnings: [input.warning],
+        postedByUserId: input.userId,
+      })
+      .returning();
+  } catch (err) {
+    const refusal = postingRefusal(
+      err,
+      "This transfer has already been posted on that side. Correcting it means reversing the voucher and receiving again — a posted voucher is never edited.",
+    );
+    if (refusal) return { ok: false, error: refusal };
+    throw err;
+  }
+
+  await db.insert(voucherLinesTable).values(
+    input.lines.map((l, i) => {
+      const a = input.need(l.accountCode);
+      return {
+        voucherId: voucher!.id,
+        seq: i + 1,
+        accountId: a.id,
+        accountCode: a.code,
+        accountName: a.name,
+        debit: money(l.debit),
+        credit: money(l.credit),
+        narration: l.narration ?? null,
+        partyId: l.partyId ?? null,
+        partyName: l.partyName ?? null,
+        partyGstin: l.partyGstin ?? null,
+        hsn: l.hsn ?? null,
+        taxRatePct: l.taxRatePct == null ? null : String(l.taxRatePct),
+      };
+    }),
+  );
+
+  return { ok: true, voucherId: voucher!.id, voucherNo };
+}

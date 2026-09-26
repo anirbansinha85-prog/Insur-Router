@@ -520,8 +520,33 @@ export async function nextVoucherNo(
   kind: "SALES" | "PURCHASE" | "RECEIPT" | "PAYMENT" | "JOURNAL" | "CREDIT_NOTE",
   financialYear: string,
 ): Promise<string> {
-  const [last] = await db
-    .select({ no: vouchersTable.voucherNo })
+  /*
+   * **The highest number, arithmetically, over the rows that are in the series.**
+   *
+   * This ordered by `length(voucher_no)` and then by the text, which is a correct
+   * way to compare integers held as strings and a wrong way to find a maximum
+   * once anything in the column is not an integer. A voucher numbered
+   * `AUDIT-SEPTEMBER-1` — seventeen characters — won that ordering outright, the
+   * digits were stripped to `1`, and the next number came back as **2**, which
+   * already existed. `vouchers_owner_no_unique` then refused it, as it should,
+   * and went on refusing: the series was jammed for that kind and year for ever,
+   * and every journal, reversal and floor-plan posting after it failed.
+   *
+   * Four verifiers went red at once on exactly that, and the one that had put the
+   * odd number there could no longer clean it up, because cleaning up needed a
+   * posting. A dealership numbering its own journals `JV/2026-27/0001` would have
+   * hit it on the first entry.
+   *
+   * So the series is the rows that **look like a series** — `^[0-9]+$` — compared
+   * as numbers, and a prefixed number sits outside it rather than steering it.
+   * `coalesce(max(...), 0) + 1` also removes the read-then-branch on whether any
+   * row existed.
+   */
+  const [row] = await db
+    .select({
+      next: sql<string>`coalesce(max(case when ${vouchersTable.voucherNo} ~ '^[0-9]+$'
+                                          then ${vouchersTable.voucherNo}::bigint end), 0) + 1`,
+    })
     .from(vouchersTable)
     .where(
       and(
@@ -529,12 +554,9 @@ export async function nextVoucherNo(
         eq(vouchersTable.kind, kind),
         eq(vouchersTable.financialYear, financialYear),
       ),
-    )
-    .orderBy(desc(sql`length(${vouchersTable.voucherNo})`), desc(vouchersTable.voucherNo))
-    .limit(1);
+    );
 
-  const next = last ? Number(last.no.replace(/\D/g, "")) + 1 : 1;
-  return String(next);
+  return String(row?.next ?? 1);
 }
 
 /**
@@ -841,4 +863,42 @@ export function postingRefusal(err: unknown, duplicate?: string): string | null 
   if (cause.code === "23514" && !cause.constraint && cause.message) return cause.message;
   if (cause.code === "23505" && duplicate) return duplicate;
   return null;
+}
+
+/**
+ * The voucher a sale document is posted as, if it is posted.
+ *
+ * `status` is in the filter rather than checked afterwards, because a document
+ * posted, reversed and posted again has several vouchers and only one of them is
+ * standing. Every caller that wants *the* voucher for a document wants that one.
+ *
+ * Returns a `PostResult` rather than a row so that it reads interchangeably with
+ * `postSaleDocument` at a call site whose question is **which voucher is this
+ * document in the books as** — which, now that issuing posts, is what most of
+ * those call sites were actually asking.
+ */
+export async function postedVoucherFor(input: {
+  ownerId: number;
+  documentId: number;
+}): Promise<PostResult> {
+  const [voucher] = await db
+    .select()
+    .from(vouchersTable)
+    .where(
+      and(
+        eq(vouchersTable.ownerId, input.ownerId),
+        eq(vouchersTable.sourceKind, "SALE_DOCUMENT"),
+        eq(vouchersTable.sourceId, input.documentId),
+        eq(vouchersTable.status, "POSTED"),
+      ),
+    );
+
+  if (!voucher) {
+    return {
+      ok: false,
+      error: `Document ${input.documentId} is not in the books. Issuing posts it, so either the posting was refused — a closed period is the ordinary reason — or it has been reversed.`,
+      warnings: [],
+    };
+  }
+  return { ok: true, voucher, warnings: voucher.warnings ?? [] };
 }

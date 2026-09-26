@@ -156,6 +156,20 @@ export const vouchersTable = pgTable(
         // below only covers rows that name their source, so the one document
         // type that did not name one could post twice for ever.
         "SERVICE_INVOICE",
+        /*
+         * A challan crossing two GST registrations, which is two postings from
+         * one document (R-117): the sending registration makes a supply and the
+         * receiving one makes a purchase. Two source kinds rather than one,
+         * because `vouchers_source_unique` is on `(sourceKind, sourceId)` and one
+         * kind would make the second leg collide with the first — which is how a
+         * transfer that booked both sides would have refused to book either.
+         *
+         * Before this, the supply posted as `MANUAL` with a null source, so it
+         * was outside the index entirely and a retried receive posted the sale
+         * again.
+         */
+        "STOCK_TRANSFER_OUT",
+        "STOCK_TRANSFER_IN",
         "MANUAL",
       ],
     }).notNull(),

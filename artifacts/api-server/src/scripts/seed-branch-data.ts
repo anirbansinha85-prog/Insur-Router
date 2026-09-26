@@ -79,7 +79,7 @@ import {
   despatchStockMove,
   receiveStockMove,
 } from "../lib/dms/ledger/moves";
-import { postSaleDocument } from "../lib/dms/ledger/post";
+import { postedVoucherFor, postSaleDocument } from "../lib/dms/ledger/post";
 import { recordMoney, closeDay } from "../lib/dms/ledger/money";
 import { issueServiceInvoice } from "../lib/dms/ledger/service";
 import { generateDocument } from "../lib/dms/invoice";
@@ -684,7 +684,10 @@ async function main(): Promise<void> {
       console.log(`  sale         ${s.branch} ${s.date} refused — ${doc.error}`);
       continue;
     }
-    const posted = await postSaleDocument({ ownerId: OWNER, documentId: doc.document.id, userId: 1 });
+    // Issuing posts it (R-101), so the question here is which voucher it is in the
+    // books as, not whether to put it there. Asserting on this is what fails if
+    // posting-on-issue is ever taken back out.
+    const posted = await postedVoucherFor({ ownerId: OWNER, documentId: doc.document.id });
     if (!posted.ok) {
       console.log(`  sale         ${doc.document.reference} not posted — ${posted.error}`);
       continue;

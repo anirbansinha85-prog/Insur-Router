@@ -82,7 +82,26 @@ export const partiesTable = pgTable(
      *   GOVERNMENT the RTO. Road tax collected is theirs, never ours (R-103).
      */
     kind: text("kind", {
-      enum: ["CUSTOMER", "SUPPLIER", "OEM", "FINANCIER", "INSURER", "GOVERNMENT"],
+      enum: [
+        "CUSTOMER",
+        "SUPPLIER",
+        "OEM",
+        "FINANCIER",
+        "INSURER",
+        "GOVERNMENT",
+        /*
+         * A sister GST registration in the same group (R-117).
+         *
+         * Stock crossing between two registrations is a taxable supply, so it
+         * creates a debt one way and a credit the other — and a debt with no
+         * ledger behind it can never be matched or settled, which is what the
+         * transfer posting left on `1100` before this existed. One party per
+         * counterparty registration rather than a CUSTOMER and a SUPPLIER for the
+         * same branch: the direction belongs on the bill, and two rows for one
+         * counterparty is how two balances for one relationship start.
+         */
+        "BRANCH",
+      ],
     }).notNull(),
 
     name: text("name").notNull(),
@@ -192,7 +211,15 @@ export const partyBillsTable = pgTable(
     outstanding: numeric("outstanding", { precision: 14, scale: 2 }).notNull(),
 
     sourceKind: text("source_kind", {
-      enum: ["SALE_DOCUMENT", "PURCHASE_INVOICE", "OPENING", "MANUAL"],
+      enum: [
+        "SALE_DOCUMENT",
+        "PURCHASE_INVOICE",
+        "OPENING",
+        // Both halves of a cross-registration transfer, which owe each other.
+        "STOCK_TRANSFER_OUT",
+        "STOCK_TRANSFER_IN",
+        "MANUAL",
+      ],
     }).notNull(),
     sourceId: integer("source_id"),
 

@@ -48,7 +48,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { ensureParty } from "../lib/dms/ledger/parties";
 import { createPurchaseInvoice, postPurchaseInvoice } from "../lib/dms/ledger/purchase";
 import { postOpeningBalances } from "../lib/dms/ledger/opening";
-import { postSaleDocument } from "../lib/dms/ledger/post";
+import { postedVoucherFor, postSaleDocument } from "../lib/dms/ledger/post";
 import { recordMoney } from "../lib/dms/ledger/money";
 import { generateDocument } from "../lib/dms/invoice";
 import { loadPolicy } from "../lib/dms/policy";
@@ -283,7 +283,10 @@ const sale = await generateDocument({
   policy,
 });
 if (!sale.ok) throw new Error(sale.error);
-const salePost = await postSaleDocument({ ownerId: OWNER, documentId: sale.document.id, userId: 1 });
+// Issuing posts it (R-101), so the question here is which voucher it is in the
+// books as, not whether to put it there. Asserting on this is what fails if
+// posting-on-issue is ever taken back out.
+const salePost = await postedVoucherFor({ ownerId: OWNER, documentId: sale.document.id });
 check("a sale posts", salePost.ok, salePost.ok ? sale.document.reference : salePost.error!);
 for (const w of salePost.warnings) console.log(`      warning: ${w}`);
 

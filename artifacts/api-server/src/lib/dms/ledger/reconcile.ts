@@ -630,14 +630,33 @@ export async function reconcileGstr3b(input: ReconcileInput): Promise<Reconcilia
       "No outlet files under this registration, so there is no return to check.",
     );
 
-  const [summary, detail] = await Promise.all([
-    gstr3bFor({
-      ownerId: input.ownerId,
-      registrationId: input.registrationId,
-      period: input.period,
-    }),
-    gstr1For({ ownerId: input.ownerId, showroomIds: branchIds, period: input.period }),
-  ]);
+  /*
+   * `gstr3bFor` throws if the registration is not there, and this is gathered by
+   * `reconcileAll` alongside nine others. One stale id would take the whole
+   * reconciliation screen down with a 500 rather than showing the nine that ran —
+   * the same shape as the rule pass that one bad record could end (Wave 1). So the
+   * refusal is caught and reported as a check that could not run, which is what
+   * `empty` is for and what the screen can actually show.
+   */
+  let summary: Awaited<ReturnType<typeof gstr3bFor>>;
+  let detail: Awaited<ReturnType<typeof gstr1For>>;
+  try {
+    [summary, detail] = await Promise.all([
+      gstr3bFor({
+        ownerId: input.ownerId,
+        registrationId: input.registrationId,
+        period: input.period,
+      }),
+      gstr1For({ ownerId: input.ownerId, showroomIds: branchIds, period: input.period }),
+    ]);
+  } catch (err) {
+    return empty(
+      "GSTR3B",
+      "GSTR-3B against GSTR-1",
+      "the summary against the invoice-wise return",
+      err instanceof Error ? err.message : "The summary return could not be built.",
+    );
+  }
 
   const d = {
     taxable: round2(detail.totals.taxableValue),

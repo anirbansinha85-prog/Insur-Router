@@ -47,7 +47,7 @@ import {
   vouchersTable,
   type SaleDocumentRow,
 } from "@workspace/db";
-import { reverseVoucher } from "../ledger/post";
+import { postedVoucherFor, postSaleDocument, reverseVoucher } from "../ledger/post";
 import { logger } from "../../logger";
 import { may, whyNot } from "../permissions";
 import type { ResolvedPolicy } from "../policy";
@@ -456,6 +456,53 @@ export async function generateDocument(input: GenerateInput): Promise<GenerateRe
     "Sale document issued",
   );
 
+  /*
+   * **And it goes into the books now, not when somebody remembers.**
+   *
+   * `postSaleDocument` had exactly one caller: a route behind a button. So every
+   * invoice a dealership issued sat unposted until a person pressed post, once
+   * per invoice, and a dealership doing forty units a month had forty chances to
+   * forget. `ledgerSnapshot` has counted `unpostedSaleDocuments` all along — a
+   * number that could only grow, reported to nobody who was required to act on
+   * it. A ledger that lags the invoices is not a second version of the truth, it
+   * is the absence of one, and every figure drawn off it is wrong by however many
+   * invoices are outstanding.
+   *
+   * ## A failure to post does not withdraw the invoice
+   *
+   * The sale happened, the customer has the document and the number is spent. If
+   * the books will not take it — a closed period is the ordinary reason — the
+   * posting is refused and the document stands, with the refusal in the warnings
+   * in the words the database used. The `/dms/ledger/post` route is then how it is
+   * posted once the period is reopened, which is what that route is now for.
+   *
+   * Idempotent through `vouchers_source_unique` rather than through a check here,
+   * so posting it again from the route after a retry cannot double it (R-101).
+   *
+   * Only a document that creates a debt posts. A quotation is a price somebody was
+   * told and a proforma is a request for payment; `postSaleDocument` refuses both,
+   * and asking it to would put a refusal in the warnings of every quotation.
+   */
+  if (decision.kind === "TAX_INVOICE" || decision.kind === "SALE_CONFIRMATION") {
+    const posted = await postSaleDocument({
+      ownerId: input.ownerId,
+      documentId: row!.id,
+      userId: input.userId,
+    });
+    if (posted.ok) {
+      warnings.push(...posted.warnings);
+    } else {
+      warnings.push(
+        `This document is issued but is **not yet in the books**: ${posted.error} ` +
+          "The invoice stands and its number is spent; post it from the ledger once that is resolved.",
+      );
+      logger.warn(
+        { reference, documentId: row!.id, error: posted.error },
+        "Sale document issued but not posted",
+      );
+    }
+  }
+
   return { ok: true, document: row!, warnings };
 }
 
@@ -514,24 +561,11 @@ export async function cancelDocument(input: {
 
   const warnings: string[] = [];
 
-  /*
-   * The live voucher for this document, if it was ever posted. `status` is in the
-   * filter rather than checked afterwards because a document posted, reversed and
-   * posted again has several vouchers and only one of them is standing.
-   */
-  const [posted] = await db
-    .select({ id: vouchersTable.id, voucherNo: vouchersTable.voucherNo })
-    .from(vouchersTable)
-    .where(
-      and(
-        eq(vouchersTable.ownerId, input.ownerId),
-        eq(vouchersTable.sourceKind, "SALE_DOCUMENT"),
-        eq(vouchersTable.sourceId, input.id),
-        eq(vouchersTable.status, "POSTED"),
-      ),
-    );
+  // The live voucher for this document, if it is in the books at all.
+  const found = await postedVoucherFor({ ownerId: input.ownerId, documentId: input.id });
 
-  if (posted) {
+  if (found.ok) {
+    const posted = found.voucher!;
     const undone = await reverseVoucher({
       ownerId: input.ownerId,
       voucherId: posted.id,
@@ -562,7 +596,7 @@ export async function cancelDocument(input: {
   if (!row) return { ok: false, status: 404, error: "No such document." };
 
   logger.info(
-    { ownerId: input.ownerId, documentId: input.id, reference: row.reference, reversed: Boolean(posted) },
+    { ownerId: input.ownerId, documentId: input.id, reference: row.reference, reversed: found.ok },
     "Sale document cancelled",
   );
   return { ok: true, document: row, warnings };

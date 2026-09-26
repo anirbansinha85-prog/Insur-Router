@@ -36,7 +36,7 @@ import {
   journeyStepsTable,
   dmsDealsTable,
 } from "@workspace/db";
-import { and, asc, eq, inArray, desc } from "drizzle-orm";
+import { and, asc, eq, inArray, desc, sql } from "drizzle-orm";
 import {
   generateDocument,
   cancelDocument,
@@ -428,10 +428,36 @@ if (second) {
   });
   if (!taxDoc.ok) throw new Error(`tax invoice refused: ${taxDoc.error}`);
   console.log(`      ${taxDoc.document.taxInvoiceNo}  (${taxDoc.document.kind})`);
+  /*
+   * **One more than whatever the series was on**, not the number one.
+   *
+   * This asserted `INV/…/00001`, which is a claim about the table being empty
+   * rather than about the series being sequential. `reset` only takes back the
+   * documents this file issued, so any tax invoice left anywhere else in the
+   * suite — by a run that failed before its own cleanup, for instance — turned
+   * this red for a reason that had nothing to do with numbering. It cost a whole
+   * suite run to work that out.
+   *
+   * Reading the high-water mark first and asserting the increment tests what the
+   * check is named for, and keeps testing it on a dealership with four hundred
+   * invoices already in the book.
+   */
+  const prefix = `INV/${financialYear(onDate)}/`;
+  const [highest] = await ownerDb
+    .select({ last: sql<string | null>`max(${saleDocumentsTable.taxInvoiceNo})` })
+    .from(saleDocumentsTable)
+    .where(
+      and(
+        eq(saleDocumentsTable.ownerId, OWNER),
+        sql`${saleDocumentsTable.taxInvoiceNo} like ${prefix + "%"}`,
+        sql`${saleDocumentsTable.id} <> ${taxDoc.document.id}`,
+      ),
+    );
+  const before = highest?.last ? Number(highest.last.slice(prefix.length)) : 0;
   check(
     "it drew a number from the sequential series",
-    taxDoc.document.taxInvoiceNo === `INV/${financialYear(onDate)}/00001`,
-    taxDoc.document.taxInvoiceNo ?? "none",
+    taxDoc.document.taxInvoiceNo === `${prefix}${String(before + 1).padStart(5, "0")}`,
+    `${taxDoc.document.taxInvoiceNo ?? "none"} — the series stood at ${String(before).padStart(5, "0")}`,
   );
   check("the financial year is April to March", financialYear("2026-03-31") === "2526" && financialYear("2026-04-01") === "2627");
 }
