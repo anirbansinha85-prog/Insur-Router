@@ -23,10 +23,22 @@
  * Several of them already exist in the module that owns the data — `inTransit`
  * is the first, `stockPositionCheck` the second, `controlAccountCheck` and
  * `ageing` the third, `dayCloseDifferences` the fourth, `inputCreditAtRisk` the
- * tenth's first half, `returnAgainstBooks` the ninth. **This file does not
- * reimplement them**; it gathers them, because a reconciliation screen that
- * computed its own version of a figure the module already computes would be the
- * ninth reconciliation's problem arriving through the front door.
+ * tenth's first half. **This file does not reimplement them**; it gathers them,
+ * because a reconciliation screen that computed its own version of a figure the
+ * module already computes would be the ninth reconciliation's problem arriving
+ * through the front door.
+ *
+ * ## The eighth and the ninth are the exception, and it is deliberate
+ *
+ * Both used to gather `returnAgainstBooks`, which builds GSTR-3B and compares it
+ * with the ledger — so the check called *GSTR-1 against the books* never read
+ * GSTR-1, and the one called *3B against GSTR-1* was the same function under a
+ * second name. Two titles, one tautology, and every GSTR-1 defect invisible to
+ * the control written to catch it.
+ *
+ * They now call `gstr1For` and `gstr3bFor` — the functions the downloads
+ * themselves use — so what is compared is the file that would be filed. That is
+ * still gathering rather than reimplementing; it is gathering the *right* thing.
  */
 
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
@@ -48,7 +60,11 @@ import { inTransit, stockPositionCheck, negativeShelves } from "./moves";
 import { ageing, controlAccountCheck } from "./parties";
 import { dayCloseDifferences } from "./money";
 import { inputCreditAtRisk } from "./purchase";
-import { returnAgainstBooks, monthRange } from "./returns3b";
+import { gstr3bFor, monthRange } from "./returns3b";
+import { gstr1For } from "./returns";
+
+/** Whole paise, so a comparison is never decided by a float. */
+const paise = (x: number): number => Math.round(x * 100);
 import { warrantyClaimable } from "./service";
 
 const n = (v: string | number | null | undefined): number =>
@@ -449,7 +465,22 @@ export async function reconcileOem(input: ReconcileInput): Promise<Reconciliatio
   };
 }
 
-/** 8 — GSTR-1 against the sales register against the books. */
+/**
+ * 8 — **the GSTR-1 file itself** against the books, head by head.
+ *
+ * This called `returnAgainstBooks`, which builds GSTR-**3B** and compares that
+ * with the ledger. So the check named *GSTR-1 against the books* never once
+ * looked at GSTR-1. Every defect in that export was invisible to the control
+ * written to catch it: a reversed sale reported at full value, an invoice value
+ * carrying the cost of goods sold, and every service invoice missing. Nine did
+ * the same thing with a different title, so the two together were one tautology
+ * printed twice.
+ *
+ * Now it runs `gstr1For` — the same function the download produces its CSV from —
+ * and compares the file that would be filed with the ledger it came from. Taxable
+ * value is compared as well as tax, because a return can carry the right tax on
+ * the wrong turnover when a rate is misread, and the tax heads alone would agree.
+ */
 export async function reconcileGstr1(input: ReconcileInput): Promise<Reconciliation> {
   if (!input.registrationId)
     return empty(
@@ -459,33 +490,128 @@ export async function reconcileGstr1(input: ReconcileInput): Promise<Reconciliat
       "A return is filed per GSTIN, so this needs a registration rather than a company.",
     );
 
-  const heads = await returnAgainstBooks({
+  const branchIds = await branchesOfRegistration(input.registrationId);
+  if (branchIds.length === 0)
+    return empty(
+      "GSTR1",
+      "GSTR-1 against the books",
+      "the return against the sales register against the ledger",
+      "No outlet files under this registration, so there is no return to check.",
+    );
+
+  const gstr1 = await gstr1For({
     ownerId: input.ownerId,
-    registrationId: input.registrationId,
+    showroomIds: branchIds,
     period: input.period,
   });
+
+  const { from, to } = monthRange(input.period);
+  const books = await db
+    .select({
+      accountCode: voucherLinesTable.accountCode,
+      net: sql<string>`sum(${voucherLinesTable.credit}::numeric - ${voucherLinesTable.debit}::numeric)`,
+    })
+    .from(voucherLinesTable)
+    .innerJoin(vouchersTable, eq(voucherLinesTable.voucherId, vouchersTable.id))
+    .where(
+      and(
+        eq(vouchersTable.ownerId, input.ownerId),
+        eq(vouchersTable.status, "POSTED"),
+        eq(vouchersTable.kind, "SALES"),
+        inArray(vouchersTable.showroomId, branchIds),
+        inArray(voucherLinesTable.accountCode, [
+          "2200",
+          "2210",
+          "2220",
+          "2230",
+          "4100",
+          "4200",
+          "4300",
+          "4400",
+        ]),
+        sql`${vouchersTable.voucherDate}::text >= ${from}`,
+        sql`${vouchersTable.voucherDate}::text <= ${to}`,
+      ),
+    )
+    .groupBy(voucherLinesTable.accountCode);
+
+  const ledger = new Map(books.map((r) => [r.accountCode, n(r.net)]));
+  const at = (...codes: string[]): number =>
+    round2(codes.reduce((a, c) => a + (ledger.get(c) ?? 0), 0));
+
+  /*
+   * The return's own totals, added up the way the portal adds them: the tax heads
+   * come off the rows that will be filed rather than off a second query, so a row
+   * dropped between the ledger and the file is exactly what this finds.
+   */
+  const filedTax = round2(
+    [...gstr1.b2b, ...gstr1.hsn].length === 0
+      ? 0
+      : gstr1.hsn.reduce((a, h) => a + h.centralTax + h.stateTax + h.integratedTax + h.cess, 0),
+  );
+  const filedTaxable = round2(gstr1.totals.taxableValue);
+
+  const heads: Array<{ head: string; ret: number; books: number }> = [
+    ["Taxable value", filedTaxable, at("4100", "4200", "4300", "4400")],
+    ["Output CGST", round2(gstr1.hsn.reduce((a, h) => a + h.centralTax, 0)), at("2200")],
+    ["Output SGST", round2(gstr1.hsn.reduce((a, h) => a + h.stateTax, 0)), at("2210")],
+    ["Output IGST", round2(gstr1.hsn.reduce((a, h) => a + h.integratedTax, 0)), at("2220")],
+    ["Output Cess", round2(gstr1.hsn.reduce((a, h) => a + h.cess, 0)), at("2230")],
+  ].map(([head, ret, bk]) => ({ head: head as string, ret: ret as number, books: bk as number }));
+
+  const rows = heads
+    .map((h) => ({ ...h, difference: round2(h.ret - h.books) }))
+    .filter((h) => paise(h.difference) !== 0);
+
+  /*
+   * A problem the return itself raised is a finding here too. `gstr1For` names
+   * every invoice it could not report properly, and a reconciliation that showed
+   * a clean tie while the file carried eleven unreportable rows would be the same
+   * kind of lie this check was written to stop telling.
+   */
+  const problemRows = gstr1.problems.map((p) => ({
+    ref: "Not lodgeable",
+    detail: p,
+    amount: null,
+  }));
 
   return {
     key: "GSTR1",
     title: "GSTR-1 against the books",
-    compares: "what the return reports against what the ledger holds, tax head by tax head",
+    compares: "the GSTR-1 file that would be filed against the sales the ledger holds, head by head",
     ran: true,
-    clean: heads.agrees,
-    rows: heads.heads
-      .filter((h) => h.difference !== 0)
-      .map((h) => ({
+    clean: rows.length === 0 && gstr1.problems.length === 0,
+    rows: [
+      ...rows.map((h) => ({
         ref: h.head,
-        detail: `return ₹${h.return.toFixed(2)} against books ₹${h.books.toFixed(2)}`,
+        detail: `return ₹${h.ret.toFixed(2)} against books ₹${h.books.toFixed(2)}`,
         amount: h.difference,
       })),
-    total: round2(heads.heads.reduce((a, h) => a + Math.abs(h.difference), 0)),
-    note: heads.agrees
-      ? null
-      : "Head by head, because two errors of opposite sign in CGST and SGST net to zero and are individually wrong.",
+      ...problemRows,
+    ],
+    total: round2(rows.reduce((a, h) => a + Math.abs(h.difference), 0)),
+    note:
+      rows.length === 0 && gstr1.problems.length === 0
+        ? `${gstr1.totals.invoices} invoice(s) totalling ₹${filedTaxable.toLocaleString("en-IN")} of turnover and ₹${filedTax.toLocaleString("en-IN")} of tax, and the file ties to the ledger head by head.`
+        : "Head by head, because two errors of opposite sign in CGST and SGST net to zero and are individually wrong. " +
+          "Both sides are now genuinely different reads — the file the portal would receive, against the vouchers it was built from.",
   };
 }
 
-/** 9 — GSTR-3B against GSTR-1 and the ledger, including the tax actually paid. */
+/**
+ * 9 — **GSTR-3B against GSTR-1**, which is the comparison the department makes.
+ *
+ * Also `returnAgainstBooks` before this, so eight and nine returned the same
+ * numbers from the same function and neither compared the two returns. The
+ * department does compare them, automatically, and issues a notice on a
+ * difference — so a control that claimed to be that comparison and was not is
+ * worse than no control, because somebody was relying on it.
+ *
+ * Both returns are still built from one ledger, so this cannot catch a figure
+ * typed into the portal by hand. What it does catch is the two exports
+ * disagreeing about the same month, which is exactly what they did: 3B excluded a
+ * reversed sale and 1 reported it.
+ */
 export async function reconcileGstr3b(input: ReconcileInput): Promise<Reconciliation> {
   if (!input.registrationId)
     return empty(
@@ -495,55 +621,80 @@ export async function reconcileGstr3b(input: ReconcileInput): Promise<Reconcilia
       "A return is filed per GSTIN.",
     );
 
-  const heads = await returnAgainstBooks({
-    ownerId: input.ownerId,
-    registrationId: input.registrationId,
-    period: input.period,
-  });
-
-  /*
-   * The department compares 3B against 1 automatically and issues a notice on a
-   * difference, so this is the last chance to find one first. Both are drawn
-   * from the same ledger here, which means this check confirms the *arithmetic*
-   * rather than the sources - and it says so, because a check that overstates
-   * its own reach is worse than one that admits its limit.
-   */
   const branchIds = await branchesOfRegistration(input.registrationId);
+  if (branchIds.length === 0)
+    return empty(
+      "GSTR3B",
+      "GSTR-3B against GSTR-1",
+      "the summary against the invoice-wise return",
+      "No outlet files under this registration, so there is no return to check.",
+    );
+
+  const [summary, detail] = await Promise.all([
+    gstr3bFor({
+      ownerId: input.ownerId,
+      registrationId: input.registrationId,
+      period: input.period,
+    }),
+    gstr1For({ ownerId: input.ownerId, showroomIds: branchIds, period: input.period }),
+  ]);
+
+  const d = {
+    taxable: round2(detail.totals.taxableValue),
+    cgst: round2(detail.hsn.reduce((a, h) => a + h.centralTax, 0)),
+    sgst: round2(detail.hsn.reduce((a, h) => a + h.stateTax, 0)),
+    igst: round2(detail.hsn.reduce((a, h) => a + h.integratedTax, 0)),
+    cess: round2(detail.hsn.reduce((a, h) => a + h.cess, 0)),
+  };
+
+  const heads = [
+    ["Taxable value", summary.outward.taxable, d.taxable],
+    ["Output CGST", summary.outward.cgst, d.cgst],
+    ["Output SGST", summary.outward.sgst, d.sgst],
+    ["Output IGST", summary.outward.igst, d.igst],
+    ["Output Cess", summary.outward.cess, d.cess],
+  ].map(([head, a, b]) => ({
+    head: head as string,
+    summary: a as number,
+    detail: b as number,
+    difference: round2((a as number) - (b as number)),
+  }));
+
+  const rows = heads.filter((h) => paise(h.difference) !== 0);
+
   const { from, to } = monthRange(input.period);
-  const paid = branchIds.length
-    ? await db
-        .select({
-          total: sql<string>`coalesce(sum(${voucherLinesTable.debit}::numeric), 0)`,
-        })
-        .from(voucherLinesTable)
-        .innerJoin(vouchersTable, eq(voucherLinesTable.voucherId, vouchersTable.id))
-        .where(
-          and(
-            eq(vouchersTable.ownerId, input.ownerId),
-            eq(vouchersTable.status, "POSTED"),
-            inArray(vouchersTable.showroomId, branchIds),
-            inArray(voucherLinesTable.accountCode, ["2200", "2210", "2220"]),
-            sql`${vouchersTable.voucherDate}::text >= ${from}`,
-            sql`${vouchersTable.voucherDate}::text <= ${to}`,
-          ),
-        )
-    : [];
+  const paid = await db
+    .select({ total: sql<string>`coalesce(sum(${voucherLinesTable.debit}::numeric), 0)` })
+    .from(voucherLinesTable)
+    .innerJoin(vouchersTable, eq(voucherLinesTable.voucherId, vouchersTable.id))
+    .where(
+      and(
+        eq(vouchersTable.ownerId, input.ownerId),
+        eq(vouchersTable.status, "POSTED"),
+        inArray(vouchersTable.showroomId, branchIds),
+        inArray(voucherLinesTable.accountCode, ["2200", "2210", "2220"]),
+        sql`${vouchersTable.voucherDate}::text >= ${from}`,
+        sql`${vouchersTable.voucherDate}::text <= ${to}`,
+      ),
+    );
 
   return {
     key: "GSTR3B",
     title: "GSTR-3B against GSTR-1",
-    compares: "the summary against the invoice-wise return, and against the tax actually paid",
+    compares: "the summary return against the invoice-wise return, and against the tax actually paid",
     ran: true,
-    clean: heads.agrees,
-    rows: heads.heads
-      .filter((h) => h.difference !== 0)
-      .map((h) => ({ ref: h.head, detail: "summary and detail disagree", amount: h.difference })),
-    total: 0,
+    clean: rows.length === 0,
+    rows: rows.map((h) => ({
+      ref: h.head,
+      detail: `3B ₹${h.summary.toFixed(2)} against GSTR-1 ₹${h.detail.toFixed(2)}`,
+      amount: h.difference,
+    })),
+    total: round2(rows.reduce((a, h) => a + Math.abs(h.difference), 0)),
     note:
       `₹${round2(n(paid[0]?.total)).toLocaleString("en-IN")} was debited to the output tax heads this month, which is ` +
-      "what a payment against the return looks like in the books. Both sides of this check are drawn from the same " +
-      "ledger, so it confirms the arithmetic rather than the sources — the sources diverge only once a return is " +
-      "filed from somewhere other than these books.",
+      "what a payment against the return looks like in the books. Both returns are built from this one ledger, so this " +
+      "compares the two exports with each other and cannot see a figure typed into the portal by hand — but the " +
+      "department compares these two without being asked, so a difference here is a notice waiting to be issued.",
   };
 }
 

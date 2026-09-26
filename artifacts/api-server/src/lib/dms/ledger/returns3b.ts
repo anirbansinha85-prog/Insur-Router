@@ -452,13 +452,19 @@ export async function eInvoiceReadiness(input: {
 }
 
 /**
- * The eighth reconciliation, in the form it will be used: **the return against
- * the books**, tax head by tax head.
+ * **GSTR-3B against the books**, tax head by tax head.
  *
- * A difference here means the return being filed is not what the ledger says,
- * and it is the last chance to find that before the department does. Every head
- * is compared separately rather than in total, because two errors of opposite
- * sign in CGST and SGST net to zero and are individually wrong.
+ * A difference here means the summary return being filed is not what the ledger
+ * says, and it is the last chance to find that before the department does. Every
+ * head is compared separately rather than in total, because two errors of
+ * opposite sign in CGST and SGST net to zero and are individually wrong.
+ *
+ * This was reconciliation 8 *and* 9, which was the defect: it builds 3B, so it
+ * could not be the GSTR-1 check, and calling it twice under two titles meant
+ * neither return was ever compared with the other. Eight now reads `gstr1For`
+ * and nine compares the two returns. This stays as what it has always actually
+ * been — the 3B arithmetic against its own source — and `verify-returns` asserts
+ * on it directly.
  */
 export async function returnAgainstBooks(input: {
   ownerId: number;

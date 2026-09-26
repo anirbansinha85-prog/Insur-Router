@@ -1,9 +1,13 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 
 import {
+  billAllocationsTable,
   db,
   dmsVehicleStockTable,
+  moneyDocumentsTable,
+  partyBillsTable,
   saleDocumentsTable,
+  serviceInvoicesTable,
   voucherLinesTable,
   vouchersTable,
   type LedgerAccountRow,
@@ -130,6 +134,7 @@ export interface Line {
 
 const n = (v: string | null | undefined): number => (v == null ? 0 : Number(v));
 const money = (v: number): string => v.toFixed(2);
+const round2 = (x: number): number => Math.round((x + Number.EPSILON) * 100) / 100;
 
 /** April to March, as `2026-27`. Every statutory question in India needs it. */
 export function financialYearOf(isoDate: string): string {
@@ -492,15 +497,11 @@ export async function postSaleDocument(input: {
     return { ok: true, voucher: voucher!, warnings };
   } catch (err) {
     // Drizzle wraps the driver error; the sentence worth reading is on the cause.
-    const cause = (err as { cause?: { code?: string } }).cause;
-    if (cause?.code === "23505") {
-      return {
-        ok: false,
-        error:
-          "This document has already been posted. Correcting it means reversing the existing voucher and posting again — a posted voucher is never edited.",
-        warnings,
-      };
-    }
+    const refusal = postingRefusal(
+      err,
+      "This document has already been posted. Correcting it means reversing the existing voucher and posting again — a posted voucher is never edited.",
+    );
+    if (refusal) return { ok: false, error: refusal, warnings };
     throw err;
   }
 }
@@ -620,6 +621,19 @@ export async function reverseVoucher(input: {
       debit: l.credit,
       credit: l.debit,
       narration: l.narration ?? undefined,
+      /*
+       * **`partyId` and not only `partyName`**, which is R-110 on the way back
+       * out.
+       *
+       * The mirror carried the party name and dropped the party ledger, so a
+       * reversed sale credited the debtors *control* account and credited no
+       * debtor. The trial balance was right throughout and the customer account
+       * was wrong: he still appeared to owe the price of a motorcycle he had
+       * been invoiced for by mistake, and the statement he was sent said so.
+       * Same defect the charge lines were fixed for, one direction along, and
+       * the reason `verify-parties` exists.
+       */
+      partyId: l.partyId,
       partyName: l.partyName,
       partyGstin: l.partyGstin,
       hsn: l.hsn,
@@ -632,5 +646,199 @@ export async function reverseVoucher(input: {
     .set({ status: "REVERSED", reversedByVoucherId: reversal!.id, reversalReason: input.reason })
     .where(eq(vouchersTable.id, original.id));
 
-  return { ok: true, voucher: reversal!, warnings: [] };
+  const warnings = await undoDocumentSideEffects(original, input.reason);
+
+  return { ok: true, voucher: reversal!, warnings };
+}
+
+/**
+ * The half of a reversal that is not double entry.
+ *
+ * Posting a document does four things and only one of them is a voucher. It
+ * opens a **bill** somebody can settle (R-111), it may relieve **stock** and
+ * write the chassis register, and money already received against that bill is
+ * **allocated** to it. A mirror voucher undoes the first and none of the rest,
+ * so before this the books and the sub-ledger parted company the moment
+ * anything was reversed: the trial balance was corrected, the receivables report
+ * still showed the debt, the ageing still counted it, and a customer who had
+ * paid could not have his money applied to the invoice that replaced it.
+ *
+ * ## The bill is closed rather than deleted, and its allocations are reversed
+ *
+ * A bill that no longer exists cannot hold money. So every live allocation
+ * against it is reversed first, which returns that money to *on account* where
+ * it is free to settle the corrected invoice, and only then is the bill taken
+ * out of the ageing. The allocation rows stay, reversal beside decision, because
+ * *somebody decided this cheque paid that invoice and then the invoice was
+ * withdrawn* is the sequence an auditor has to be able to read.
+ *
+ * ## Why a function rather than four lines inside the reversal
+ *
+ * Every posting door will need it, and a reversal that undoes three quarters of
+ * a posting is worse than one that refuses outright: the first leaves books that
+ * look corrected.
+ */
+async function undoDocumentSideEffects(
+  original: typeof vouchersTable.$inferSelect,
+  reason: string,
+): Promise<string[]> {
+  const warnings: string[] = [];
+
+  /*
+   * Which bill this voucher opened. A service invoice opens its bill with no
+   * source on it, so that one is found by invoice number instead. Named here
+   * rather than quietly skipped: a silent miss is how the first version of this
+   * would have passed its own test.
+   */
+  let bill: typeof partyBillsTable.$inferSelect | undefined;
+  const src = original.sourceId;
+
+  if (src !== null && (original.sourceKind === "SALE_DOCUMENT" || original.sourceKind === "PURCHASE_INVOICE")) {
+    [bill] = await db
+      .select()
+      .from(partyBillsTable)
+      .where(
+        and(
+          eq(partyBillsTable.sourceKind, original.sourceKind),
+          eq(partyBillsTable.sourceId, src),
+        ),
+      );
+  } else if (src !== null && original.sourceKind === "SERVICE_INVOICE") {
+    const [inv] = await db
+      .select({
+        invoiceNo: serviceInvoicesTable.invoiceNo,
+        customerId: serviceInvoicesTable.customerId,
+      })
+      .from(serviceInvoicesTable)
+      .where(eq(serviceInvoicesTable.id, src));
+    if (inv) {
+      [bill] = await db
+        .select()
+        .from(partyBillsTable)
+        .where(
+          and(
+            eq(partyBillsTable.partyId, inv.customerId),
+            eq(partyBillsTable.billNo, inv.invoiceNo),
+          ),
+        );
+    }
+  }
+
+  if (bill) {
+    const live = await db
+      .select()
+      .from(billAllocationsTable)
+      .where(eq(billAllocationsTable.partyBillId, bill.id));
+
+    const undone = new Set(
+      live.map((a) => a.reversalOfId).filter((x): x is number => x !== null),
+    );
+    const open = live.filter((a) => a.reversalOfId === null && !undone.has(a.id));
+
+    for (const a of open) {
+      const amount = round2(n(a.amount));
+      if (amount <= 0) continue;
+      await db.insert(billAllocationsTable).values({
+        ownerId: a.ownerId,
+        moneyDocumentId: a.moneyDocumentId,
+        partyBillId: a.partyBillId,
+        amount: money(-amount),
+        reversalOfId: a.id,
+        decidedBy: "PERSON",
+      });
+      await db
+        .update(moneyDocumentsTable)
+        .set({
+          unallocated: sql`(${moneyDocumentsTable.unallocated}::numeric + ${amount})::numeric`,
+        })
+        .where(eq(moneyDocumentsTable.id, a.moneyDocumentId));
+      warnings.push(
+        `₹${amount.toFixed(2)} that had been applied to ${bill.billNo} is back on account against this party, so it can go against whatever replaces it.`,
+      );
+    }
+
+    /*
+     * Out of the ageing, with `amount` left standing as the record of what was
+     * billed. A bill has no cancelled state, only `outstanding = 0` for settled,
+     * so the reversal voucher is what says this was withdrawn rather than paid
+     * and the trace is what joins the two.
+     */
+    await db
+      .update(partyBillsTable)
+      .set({ outstanding: "0.00" })
+      .where(eq(partyBillsTable.id, bill.id));
+    warnings.push(`${bill.billNo} is no longer an open bill — ${reason}`);
+  }
+
+  /*
+   * The register learns the machine is back, using the event kind the schema has
+   * carried since OBJ-46 and nothing has ever written. Without it the register
+   * says sold, the ledger says in stock, and `stockPositionCheck` reports a
+   * mismatch against the manufacturer mirror that nobody can account for.
+   */
+  if (original.sourceKind === "SALE_DOCUMENT" && src !== null) {
+    const [doc] = await db
+      .select({
+        chassisNo: saleDocumentsTable.chassisNo,
+        showroomId: saleDocumentsTable.showroomId,
+        reference: saleDocumentsTable.reference,
+        taxInvoiceNo: saleDocumentsTable.taxInvoiceNo,
+      })
+      .from(saleDocumentsTable)
+      .where(eq(saleDocumentsTable.id, src));
+
+    if (doc?.chassisNo) {
+      await recordChassisEvent({
+        ownerId: original.ownerId,
+        chassisNo: doc.chassisNo,
+        showroomId: doc.showroomId,
+        kind: "SALE_REVERSED",
+        eventDate: new Date().toISOString().slice(0, 10),
+        sourceKind: "SALE_DOCUMENT",
+        sourceId: src,
+        sourceRef: doc.taxInvoiceNo ?? doc.reference,
+        narration: `Sale reversed — ${reason}`,
+      });
+      warnings.push(
+        `${doc.chassisNo} is back on the floor in the chassis register. Whether the manufacturer's own system agrees is the stock reconciliation's question.`,
+      );
+    }
+  }
+
+  return warnings;
+}
+
+/**
+ * What a refusal from the database actually said, in the words it said it in.
+ *
+ * Two of the constraints on `vouchers` are load-bearing and neither of them can
+ * be a return value, because neither is checked in this process: the period
+ * lock is a trigger (R-112, OBJ-43) and the source uniqueness that makes
+ * posting idempotent is a partial unique index (R-101). Both arrive as a driver
+ * error on an insert.
+ *
+ * Seven functions insert a voucher and only three translated them. The other
+ * four re-threw, so a dealership posting a receipt into a month it had closed
+ * got HTTP 500 and a stack trace — the refusal was right and unreadable, which
+ * is the same as a product that lost the sentence. This is that sentence, in
+ * one place, so the next posting door cannot be written without it.
+ *
+ * The lock's message is carried through **unchanged**, because it names the
+ * dates it is refusing. Restating it here would make two sentences for one rule
+ * and the one somebody reads would not be the one that refused.
+ */
+export function postingRefusal(err: unknown, duplicate?: string): string | null {
+  const cause = (err as {
+    cause?: { code?: string; message?: string; constraint?: string };
+  }).cause;
+  if (!cause) return null;
+  /*
+   * The lock is a `raise exception ... using errcode = 'check_violation'`, so it
+   * carries a message and **no constraint name**. A named check constraint is
+   * somebody else's rule about the shape of a row, and guessing at its sentence
+   * here would put the wrong words on a different refusal.
+   */
+  if (cause.code === "23514" && !cause.constraint && cause.message) return cause.message;
+  if (cause.code === "23505" && duplicate) return duplicate;
+  return null;
 }

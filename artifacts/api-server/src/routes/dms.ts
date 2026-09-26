@@ -1085,12 +1085,15 @@ router.post("/dms/invoice/documents/:id/cancel", async (req, res): Promise<void>
     id,
     reason: String((req.body as { reason?: unknown })?.reason ?? ""),
     principal: user.role,
+    userId: user.userId,
   });
   if (!result.ok) {
     res.status(result.status).json({ error: result.error });
     return;
   }
-  res.json({ document: result.document });
+  // The warnings say what the cancellation did to the books, and a screen has to
+  // be able to show that rather than report a silent success.
+  res.json({ document: result.document, warnings: result.warnings });
 });
 
 /**

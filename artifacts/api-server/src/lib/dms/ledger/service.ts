@@ -288,29 +288,75 @@ export async function issueServiceInvoice(input: {
       ...partyRef,
     });
   }
-  if (labourAmount > 0) {
+  /*
+   * Revenue and tax, **one line per rate**, and that grain is what the return
+   * needs rather than a tidiness.
+   *
+   * GSTR-1 reports a B2B invoice one row per rate, so a job holding labour at 18
+   * and a part at 28 is two rows. The old shape pushed one labour line tagged
+   * `LABOUR_GST_PCT` and one parts line tagged `SPARE_PART_GST_PCT`, and three
+   * tax lines tagged with nothing at all. Two things followed from that. A line
+   * whose own `gstRatePct` overrode the default was posted under the default, so
+   * the voucher stated a rate the invoice had not charged. And the return had
+   * three rupee figures it could not attribute to any rate, so it could only
+   * guess or drop them — which is why every service invoice was missing from
+   * GSTR-1.
+   *
+   * Grouped on the rate **each line actually carried**, so nothing downstream
+   * has to recompute a tax that was already decided when the job was priced.
+   */
+  const REVENUE_ACCOUNT = { LABOUR: "4300", PART: "4200" } as const;
+
+  interface RateGroup {
+    kind: "LABOUR" | "PART";
+    rate: number;
+    taxable: number;
+    cgst: number;
+    sgst: number;
+    igst: number;
+    hsn: string | null;
+  }
+
+  const rateGroups: RateGroup[] = [];
+  for (const l of computed) {
+    if (l.taxable <= 0) continue;
+    const found = rateGroups.find((g) => g.kind === l.kind && g.rate === l.rate);
+    const g =
+      found ??
+      (rateGroups.push({
+        kind: l.kind,
+        rate: l.rate,
+        taxable: 0,
+        cgst: 0,
+        sgst: 0,
+        igst: 0,
+        hsn: l.kind === "LABOUR" ? (l.sac ?? DEFAULT_LABOUR_SAC) : (l.hsn ?? null),
+      }),
+      rateGroups[rateGroups.length - 1]!);
+    g.taxable = round2(g.taxable + l.taxable);
+    g.cgst = round2(g.cgst + l.cgst);
+    g.sgst = round2(g.sgst + l.sgst);
+    g.igst = round2(g.igst + l.igst);
+  }
+
+  for (const g of rateGroups) {
     lines.push({
-      accountCode: "4300",
+      accountCode: REVENUE_ACCOUNT[g.kind],
       debit: 0,
-      credit: labourAmount,
-      narration: "Labour",
-      hsn: computed.find((l) => l.kind === "LABOUR")?.sac ?? DEFAULT_LABOUR_SAC,
-      taxRatePct: LABOUR_GST_PCT,
+      credit: g.taxable,
+      narration: g.kind === "LABOUR" ? "Labour" : "Parts",
+      hsn: g.hsn,
+      taxRatePct: g.rate,
     });
   }
-  if (partsAmount > 0) {
-    lines.push({
-      accountCode: "4200",
-      debit: 0,
-      credit: partsAmount,
-      narration: "Parts",
-      hsn: computed.find((l) => l.kind === "PART")?.hsn ?? null,
-      taxRatePct: SPARE_PART_GST_PCT,
-    });
+  for (const g of rateGroups) {
+    if (g.cgst > 0)
+      lines.push({ accountCode: "2200", debit: 0, credit: g.cgst, taxRatePct: g.rate / 2 });
+    if (g.sgst > 0)
+      lines.push({ accountCode: "2210", debit: 0, credit: g.sgst, taxRatePct: g.rate / 2 });
+    if (g.igst > 0)
+      lines.push({ accountCode: "2220", debit: 0, credit: g.igst, taxRatePct: g.rate });
   }
-  if (cgst > 0) lines.push({ accountCode: "2200", debit: 0, credit: cgst });
-  if (sgst > 0) lines.push({ accountCode: "2210", debit: 0, credit: sgst });
-  if (igst > 0) lines.push({ accountCode: "2220", debit: 0, credit: igst });
 
   /*
    * Parts fitted come off the shelf, at cost.

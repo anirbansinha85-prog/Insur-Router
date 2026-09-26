@@ -44,8 +44,10 @@ import {
   db,
   showroomsTable,
   saleDocumentsTable,
+  vouchersTable,
   type SaleDocumentRow,
 } from "@workspace/db";
+import { reverseVoucher } from "../ledger/post";
 import { logger } from "../../logger";
 import { may, whyNot } from "../permissions";
 import type { ResolvedPolicy } from "../policy";
@@ -458,26 +460,97 @@ export async function generateDocument(input: GenerateInput): Promise<GenerateRe
 }
 
 /**
- * Cancelled, never deleted, and the number stays spent.
+ * Cancelled, never deleted, the number stays spent — **and the books are told**.
  *
  * A sequential series with a hole in it is an audit finding, so a cancelled tax
  * invoice keeps its number and says it was cancelled — the same argument as a
  * cancelled outbox message staying a row. *We chose not to issue this* and
  * *nobody ever issued anything* are different facts and only one of them can be
  * defended later.
+ *
+ * ## The voucher goes with it, and that was missing
+ *
+ * `post.ts` says in as many words that a cancelled document has no entries,
+ * because *it is reversed if it was ever posted, which is a different path*.
+ * There was no such path. Cancelling set one column, so an invoice that had been
+ * posted stayed in the books at full value, its bill stayed open in the ageing,
+ * the bike stayed off the floor, and GSTR-1 went on reporting it. The dealership
+ * had cancelled a sale everywhere except in the three places that matter.
+ *
+ * ## Reverse first, cancel second, and refuse if the reversal is refused
+ *
+ * The order is the whole safety of it. If the period is closed the reversal is
+ * refused by the database (R-112) and **the document stays issued**, with the
+ * lock naming its own dates. The other order gives a cancelled invoice whose
+ * revenue is still in a filed month — which is the failure this is here to
+ * prevent, arrived at through the fix for it.
  */
 export async function cancelDocument(input: {
   ownerId: number;
   id: number;
   reason: string;
   principal: string;
-}): Promise<{ ok: true; document: SaleDocumentRow } | { ok: false; status: 403 | 404 | 400; error: string }> {
+  userId?: number | null;
+}): Promise<
+  | { ok: true; document: SaleDocumentRow; warnings: string[] }
+  | { ok: false; status: 403 | 404 | 400 | 409; error: string }
+> {
   if (!may(input.principal, "invoice.generate")) {
     return { ok: false, status: 403, error: whyNot(input.principal, "invoice.generate") };
   }
   const reason = input.reason.trim();
   if (!reason) {
     return { ok: false, status: 400, error: "Say why it is being cancelled — the number stays spent either way." };
+  }
+
+  const [existing] = await db
+    .select()
+    .from(saleDocumentsTable)
+    .where(and(eq(saleDocumentsTable.id, input.id), eq(saleDocumentsTable.ownerId, input.ownerId)));
+  if (!existing) return { ok: false, status: 404, error: "No such document." };
+  if (existing.status === "CANCELLED") {
+    return { ok: true, document: existing, warnings: [] };
+  }
+
+  const warnings: string[] = [];
+
+  /*
+   * The live voucher for this document, if it was ever posted. `status` is in the
+   * filter rather than checked afterwards because a document posted, reversed and
+   * posted again has several vouchers and only one of them is standing.
+   */
+  const [posted] = await db
+    .select({ id: vouchersTable.id, voucherNo: vouchersTable.voucherNo })
+    .from(vouchersTable)
+    .where(
+      and(
+        eq(vouchersTable.ownerId, input.ownerId),
+        eq(vouchersTable.sourceKind, "SALE_DOCUMENT"),
+        eq(vouchersTable.sourceId, input.id),
+        eq(vouchersTable.status, "POSTED"),
+      ),
+    );
+
+  if (posted) {
+    const undone = await reverseVoucher({
+      ownerId: input.ownerId,
+      voucherId: posted.id,
+      reason: `Invoice ${existing.taxInvoiceNo ?? existing.reference} cancelled — ${reason}`,
+      userId: input.userId ?? null,
+    });
+    if (!undone.ok) {
+      return {
+        ok: false,
+        status: 409,
+        error:
+          `This invoice is posted as voucher ${posted.voucherNo} and that voucher could not be reversed, so it has not been cancelled. ` +
+          `${undone.error}`,
+      };
+    }
+    warnings.push(
+      `Voucher ${posted.voucherNo} has been reversed by ${undone.voucher!.voucherNo}, so the sale is out of the books.`,
+      ...undone.warnings,
+    );
   }
 
   const [row] = await db
@@ -487,7 +560,12 @@ export async function cancelDocument(input: {
     .returning();
 
   if (!row) return { ok: false, status: 404, error: "No such document." };
-  return { ok: true, document: row };
+
+  logger.info(
+    { ownerId: input.ownerId, documentId: input.id, reference: row.reference, reversed: Boolean(posted) },
+    "Sale document cancelled",
+  );
+  return { ok: true, document: row, warnings };
 }
 
 /**

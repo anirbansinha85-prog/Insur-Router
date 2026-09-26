@@ -445,11 +445,28 @@ for (const fn of [
   "controlAccountCheck",
   "dayCloseDifferences",
   "inputCreditAtRisk",
-  "returnAgainstBooks",
+  /*
+   * `gstr1For` and `gstr3bFor`, and not `returnAgainstBooks`.
+   *
+   * This asserted on `returnAgainstBooks` and passed, which is how the defect
+   * survived: that function builds GSTR-**3B**, and both the eighth and the
+   * ninth reconciliation called it. So the check named *GSTR-1 against the
+   * books* never read GSTR-1, the check named *3B against GSTR-1* never read
+   * GSTR-1 either, and this assertion confirmed the wiring was exactly as
+   * intended. Naming the two export functions is what makes it impossible to
+   * put the wrong one back.
+   */
+  "gstr1For",
+  "gstr3bFor",
   "warrantyClaimable",
 ]) {
   check(`${fn} is called, not copied`, source.includes(`${fn}(`), "");
 }
+check(
+  "and the GSTR-1 check reads the file rather than the summary",
+  !/returnAgainstBooks\(/.test(source),
+  "reconciliation 8 compares the GSTR-1 that would be filed; the 3B-against-books arithmetic is verify-returns' job",
+);
 check(
   "**and the file computes no tax and no stock position of its own**",
   !source.includes("gstRatePct") && !source.includes("taxWithin"),

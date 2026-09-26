@@ -478,6 +478,19 @@ check(
  * The taxable value the return reports has to be the taxable value the ledger
  * holds. If these ever differ, one of them is wrong and nobody can tell which
  * — which is the exact reason nothing in the return recomputes tax.
+ *
+ * ## This check has now been wrong three times, and the third is the instructive one
+ *
+ * It asked for the 31st of a month that has no 31st. It summed every outlet while
+ * the return covered two. And it counted **reversed** vouchers, which the books
+ * themselves do not: `trialBalance` and GSTR-3B both filter `status = POSTED`, and
+ * section 6 above reverses a voucher and re-posts the same document — so this
+ * query counted that one sale twice.
+ *
+ * It passed anyway, because `gstr1For` was counting reversed sales too. Two
+ * defects of the same shape on either side of an equals sign agree with each
+ * other, and a check that compares one wrong figure with another is the most
+ * expensive kind to own: it reports green and it is the reason nobody looked.
  */
 const ledgerTaxable = await ownerDb
   .select({ total: sql<string>`coalesce(sum(credit), 0)::text` })
@@ -492,8 +505,14 @@ const ledgerTaxable = await ownerDb
       // no other branch had sold anything in the period it happened to pick.
       // Janakpuri and Dwarka have sold since the branch network was seeded.
       inArray(vouchersTable.showroomId, OUTLETS),
+      // What the books hold is what is posted. A reversed voucher is out of the
+      // trial balance and out of 3B, so it is out of this figure too.
+      eq(vouchersTable.status, "POSTED"),
       eq(vouchersTable.kind, "SALES"),
-      eq(voucherLinesTable.accountCode, "4100"),
+      // Every income account, because the return reports every supply. Vehicle
+      // sales alone was right only while service invoices were silently missing
+      // from GSTR-1, which is the defect this line is the other half of.
+      inArray(voucherLinesTable.accountCode, ["4100", "4200", "4300", "4400"]),
       sql`${vouchersTable.voucherDate}::text like ${period + "%"}`,
     ),
   );

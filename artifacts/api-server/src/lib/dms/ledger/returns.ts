@@ -3,11 +3,23 @@ import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
 import {
   db,
   ledgerAccountsTable,
+  saleDocumentsTable,
+  serviceInvoicesTable,
   showroomsTable,
   gstRegistrationsTable,
   vouchersTable,
   voucherLinesTable,
 } from "@workspace/db";
+
+/**
+ * Every account a supply can be credited to, and the list is the fix.
+ *
+ * The return used to look for `4100` alone, so a workshop's whole turnover was
+ * invisible to it. Named here as a constant rather than inlined because the day
+ * somebody adds a fifth income account the return has to learn about it, and a
+ * list with a comment on it is the only version of that anybody notices.
+ */
+const INCOME_ACCOUNTS: readonly string[] = ["4100", "4200", "4300", "4400"];
 
 /**
  * The file the CA files, and the file Tally reads (OBJ-32, OBJ-33, R-99).
@@ -28,12 +40,18 @@ import {
  * that the product has two. Every figure below is read off the voucher lines
  * that were posted from that document.
  *
- * ## Reversals are netted, not hidden
+ * ## A reversed sale is out of the return, exactly as it is out of the books
  *
- * A reversed sale still happened and its reversal still happened. Both appear,
- * and a month containing one shows the invoice and the credit against it,
- * because a return that silently omits a corrected invoice is a return that
- * cannot be reconciled against the books it came from.
+ * This once said reversals were *netted, not hidden*, and the code under it did
+ * neither: it noticed the reversal, pushed a warning, and then reported the
+ * invoice at full value. The books and GSTR-3B both exclude a reversed voucher,
+ * so GSTR-1 reporting it gave one month two different turnovers — and the
+ * department compares 1 against 3B without being asked.
+ *
+ * So a reversed sale is left out, and the case that genuinely needs a credit
+ * note — reversed in a **later** month than the one being filed — is named as a
+ * problem with both dates in it. Producing the credit note itself is the next
+ * piece of work and is not pretended at here.
  */
 
 // ── GSTR-1 ───────────────────────────────────────────────────────────────────
@@ -63,7 +81,8 @@ export interface B2CSRow {
 export interface HsnRow {
   hsn: string;
   description: string;
-  uqc: "NOS";
+  /** NOS for goods; NA for a service, which does not come in numbers. */
+  uqc: "NOS" | "NA";
   totalQuantity: number;
   totalValue: number;
   taxableValue: number;
@@ -88,6 +107,7 @@ export interface Gstr1 {
 }
 
 const num = (v: string | null | undefined): number => (v == null ? 0 : Number(v));
+const round2 = (x: number): number => Math.round((x + Number.EPSILON) * 100) / 100;
 
 /**
  * The return, assembled from what was posted.
@@ -169,11 +189,78 @@ export async function gstr1For(input: {
         eq(vouchersTable.ownerId, input.ownerId),
         inArray(vouchersTable.showroomId, input.showroomIds),
         eq(vouchersTable.kind, "SALES"),
+        /*
+         * **Posted only**, which is the single most consequential line in this
+         * file.
+         *
+         * Without it a reversed sale was reported at its full value while the
+         * books and GSTR-3B both excluded it, so the same month had two
+         * different turnovers depending on which report somebody opened — and
+         * the department compares 1 against 3B automatically. The old code
+         * noticed the reversal, pushed a problem about it, and then reported the
+         * invoice anyway.
+         */
+        eq(vouchersTable.status, "POSTED"),
         gte(vouchersTable.voucherDate, from),
         lte(vouchersTable.voucherDate, to),
       ),
     )
     .orderBy(asc(vouchersTable.voucherDate), asc(vouchersTable.id), asc(voucherLinesTable.seq));
+
+  /*
+   * The reversed ones, named rather than dropped silently.
+   *
+   * A sale reversed inside its own month never stood at month end, so leaving it
+   * out is right and there is nothing to say. A sale reversed in a **later**
+   * month was a real supply in this one and its correction belongs in the
+   * reversal month as a credit note, which this export does not yet produce. The
+   * two cases need different sentences and only the second is a problem, so they
+   * are separated here instead of sharing one warning that was wrong for both.
+   */
+  const reversedHere = await db
+    .select({
+      voucherNo: vouchersTable.voucherNo,
+      voucherDate: vouchersTable.voucherDate,
+      reversedByVoucherId: vouchersTable.reversedByVoucherId,
+    })
+    .from(vouchersTable)
+    .where(
+      and(
+        eq(vouchersTable.ownerId, input.ownerId),
+        inArray(vouchersTable.showroomId, input.showroomIds),
+        eq(vouchersTable.kind, "SALES"),
+        eq(vouchersTable.status, "REVERSED"),
+        gte(vouchersTable.voucherDate, from),
+        lte(vouchersTable.voucherDate, to),
+      ),
+    );
+
+  if (reversedHere.length > 0) {
+    const reversalIds = reversedHere
+      .map((r) => r.reversedByVoucherId)
+      .filter((x): x is number => x !== null);
+    const reversalDates = reversalIds.length
+      ? new Map(
+          (
+            await db
+              .select({ id: vouchersTable.id, voucherDate: vouchersTable.voucherDate })
+              .from(vouchersTable)
+              .where(inArray(vouchersTable.id, reversalIds))
+          ).map((r) => [r.id, r.voucherDate]),
+        )
+      : new Map<number, string>();
+
+    for (const r of reversedHere) {
+      const undoneOn = r.reversedByVoucherId ? reversalDates.get(r.reversedByVoucherId) : undefined;
+      if (undoneOn && undoneOn > to) {
+        problems.push(
+          `${r.voucherNo} of ${r.voucherDate} was reversed on ${undoneOn}, after this period. It is left out of this return to keep it equal to the books, ` +
+            "but it was a real supply in this month and the correction belongs in the reversal's month as a credit note, which this export does not yet produce. " +
+            "If this month has already been filed, that credit note is what has to be filed next.",
+        );
+      }
+    }
+  }
 
   // Group the lines back into the vouchers they came from.
   const byVoucher = new Map<number, { v: typeof rows[number]["voucher"]; lines: typeof rows[number]["line"][] }>();
@@ -183,6 +270,54 @@ export async function gstr1For(input: {
     byVoucher.set(r.voucher.id, e);
   }
 
+  /*
+   * **The number the customer holds, and the state the goods went to.**
+   *
+   * Both were wrong and both were wrong in a way that produces a return the
+   * portal accepts. `invoiceNo` was the voucher's internal serial — "41" — while
+   * the customer held "SI/2026-27/0041", so a registered buyer's input credit
+   * could never match and the dealership heard about it from the buyer three
+   * months later. `placeOfSupply` was the *selling outlet's* own state, so every
+   * interstate sale was reported as if it had happened at home; an invoice
+   * charged IGST and filed as an intra-state supply is the shape of a notice.
+   *
+   * Both live on the document, not on the voucher, so the documents are fetched
+   * in two batched reads and matched by the source the voucher already names
+   * (R-101). A voucher with no document behind it — a cross-registration branch
+   * transfer posts one — says so rather than quietly reporting its serial.
+   */
+  const saleIds = [...byVoucher.values()]
+    .filter((e) => e.v.sourceKind === "SALE_DOCUMENT" && e.v.sourceId !== null)
+    .map((e) => e.v.sourceId!);
+  const serviceIds = [...byVoucher.values()]
+    .filter((e) => e.v.sourceKind === "SERVICE_INVOICE" && e.v.sourceId !== null)
+    .map((e) => e.v.sourceId!);
+
+  const saleDocs = saleIds.length
+    ? await db
+        .select({
+          id: saleDocumentsTable.id,
+          taxInvoiceNo: saleDocumentsTable.taxInvoiceNo,
+          reference: saleDocumentsTable.reference,
+          placeOfSupply: saleDocumentsTable.placeOfSupply,
+        })
+        .from(saleDocumentsTable)
+        .where(inArray(saleDocumentsTable.id, saleIds))
+    : [];
+  const serviceDocs = serviceIds.length
+    ? await db
+        .select({
+          id: serviceInvoicesTable.id,
+          invoiceNo: serviceInvoicesTable.invoiceNo,
+          placeOfSupply: serviceInvoicesTable.placeOfSupply,
+        })
+        .from(serviceInvoicesTable)
+        .where(inArray(serviceInvoicesTable.id, serviceIds))
+    : [];
+
+  const saleById = new Map(saleDocs.map((d) => [d.id, d]));
+  const serviceById = new Map(serviceDocs.map((d) => [d.id, d]));
+
   const b2b: B2BRow[] = [];
   const b2csMap = new Map<string, B2CSRow>();
   const hsnMap = new Map<string, HsnRow>();
@@ -190,82 +325,199 @@ export async function gstr1For(input: {
   let invoices = 0;
   let taxableTotal = 0;
   let taxTotal = 0;
+  let hsnQuantityIncomplete = false;
 
   for (const { v, lines } of byVoucher.values()) {
-    if (v.status === "REVERSED") {
+    /*
+     * Every income account, not only vehicle sales.
+     *
+     * `4100` alone meant `if (!sale) continue` silently discarded **every service
+     * invoice ever raised** — labour on `4300` and parts on `4200` — so a
+     * dealership filed a return missing the whole of its workshop turnover while
+     * its own books showed it. Understating turnover on a filed return is the
+     * single worst thing this file could do, and it did it by default.
+     */
+    const revenue = lines.filter((l) => INCOME_ACCOUNTS.includes(l.accountCode));
+    if (revenue.length === 0) continue;
+
+    const doc =
+      v.sourceKind === "SALE_DOCUMENT" && v.sourceId !== null
+        ? saleById.get(v.sourceId)
+        : undefined;
+    const svc =
+      v.sourceKind === "SERVICE_INVOICE" && v.sourceId !== null
+        ? serviceById.get(v.sourceId)
+        : undefined;
+
+    const invoiceNo = doc
+      ? (doc.taxInvoiceNo ?? doc.reference)
+      : svc
+        ? svc.invoiceNo
+        : v.voucherNo;
+    if (!doc && !svc) {
       problems.push(
-        `${v.voucherNo} was reversed. Both it and its reversal are in the books; a corrected invoice must be reported as a credit note, which this export does not yet produce.`,
+        `${v.voucherNo} is a sale with no invoice document behind it, so the return carries its voucher number. ` +
+          "A registered buyer cannot match their input credit against that. A cross-registration branch transfer looks like this.",
       );
     }
-
-    const sale = lines.find((l) => l.accountCode === "4100");
-    if (!sale) continue;
-
-    const debtor = lines.find((l) => l.accountCode === "1100");
-    const taxable = num(sale.credit);
-    const rate = num(sale.taxRatePct);
-    const cgst = lines.filter((l) => l.accountCode === "2200").reduce((a, l) => a + num(l.credit), 0);
-    const sgst = lines.filter((l) => l.accountCode === "2210").reduce((a, l) => a + num(l.credit), 0);
-    const igst = lines.filter((l) => l.accountCode === "2220").reduce((a, l) => a + num(l.credit), 0);
-    const cess = lines.filter((l) => l.accountCode === "2230").reduce((a, l) => a + num(l.credit), 0);
 
     const outlet = outlets.find((o) => o.id === v.showroomId);
-    const placeOfSupply = outlet?.state ?? "";
+    const supplierState = outlet?.state ?? "";
+    const placeOfSupply = (doc?.placeOfSupply ?? svc?.placeOfSupply ?? supplierState) || "";
     if (!placeOfSupply) {
       problems.push(
-        `${v.voucherNo} has no place of supply, because the outlet it was sold from has no state recorded. The portal will refuse the row.`,
+        `${invoiceNo} has no place of supply: the document does not record one and the outlet it was sold from has no state either. The portal will refuse the row.`,
       );
-    }
-
-    invoices += 1;
-    taxableTotal += taxable;
-    taxTotal += cgst + sgst + igst + cess;
-
-    if (debtor?.partyGstin) {
-      b2b.push({
-        gstin: debtor.partyGstin,
-        receiverName: debtor.partyName ?? "",
-        invoiceNo: v.voucherNo,
-        invoiceDate: v.voucherDate,
-        invoiceValue: num(v.totalDebit),
-        placeOfSupply,
-        reverseCharge: "N",
-        invoiceType: "Regular B2B",
-        rate,
-        taxableValue: taxable,
-        cessAmount: cess,
-      });
-    } else {
-      const key = `${placeOfSupply}|${rate}`;
-      const agg = b2csMap.get(key) ?? {
-        type: "OE" as const,
-        placeOfSupply,
-        rate,
-        taxableValue: 0,
-        cessAmount: 0,
-      };
-      agg.taxableValue += taxable;
-      agg.cessAmount += cess;
-      b2csMap.set(key, agg);
     }
 
     /*
-     * The HSN summary, and the one figure in it that is not on the voucher.
+     * The one check that catches a wrong return before the department does.
      *
-     * Quantity. A voucher records money and this return wants units, and one
-     * sale document is one vehicle — so the count is the number of invoices at
-     * that HSN rather than anything read off a line. Said here because it is
-     * the only place in this file where a number is inferred rather than read,
-     * and the inference stops being true the day a document covers two bikes.
+     * The tax head and the place of supply have to agree: IGST is charged when
+     * the goods cross a state line and CGST with SGST when they do not. A return
+     * whose two halves disagree is accepted by the portal and then queried, and
+     * the invoice is already in the customer's hands by then.
      */
-    const hsn = sale.hsn ?? "";
-    if (!hsn) {
-      problems.push(`${v.voucherNo} has no HSN code on it. The HSN summary will be short by one row.`);
-    } else {
+    const anyIgst = lines.some((l) => l.accountCode === "2220" && num(l.credit) > 0);
+    const anyLocal = lines.some(
+      (l) => (l.accountCode === "2200" || l.accountCode === "2210") && num(l.credit) > 0,
+    );
+    const sameState =
+      Boolean(placeOfSupply) &&
+      Boolean(supplierState) &&
+      placeOfSupply.trim().toLowerCase() === supplierState.trim().toLowerCase();
+    if (anyIgst && sameState) {
+      problems.push(
+        `${invoiceNo} charged IGST but its place of supply (${placeOfSupply}) is the same state the outlet files from. One of the two is wrong and the portal will accept both.`,
+      );
+    }
+    if (anyLocal && Boolean(placeOfSupply) && Boolean(supplierState) && !sameState) {
+      problems.push(
+        `${invoiceNo} charged CGST and SGST but its place of supply (${placeOfSupply}) is outside ${supplierState}. An interstate supply carries IGST.`,
+      );
+    }
+
+    /*
+     * **The invoice's own value, not the voucher's total debit.**
+     *
+     * A sale voucher debits the customer for the invoice *and* debits cost of
+     * goods sold for what the bike cost, so `totalDebit` was the invoice plus its
+     * own cost — very nearly double. That figure went onto the B2B row and into
+     * the HSN summary's total value, on every return the product has ever
+     * produced. The debits on the debtors control account are the invoice, which
+     * is what the customer was asked to pay; the credits on it are an advance
+     * being set off, which does not reduce what was invoiced.
+     */
+    const invoiceValue = round2(
+      lines.filter((l) => l.accountCode === "1100").reduce((a, l) => a + num(l.debit), 0),
+    );
+
+    const debtor = lines.find((l) => l.accountCode === "1100" && num(l.debit) > 0);
+    const buyerGstin = debtor?.partyGstin ?? null;
+
+    /*
+     * One row per rate, which is the grain GSTR-1 is filed in.
+     *
+     * A service invoice holds labour at 18% and a part at 28%, and reporting the
+     * two as one row at one rate misstates both. The rate is read off the line
+     * rather than derived — the same rule as everywhere else in this file — and
+     * the tax lines are matched to it by the rate they carry: a CGST or SGST line
+     * carries half the rate it is the tax on, an IGST line carries the whole.
+     */
+    const groups = new Map<number, { taxable: number; hsn: string | null; narration: string | null }>();
+    for (const l of revenue) {
+      const rate = num(l.taxRatePct);
+      const g = groups.get(rate) ?? { taxable: 0, hsn: l.hsn, narration: l.narration };
+      g.taxable = round2(g.taxable + num(l.credit));
+      if (!g.hsn && l.hsn) g.hsn = l.hsn;
+      groups.set(rate, g);
+    }
+
+    const taxAt = (code: string, wanted: number): number =>
+      round2(
+        lines
+          .filter((l) => l.accountCode === code && num(l.taxRatePct) === wanted)
+          .reduce((a, l) => a + num(l.credit), 0),
+      );
+    const totalOn = (code: string): number =>
+      round2(lines.filter((l) => l.accountCode === code).reduce((a, l) => a + num(l.credit), 0));
+
+    /*
+     * Cess sits on the widest rate group rather than being matched.
+     *
+     * `2230` is tagged with the **cess** rate, not the GST rate, so it cannot be
+     * matched the way the three GST heads are. Cess is charged on vehicles and a
+     * vehicle invoice has one rate group, so attaching it to the largest is exact
+     * in every case the product can currently produce — and said out loud here
+     * because it is the one attribution below that is by convention rather than
+     * by reading.
+     */
+    const cessTotal = totalOn("2230");
+    const widest = [...groups.entries()].sort((a, b) => b[1].taxable - a[1].taxable)[0]?.[0];
+
+    let attributedTax = 0;
+    for (const [rate, g] of groups) {
+      const cgst = taxAt("2200", rate / 2);
+      const sgst = taxAt("2210", rate / 2);
+      const igst = taxAt("2220", rate);
+      const cess = rate === widest ? cessTotal : 0;
+      attributedTax = round2(attributedTax + cgst + sgst + igst + cess);
+
+      taxableTotal = round2(taxableTotal + g.taxable);
+      taxTotal = round2(taxTotal + cgst + sgst + igst + cess);
+
+      if (buyerGstin) {
+        b2b.push({
+          gstin: buyerGstin,
+          receiverName: debtor?.partyName ?? "",
+          invoiceNo,
+          invoiceDate: v.voucherDate,
+          invoiceValue,
+          placeOfSupply,
+          reverseCharge: "N",
+          invoiceType: "Regular B2B",
+          rate,
+          taxableValue: g.taxable,
+          cessAmount: cess,
+        });
+      } else {
+        const key = `${placeOfSupply}|${rate}`;
+        const agg = b2csMap.get(key) ?? {
+          type: "OE" as const,
+          placeOfSupply,
+          rate,
+          taxableValue: 0,
+          cessAmount: 0,
+        };
+        agg.taxableValue = round2(agg.taxableValue + g.taxable);
+        agg.cessAmount = round2(agg.cessAmount + cess);
+        b2csMap.set(key, agg);
+      }
+
+      /*
+       * The HSN summary, and the one figure in it that is not on the voucher.
+       *
+       * Quantity. A voucher records money and this return wants units. One sale
+       * document is one vehicle, so a vehicle row's count is the number of
+       * invoices at that HSN; a spare part's quantity and a labour line's are
+       * not on the voucher at all, so those rows carry none and the return says
+       * so rather than inventing a figure. Labour is a service, so its unit of
+       * measure is NA rather than NOS — filing a service as though it came in
+       * numbers is a rejected sheet.
+       */
+      const hsn = g.hsn ?? "";
+      if (!hsn) {
+        problems.push(`${invoiceNo} has a line with no HSN or SAC code on it. The HSN summary will be short by one row.`);
+        continue;
+      }
+      const isVehicle = revenue.some((l) => l.accountCode === "4100" && num(l.taxRatePct) === rate);
+      const isService = revenue.some((l) => l.accountCode === "4300" && num(l.taxRatePct) === rate);
+      if (!isVehicle) hsnQuantityIncomplete = true;
+
       const h = hsnMap.get(hsn) ?? {
         hsn,
-        description: sale.narration ?? "Two-wheeler",
-        uqc: "NOS" as const,
+        description: g.narration ?? "Two-wheeler",
+        uqc: isService ? ("NA" as const) : ("NOS" as const),
         totalQuantity: 0,
         totalValue: 0,
         taxableValue: 0,
@@ -274,15 +526,43 @@ export async function gstr1For(input: {
         stateTax: 0,
         cess: 0,
       };
-      h.totalQuantity += 1;
-      h.totalValue += num(v.totalDebit);
-      h.taxableValue += taxable;
-      h.integratedTax += igst;
-      h.centralTax += cgst;
-      h.stateTax += sgst;
-      h.cess += cess;
+      if (isVehicle) h.totalQuantity += 1;
+      h.totalValue = round2(h.totalValue + g.taxable + cgst + sgst + igst + cess);
+      h.taxableValue = round2(h.taxableValue + g.taxable);
+      h.integratedTax = round2(h.integratedTax + igst);
+      h.centralTax = round2(h.centralTax + cgst);
+      h.stateTax = round2(h.stateTax + sgst);
+      h.cess = round2(h.cess + cess);
       hsnMap.set(hsn, h);
     }
+
+    /*
+     * Tax on the voucher that no rate group claimed.
+     *
+     * This is the check that would have caught the service invoices: their tax
+     * lines carried no rate, so nothing here could attribute them. Rather than
+     * lose the money quietly, the difference is named against the invoice it is
+     * on — a return short by a rupee of CGST is a return that does not tie to the
+     * books, and reconciliation 8 is about to say so anyway.
+     */
+    const taxOnVoucher = round2(
+      totalOn("2200") + totalOn("2210") + totalOn("2220") + cessTotal,
+    );
+    if (Math.abs(taxOnVoucher - attributedTax) > 0.005) {
+      problems.push(
+        `${invoiceNo} carries ₹${taxOnVoucher.toFixed(2)} of output tax and only ₹${attributedTax.toFixed(2)} of it could be attributed to a rate. ` +
+          "The difference is on a tax line whose rate was not recorded, so it is missing from this return.",
+      );
+    }
+
+    invoices += 1;
+  }
+
+  if (hsnQuantityIncomplete) {
+    problems.push(
+      "The HSN summary carries no quantity for spare parts or labour, because a voucher line records money and not units. " +
+        "The values and the tax are complete; the quantity column is not, and the portal wants it for goods.",
+    );
   }
 
   return {
